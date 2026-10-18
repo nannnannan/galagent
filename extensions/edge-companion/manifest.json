@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "GalAgent · 浏览器观察桥接",
+  "version": "0.1.0",
+  "description": "向本机 GalAgent 提供活动标签、打开标签、收藏夹与浏览历史元数据，以及当前活动页可选正文摘要（观察数据，不执行远程指令）。",
+  "permissions": [
+    "tabs",
+    "bookmarks",
+    "history",
+    "activeTab",
+    "scripting",
+    "nativeMessaging"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

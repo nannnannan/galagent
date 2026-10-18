@@ -1,0 +1,54 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "kimi.moc3",
+    "Textures": [
+      "kimi.2048/texture_00.png"
+    ],
+    "Physics": "kimi.physics3.json",
+    "DisplayInfo": "kimi.cdi3.json",
+    "Expressions": [
+      {
+        "Name": "neutral",
+        "File": "expressions/neutral.exp3.json"
+      },
+      {
+        "Name": "curious",
+        "File": "expressions/curious.exp3.json"
+      },
+      {
+        "Name": "pleased",
+        "File": "expressions/pleased.exp3.json"
+      },
+      {
+        "Name": "flustered",
+        "File": "expressions/flustered.exp3.json"
+      },
+      {
+        "Name": "annoyed",
+        "File": "expressions/annoyed.exp3.json"
+      },
+      {
+        "Name": "softened",
+        "File": "expressions/softened.exp3.json"
+      }
+    ]
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    }
+  ]
+}

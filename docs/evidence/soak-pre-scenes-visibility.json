@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 2,
+  "status": "interrupted_for_scenes_visibility_package",
+  "pid": 38620,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T19:09:19.632Z",
+  "updatedAt": "2026-10-08T20:08:19.926Z",
+  "targetMs": 172800000,
+  "activeObservedMs": 3540291,
+  "sampleCount": 60,
+  "peakWorkingSetMiB": 522.1796875,
+  "meanWholeCPUPercent": 2.4056723058936673,
+  "firstTenMinuteSamples": [
+    {
+      "cpu": null,
+      "memory": 522.1796875
+    },
+    {
+      "cpu": 2.7734789285436583,
+      "memory": 452.703125
+    },
+    {
+      "cpu": 2.8265178090333913,
+      "memory": 456.0703125
+    },
+    {
+      "cpu": 2.710873152114131,
+      "memory": 459.83984375
+    },
+    {
+      "cpu": 2.3513765296316667,
+      "memory": 460.7265625
+    },
+    {
+      "cpu": 2.365720362993949,
+      "memory": 461.94140625
+    },
+    {
+      "cpu": 2.391084959640906,
+      "memory": 457.49609375
+    },
+    {
+      "cpu": 2.4614424513577626,
+      "memory": 458.58203125
+    },
+    {
+      "cpu": 2.4437894444444446,
+      "memory": 461.33984375
+    },
+    {
+      "cpu": 2.44689181983303,
+      "memory": 462.53515625
+    },
+    {
+      "cpu": 2.421639500452771,
+      "memory": 462.9296875
+    }
+  ],
+  "note": "Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality.",
+  "interruptionNote": "Archived before stopping verified production PID38620 and its project children for the scene/lifecycle build; not a graceful recorder stop."
+}

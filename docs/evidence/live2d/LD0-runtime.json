@@ -1,0 +1,62 @@
+{
+  "at": "2026-10-17T12:01:54.317Z",
+  "passed": true,
+  "scope": "Exclusive Kimi custom moc3 + physics3 + 6 exp3 expressions in isolated Electron transparent window; Cubism Editor 5.3.04 verified",
+  "sdk": "Cubism 5 SDK for Web R5",
+  "model": "Kimi custom Live2D model (art/live2d/export/kimi.moc3)",
+  "state": {
+    "ready": true,
+    "frames": 37,
+    "active": true,
+    "disposed": false,
+    "pose": "auto",
+    "expression": "neutral",
+    "zoom": "bust",
+    "poseLoaded": false,
+    "physicsLoaded": true,
+    "expressionsLoaded": [
+      "neutral",
+      "curious",
+      "pleased",
+      "flustered",
+      "annoyed",
+      "softened"
+    ],
+    "coreVersion": 100663297,
+    "parameters": 27,
+    "drawables": 20,
+    "transparentPixels": 2272111,
+    "coloredPixels": 1777062,
+    "error": "",
+    "renderer": "ANGLE (NVIDIA, NVIDIA GeForce RTX 4060 Laptop GPU (0x000028E0) Direct3D11 vs_5_0 ps_5_0, D3D11)",
+    "modelName": "Kimi (kimi.moc3)",
+    "pixels": {
+      "clear": 2272111,
+      "paint": 1777062,
+      "total": 4121600
+    }
+  },
+  "expressionHashes": {
+    "neutral": "1d552ffaa32c7d811add6866fd5daaa3d5666cc7884cd1a5dd9edfb443b17b47",
+    "curious": "6849da2cd973fb59e761df5fed0e3d324f18d3bfcb3514b1667f2dab480ae883",
+    "pleased": "97efe84cbd6c98176f505370aaea36ef80f567ff19bab0b83cbbdc462fec8755",
+    "flustered": "c8815f0fb0224b6ecb1bcec99738f7a07081722637e54ad0b1376c46aed638cc",
+    "annoyed": "c1c79c638d3d8f87d52c0f549d8c5ff3b651e6efab2ec535330f8ec8b4b28eac",
+    "softened": "48a7a550f96b83a1d4ed9169ff1178be9be5ced7db825a23a08b50d9d3bdd656"
+  },
+  "checks": [
+    "custom Kimi moc3 (30 parameters, 20 high-density ArtMeshes, 2 hierarchical Warp Deformers) decoded and rendered",
+    "transparent and painted pixels coexist",
+    "head parameter -22/+22 changes rendered output",
+    "both eyelids close cleanly with iris clipping mask",
+    "3 pendulum physics groups (HairFront, HairSide, HairBack) loaded and evaluated",
+    "all 6 character expressions (neutral, curious, pleased, flustered, annoyed, softened) loaded and produce distinct frames",
+    "pause/resume",
+    "native hide/show stops rendering",
+    "dispose stops frame loop",
+    "missing moc shows explicit fallback"
+  ],
+  "editorVerified": true,
+  "customCharacterModelCreated": true,
+  "productionDataUsed": false
+}

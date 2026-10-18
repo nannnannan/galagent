@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "scope": "packaged GalAgent -> existing OpenAI-compatible API -> real K3 -> our Read backend -> correlated result -> verified final answer",
+  "realK3": true,
+  "fileMatched": true,
+  "toolCount": 1,
+  "cliUsed": false,
+  "productionDataUsed": false
+}

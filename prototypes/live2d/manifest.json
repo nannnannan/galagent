@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "sdk": "Cubism 5 SDK for Web R5",
+  "source": "https://cubism.live2d.com/sdk-web/bin/CubismSdkForWeb-5-r.5.zip",
+  "purpose": "local isolated prototype",
+  "model": "Haru official sample",
+  "assets": [
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Core/live2dcubismcore.min.js",
+      "bytes": 228042,
+      "sha256": "8741f739779b5d5210872bd3d7d99f0f1e56e6c87409e7d26d6bb4b80aa1ef47",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.model3.json",
+      "bytes": 2083,
+      "sha256": "5a41969802b8f9019ca731b07d918fc137e6a61eb9943bdd3f532aeaa0936f8c",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.moc3",
+      "bytes": 384704,
+      "sha256": "aa59f7a3dc3b30b23b5f10afd9192ed755e4d01dc9a12442d99b972a418e2543",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.2048/texture_00.png",
+      "bytes": 1526786,
+      "sha256": "30fce81e6b2d69fb99e8d1b5f391a6e0240f671095e491e9bbe24ddd7c7f434d",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.2048/texture_01.png",
+      "bytes": 1188664,
+      "sha256": "e1e977447ee7e6e347f1b96b9103ae269e6f4e4a8cf38068d161537415cc51c8",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.pose3.json",
+      "bytes": 274,
+      "sha256": "cd1c1e2c0faac3bf0c42fdf1a4d5a064ebd5e1f2dc4116a9a7c723b948818ef6",
+      "load": "on prototype startup"
+    },
+    {
+      "path": "vendor/CubismSdkForWeb-5-r.5/Samples/Resources/Haru/Haru.physics3.json",
+      "bytes": 5914,
+      "sha256": "b09a654759a0a0a49998a263757b10f310377adab4b8a281ae5c70902a8a7d1f",
+      "load": "on prototype startup"
+    }
+  ]
+}

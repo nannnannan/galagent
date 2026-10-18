@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-10T13:00:15.359Z",
+  "passed": true,
+  "realK3": true,
+  "scope": "current CompanionService main character chat over existing OpenAI proxy",
+  "requests": 2,
+  "online": true,
+  "onboarding": "ready",
+  "responsePresent": true,
+  "productionDataUsed": false
+}

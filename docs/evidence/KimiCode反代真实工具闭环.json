@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "scope": "existing OpenAI-compatible proxy -> K3 -> Read tool_call -> our isolated file executor -> correlated tool result -> K3 final answer",
+  "model": "kimi-code/k3",
+  "toolDefinitionsUsed": 1,
+  "toolCalls": 1,
+  "requests": 2,
+  "totalTokens": 2372,
+  "originalAssistantFieldsPreserved": true,
+  "thinkingReturnedAndPreserved": true,
+  "fixtureMatched": true,
+  "cliUsed": false,
+  "proxyChanged": false,
+  "full25ToolsImplemented": false
+}

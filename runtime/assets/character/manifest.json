@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "rendering": "matched transparent PNG expression crossfade and CSS motion; not Live2D",
+  "images": [
+    {
+      "expression": "neutral",
+      "file": "neutral.png",
+      "prompt_file": "neutral.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        122,
+        11,
+        962,
+        1505
+      ],
+      "sha256": "9737c5bb6f91c7031f8deab37f540b31c7130afe12a5cadf594272cf5e399dc6",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "curious",
+      "file": "curious.png",
+      "prompt_file": "curious.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        120,
+        11,
+        962,
+        1506
+      ],
+      "sha256": "8dd3c32e439261a5986684a3a292bfa40cc703e4e6a7ab6041732a06a2c6216a",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "pleased",
+      "file": "pleased.png",
+      "prompt_file": "pleased.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        122,
+        11,
+        962,
+        1505
+      ],
+      "sha256": "d49932603edc84938543f80669a20edc9e1cc7aadf48fef2e04a2f2f12182b94",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "flustered",
+      "file": "flustered.png",
+      "prompt_file": "flustered.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        123,
+        11,
+        963,
+        1505
+      ],
+      "sha256": "02b3cf71174d2b8607fe225489604d4db3c9bfb64e1332bffe08533990a5812c",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "annoyed",
+      "file": "annoyed.png",
+      "prompt_file": "annoyed.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        122,
+        11,
+        962,
+        1505
+      ],
+      "sha256": "741588be51a224241d1ab1704f9584a939ec4cae115b09379db13768f34fa0c4",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "softened",
+      "file": "softened.png",
+      "prompt_file": "softened.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        122,
+        11,
+        963,
+        1505
+      ],
+      "sha256": "d4553630cda8c0c3e5060a6c4c271e85cb4fb140ab14682fa1eb50246e0c3efd",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    },
+    {
+      "expression": "blink",
+      "file": "blink.png",
+      "prompt_file": "blink.txt",
+      "width": 1024,
+      "height": 1536,
+      "mode": "RGBA",
+      "alpha_minmax": [
+        0,
+        254
+      ],
+      "opaque_body_bounds": [
+        122,
+        11,
+        962,
+        1505
+      ],
+      "sha256": "81f3ec21a5a72ee199f2c5c0aa07a7341f5832df93919f1584f26c6adb4a187c",
+      "visual_review": "identity, posture, clothing and facial expression inspected by primary agent",
+      "tool": "built-in image_gen"
+    }
+  ]
+}

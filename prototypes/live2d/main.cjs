@@ -1,0 +1,20 @@
+const {app,BrowserWindow,ipcMain}=require('electron');
+const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const root=__dirname;
+app.setName('GalAgent Live2D Probe');app.setPath('userData',path.resolve(root,'../../.cache/live2d-probe-userdata'));
+if(process.env.LIVE2D_DEBUG_PORT)app.commandLine.appendSwitch('remote-debugging-port',process.env.LIVE2D_DEBUG_PORT);
+let win,server;
+app.whenReady().then(async()=>{
+ server=http.createServer((req,res)=>{try{const pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname),file=path.resolve(root,'.'+(pathname==='/'?'/index.html':pathname));if(!file.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}const type={'.html':'text/html','.js':'application/javascript','.json':'application/json','.png':'image/png','.vert':'text/plain','.frag':'text/plain'}[path.extname(file)]||'application/octet-stream';const stream=fs.createReadStream(file);stream.on('error',()=>{if(!res.headersSent)res.writeHead(404);res.end();});res.setHeader('Content-Type',type);stream.pipe(res);}catch{res.writeHead(400);res.end();}});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+ win=new BrowserWindow({width:1120,height:920,minWidth:640,minHeight:640,transparent:true,frame:false,resizable:true,hasShadow:false,backgroundColor:'#00000000',webPreferences:{preload:path.join(root,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+ win.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+ const url='http://127.0.0.1:'+server.address().port+'/';
+ win.webContents.on('will-navigate',(event,next)=>{if(next!==url)event.preventDefault();});
+ for(const event of ['show','hide','minimize','restore'])win.on(event,()=>win.webContents.send('probe:visibility',win.isVisible()&&!win.isMinimized()));
+ ipcMain.handle('probe:exercise-visibility',async event=>{if(event.sender.id!==win.webContents.id)throw Error('Wrong sender');win.hide();await new Promise(r=>setTimeout(r,700));win.show();return true;});
+ ipcMain.handle('probe:toggle-fullscreen',event=>{if(event.sender.id!==win.webContents.id)throw Error('Wrong sender');const next=!win.isFullScreen();win.setFullScreen(next);return next;});
+ await win.loadURL(url);
+ fs.writeFileSync(path.resolve(root,'../../.cache/live2d-probe-window.json'),JSON.stringify({pid:process.pid,url,transparent:true,width:1120,height:920}));
+});
+app.on('window-all-closed',()=>app.quit());app.on('before-quit',()=>server?.close());

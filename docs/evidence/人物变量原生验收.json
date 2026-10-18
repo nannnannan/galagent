@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "scope": "isolated packaged app.asar + localhost model fixture",
+  "checks": [
+    "fresh naming retains adapting",
+    "model cannot write numeric state",
+    "IPC to WebGL intensity .25",
+    "work context and idle intensity .2",
+    "native restart preserves state and identity",
+    "quiet tap earns no growth"
+  ],
+  "realKimiTested": false
+}

@@ -1,0 +1,43 @@
+{
+  "at": "2026-10-08T21:32:17.131Z",
+  "runtimeVersions": {
+    "@huggingface/transformers": "4.3.1",
+    "onnxruntime-node": "1.30.0",
+    "sharp": "0.35.5"
+  },
+  "dataDir": "<USER_PROFILE>\\Desktop\\galagent\\.cache\\e2e-1791495098828",
+  "scope": "isolated packaged Windows app.asar + localhost HTTP protocol fixture; not actual Kimi",
+  "checks": [
+    "原生file://真实neutral PNG可读alpha缓存，无矩形fallback",
+    "实际隐藏chat通知renderer暂停，重新显示恢复；可见pet持续保持可见动画资格",
+    "未配置请求失败后恢复UI草稿，无成功会话提交",
+    "生产CSP下JS/CSS加载，当前已打包 7 / 7 张立绘差分成功加载",
+    "test-only Key经过系统保护存储，snapshot和明文文件未泄漏",
+    "首启模型协议名字与S2身份提交，真实E01来源事件落盘",
+    "用户自述原句事实抽取；伪造非原句事实拒绝；真实本地embedding索引ready",
+    "实际story事实事件与札记进度经preload显示在相处小目标，未用假snapshot",
+    "通过HTTP上下文捕获验证同义检索包含原始事实",
+    "取消请求后本地HTTP晚返回不提交会话",
+    "未知sourceId响应整体拒绝，无成功写入",
+    "关闭胡闹/安静立即收回视觉动作与气泡",
+    "原生真实协议切换 7 个表情并截图，未注入snapshot",
+    "可见桌面人物自然眨眼短暂切换后恢复neutral，snapshot身份/表情未伪造",
+    "长对话产生后台压缩且后续请求使用摘要；捕获chat预算全部≤6000",
+    "增量摘要输入为完整JSON；相同长对话摘要请求≤24次且来源不重复",
+    "纠正/删除通过renderer IPC真实SQLite路径生效",
+    "关闭自建Electron后同目录重启：名字、密钥配置、会话及删除状态保留",
+    "真实应用在后台抽取未返回时退出；同目录重启续接一次且事实不重复、语义索引ready"
+  ],
+  "longDialogueRequestCounts": {
+    "chat": 79,
+    "memory": 77,
+    "rollup": 17
+  },
+  "requestCounts": {
+    "chat": 80,
+    "memory": 79,
+    "rollup": 18
+  },
+  "maxChatContextTokens": 4913,
+  "errors": []
+}

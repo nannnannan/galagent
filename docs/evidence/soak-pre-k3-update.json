@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "status": "running",
+  "pid": 19328,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T16:52:43.853Z",
+  "updatedAt": "2026-10-08T17:23:44.135Z",
+  "targetMs": 172800000,
+  "activeObservedMs": 1860279,
+  "sampleCount": 32,
+  "peakWorkingSetMiB": 568.9296875,
+  "meanWholeCPUPercent": 0.12293330271357868,
+  "firstTenMinuteSamples": [
+    {
+      "cpu": 0,
+      "memory": 493.64453125
+    },
+    {
+      "cpu": 0.13242607327792918,
+      "memory": 459.1484375
+    },
+    {
+      "cpu": 0.12593797179927496,
+      "memory": 568.9296875
+    },
+    {
+      "cpu": 0.12544598465464096,
+      "memory": 459.9609375
+    },
+    {
+      "cpu": 0.12537000256685404,
+      "memory": 462.6328125
+    },
+    {
+      "cpu": 0.12617394001244478,
+      "memory": 461.14453125
+    },
+    {
+      "cpu": 0.12469660180880258,
+      "memory": 457.5546875
+    },
+    {
+      "cpu": 0.12676410571114413,
+      "memory": 459.80859375
+    },
+    {
+      "cpu": 0.12715932002166452,
+      "memory": 461.828125
+    },
+    {
+      "cpu": 0.1250910571478201,
+      "memory": 463.66796875
+    },
+    {
+      "cpu": 0.12595580166885087,
+      "memory": 466.125
+    }
+  ],
+  "note": "Local metadata only. No dialogue, window titles, user identity or API keys. Active time excludes long sleep gaps; this record alone does not prove model quality."
+}

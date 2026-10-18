@@ -1,0 +1,75 @@
+{
+  "name": "galagent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A little constellation on your desktop — a persistent Kimi companion",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "start": "electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "package": "npm run build && electron-builder --win dir --x64"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "44.7.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
+    "ajv": "^6.12.6",
+    "ffmpeg-static": "^5.3.0",
+    "sharp": "^0.35.5"
+  },
+  "build": {
+    "appId": "local.galagent.companion",
+    "productName": "GalAgent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json",
+      "!dist/**/*.map",
+      "!node_modules/onnxruntime-node/bin/*/darwin/**/*",
+      "!node_modules/onnxruntime-node/bin/*/linux/**/*",
+      "!node_modules/onnxruntime-node/bin/*/win32/arm64/**/*"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": "runtime/desktop/observer.ps1",
+        "to": "observer.ps1"
+      },
+      {
+        "from": ".cache/models/Xenova/multilingual-e5-small",
+        "to": "models",
+        "filter": [
+          "config.json",
+          "tokenizer.json",
+          "tokenizer_config.json",
+          "onnx/model_quantized.onnx"
+        ]
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/ffmpeg.exe",
+      "node_modules/onnxruntime-node/bin/**/*"
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "runtime/assets/icon.ico",
+      "signAndEditExecutable": true
+    }
+  }
+}

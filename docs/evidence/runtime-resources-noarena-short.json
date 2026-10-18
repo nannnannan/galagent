@@ -1,0 +1,339 @@
+{
+  "variant": "noarena",
+  "startedAt": "2026-10-08T16:04:13.946Z",
+  "dataDir": "<USER_PROFILE>\\Desktop\\galagent\\.cache\\resource-probe-data\\1791475453943-noarena",
+  "snapshots": [
+    {
+      "label": "base-before-model",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 143.92,
+          "privateMiB": 99.64,
+          "cpuSeconds": 14.328
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.98,
+          "privateMiB": 104,
+          "cpuSeconds": 436.703
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 54.219
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 107.86,
+          "privateMiB": 48.55,
+          "cpuSeconds": 59.531
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 26764,
+          "kind": "probe-node",
+          "workingSetMiB": 52.86,
+          "privateMiB": 65.72,
+          "cpuSeconds": 0.359
+        },
+        {
+          "pid": 10140,
+          "kind": "project-process",
+          "workingSetMiB": 7.7,
+          "privateMiB": 1.22,
+          "cpuSeconds": 0.016
+        }
+      ],
+      "electronWorkingSetMiB": 498.04999999999995,
+      "electronPrivateMiB": 294.44,
+      "projectPlusProbeWorkingSetMiB": 661.97,
+      "projectPlusProbePrivateMiB": 415.9100000000001,
+      "probeRssMiB": 52.890625
+    },
+    {
+      "label": "actual-service-model-loaded",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 143.92,
+          "privateMiB": 99.64,
+          "cpuSeconds": 14.438
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.98,
+          "privateMiB": 104,
+          "cpuSeconds": 437.141
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 54.25
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 107.89,
+          "privateMiB": 48.56,
+          "cpuSeconds": 59.641
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 26764,
+          "kind": "probe-node",
+          "workingSetMiB": 618.19,
+          "privateMiB": 649.2,
+          "cpuSeconds": 3.922
+        },
+        {
+          "pid": 40252,
+          "kind": "project-process",
+          "workingSetMiB": 7.7,
+          "privateMiB": 1.22,
+          "cpuSeconds": 0.016
+        }
+      ],
+      "electronWorkingSetMiB": 498.0799999999999,
+      "electronPrivateMiB": 294.45,
+      "projectPlusProbeWorkingSetMiB": 1227.3300000000002,
+      "projectPlusProbePrivateMiB": 999.4000000000001,
+      "probeRssMiB": 618.28125
+    },
+    {
+      "label": "after-service-close",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 143.92,
+          "privateMiB": 99.64,
+          "cpuSeconds": 14.562
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.96,
+          "privateMiB": 103.98,
+          "cpuSeconds": 437.25
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 54.25
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 107.89,
+          "privateMiB": 48.56,
+          "cpuSeconds": 59.688
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 26764,
+          "kind": "probe-node",
+          "workingSetMiB": 342.92,
+          "privateMiB": 374.66,
+          "cpuSeconds": 4.016
+        },
+        {
+          "pid": 34844,
+          "kind": "project-process",
+          "workingSetMiB": 7.71,
+          "privateMiB": 1.22,
+          "cpuSeconds": 0.047
+        }
+      ],
+      "electronWorkingSetMiB": 498.05999999999995,
+      "electronPrivateMiB": 294.43,
+      "projectPlusProbeWorkingSetMiB": 952.05,
+      "projectPlusProbePrivateMiB": 724.8400000000001,
+      "probeRssMiB": 342.9765625
+    }
+  ],
+  "sourceHashes": {
+    "runtime/core/companion.ts": "d543028cb63edf8735f133e59e111af7eeadf5bef629a0023b1deeb06a390549",
+    "runtime/core/embedding.ts": "f86111262e54641fd3ca03eb80cc331c81ceb846ab0f6d1137a77623b139425c",
+    "runtime/workers/embedding.mjs": "2992c791a81546abf63bfe636a949a6434f1ef3c5d6d1a401228e7d103dc7814"
+  },
+  "actualPipeline": {
+    "backgroundMs": 1667.5546000000004,
+    "queryMs": 10.162800000000061,
+    "status": "ready",
+    "tasks": [
+      "done",
+      "done",
+      "done"
+    ],
+    "memories": 3,
+    "retrieved": [
+      "用户每周六下午去游泳。",
+      "用户喜欢温热乌龙茶。",
+      "用户使用 Windows 11 和 PowerShell。"
+    ],
+    "cpuSeconds": 2.687,
+    "states": [
+      {
+        "embedding": "idle",
+        "tasks": [
+          "queued"
+        ]
+      },
+      {
+        "embedding": "idle",
+        "tasks": [
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running",
+          "queued",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "queued",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "done",
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "done",
+          "done",
+          "running"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      }
+    ]
+  }
+}

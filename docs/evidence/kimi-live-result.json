@@ -1,0 +1,15 @@
+{
+  "startedAt": "2026-10-09T00:24:20.428Z",
+  "scope": "real configured backend; isolated synthetic acceptance conversations; no production chat import",
+  "package": {
+    "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\living-pet\\win-unpacked\\GalAgent.exe",
+    "exeSha256": "f0092fe8c9dbb56376012d8c7dfbf0bd754d13022849f5f2481548865176f346",
+    "asarSha256": "25ace739396b32736ef40bd05ae6b7a31d6cbd227f5835d11ef95f0b2555df4b",
+    "artifactsVerified": true
+  },
+  "status": "needs_configuration",
+  "realCallsStarted": false,
+  "configuredSourceAvailable": false,
+  "results": [],
+  "note": "A protected file is only a candidate: the isolated app must decrypt and confirm configured before any request. No key or reply is printed."
+}

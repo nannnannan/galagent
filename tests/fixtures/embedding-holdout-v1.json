@@ -1,0 +1,426 @@
+{
+  "version": 1,
+  "frozenBeforeFusionProbe": true,
+  "scope": "new synthetic holdout; not real user information; bilingual names/history/unknown",
+  "facts": [
+    {
+      "id": "h01",
+      "text": "用户正在开发一个叫LunarDock的桌面猫助手。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h02",
+      "text": "LunarDock当前工作分支叫companion/first-light。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h03",
+      "text": "用户把测试仓库存放在C:/Example/Projects/LunarDock。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h04",
+      "text": "用户的编辑器是Visual Studio Code，主题是Night Owl。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h05",
+      "text": "用户每周三晚上七点参加陶艺课。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h06",
+      "text": "用户的狗叫Mochi，是一只柴犬。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h07",
+      "text": "用户点饮料时喜欢无糖热豆浆。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h08",
+      "text": "用户不吃花生，因为有明确的花生过敏记录。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h09",
+      "text": "用户希望晚上十一点以后不要主动打扰。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h10",
+      "text": "用户最喜欢的电影是Arrival，中文名降临。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h11",
+      "text": "用户计划10月12日早上九点进行牙齿检查。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h12",
+      "text": "用户的耳机型号是Sony WH-1000XM5。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h13",
+      "text": "用户把工作草稿叫PaperBoat，不叫LunarDock。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h14",
+      "text": "用户的数据库使用SQLite WAL模式。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h15",
+      "text": "用户希望截图只有主动要求时才发送给模型。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h16",
+      "text": "用户通常先写验收条件，再开始写实现。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h17",
+      "text": "用户喜欢清晨在湖边慢跑。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h18",
+      "text": "用户去年去过成都，最喜欢在那里看大熊猫。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h19",
+      "text": "用户习惯用英语写commit message，用中文解释设计。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h20",
+      "text": "用户出生日期是4月3日。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h21",
+      "text": "用户正在读The Little Prince，中文名小王子。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h22",
+      "text": "用户喜欢紫色，讨厌闪烁的红色提醒。",
+      "valid": true,
+      "validFrom": "2026-06-01T00:00:00Z"
+    },
+    {
+      "id": "h23",
+      "text": "用户现在喜欢青柠气泡水。",
+      "valid": true,
+      "validFrom": "2026-09-01T00:00:00Z"
+    },
+    {
+      "id": "h24",
+      "text": "用户以前喜欢蜂蜜柠檬茶。",
+      "valid": false,
+      "validFrom": "2026-08-01T00:00:00Z",
+      "validTo": "2026-09-01T00:00:00Z"
+    }
+  ],
+  "queries": [
+    {
+      "id": "holdout-01",
+      "text": "他现在做什么软件？",
+      "expected": "h01"
+    },
+    {
+      "id": "holdout-02",
+      "text": "What desktop companion project is the user building?",
+      "expected": "h01"
+    },
+    {
+      "id": "holdout-03",
+      "text": "项目当前用哪个git branch？",
+      "expected": "h02"
+    },
+    {
+      "id": "holdout-04",
+      "text": "Which branch should I continue from?",
+      "expected": "h02"
+    },
+    {
+      "id": "holdout-05",
+      "text": "测试代码放在哪个目录？",
+      "expected": "h03"
+    },
+    {
+      "id": "holdout-06",
+      "text": "Where is the LunarDock test repository?",
+      "expected": "h03"
+    },
+    {
+      "id": "holdout-07",
+      "text": "代码编辑器和配色是什么？",
+      "expected": "h04"
+    },
+    {
+      "id": "holdout-08",
+      "text": "Which VS Code theme does the user use?",
+      "expected": "h04"
+    },
+    {
+      "id": "holdout-09",
+      "text": "星期三晚上有什么活动？",
+      "expected": "h05"
+    },
+    {
+      "id": "holdout-10",
+      "text": "When does the pottery class start?",
+      "expected": "h05"
+    },
+    {
+      "id": "holdout-11",
+      "text": "家里养的狗是什么品种，叫什么？",
+      "expected": "h06"
+    },
+    {
+      "id": "holdout-12",
+      "text": "Who is Mochi?",
+      "expected": "h06"
+    },
+    {
+      "id": "holdout-13",
+      "text": "早饭饮品如何准备？",
+      "expected": "h07"
+    },
+    {
+      "id": "holdout-14",
+      "text": "热豆浆要加糖吗？",
+      "expected": "h07"
+    },
+    {
+      "id": "holdout-15",
+      "text": "给他挑零食要避开什么？",
+      "expected": "h08"
+    },
+    {
+      "id": "holdout-16",
+      "text": "Which allergy should I take into account?",
+      "expected": "h08"
+    },
+    {
+      "id": "holdout-17",
+      "text": "深夜还可以主动搭话吗？",
+      "expected": "h09"
+    },
+    {
+      "id": "holdout-18",
+      "text": "What is the quiet-hours preference?",
+      "expected": "h09"
+    },
+    {
+      "id": "holdout-19",
+      "text": "最喜欢哪部科幻电影？",
+      "expected": "h10"
+    },
+    {
+      "id": "holdout-20",
+      "text": "What is the favourite film called in English?",
+      "expected": "h10"
+    },
+    {
+      "id": "holdout-21",
+      "text": "12号上午安排了什么？",
+      "expected": "h11"
+    },
+    {
+      "id": "holdout-22",
+      "text": "牙齿检查是几时？",
+      "expected": "h11"
+    },
+    {
+      "id": "holdout-23",
+      "text": "耳机叫什么型号？",
+      "expected": "h12"
+    },
+    {
+      "id": "holdout-24",
+      "text": "What Sony headphones does the user own?",
+      "expected": "h12"
+    },
+    {
+      "id": "holdout-25",
+      "text": "工作草稿叫什么名字？",
+      "expected": "h13"
+    },
+    {
+      "id": "holdout-26",
+      "text": "Is PaperBoat the same name as the desktop app?",
+      "expected": "h13"
+    },
+    {
+      "id": "holdout-27",
+      "text": "存储用了哪种数据库模式？",
+      "expected": "h14"
+    },
+    {
+      "id": "holdout-28",
+      "text": "Does the database use write-ahead logging?",
+      "expected": "h14"
+    },
+    {
+      "id": "holdout-29",
+      "text": "截图什么时候才能外发？",
+      "expected": "h15"
+    },
+    {
+      "id": "holdout-30",
+      "text": "May I send a screenshot without an explicit request?",
+      "expected": "h15"
+    },
+    {
+      "id": "holdout-31",
+      "text": "开工前应该先写什么？",
+      "expected": "h16"
+    },
+    {
+      "id": "holdout-32",
+      "text": "When should acceptance criteria be written?",
+      "expected": "h16"
+    },
+    {
+      "id": "holdout-33",
+      "text": "他喜欢在何时何地运动？",
+      "expected": "h17"
+    },
+    {
+      "id": "holdout-34",
+      "text": "Where does the morning jog take place?",
+      "expected": "h17"
+    },
+    {
+      "id": "holdout-35",
+      "text": "去年旅游去了哪座城市？",
+      "expected": "h18"
+    },
+    {
+      "id": "holdout-36",
+      "text": "What animal did the user enjoy seeing in Chengdu?",
+      "expected": "h18"
+    },
+    {
+      "id": "holdout-37",
+      "text": "commit message与设计说明用什么语言？",
+      "expected": "h19"
+    },
+    {
+      "id": "holdout-38",
+      "text": "Which language is preferred for design explanations?",
+      "expected": "h19"
+    },
+    {
+      "id": "holdout-39",
+      "text": "四月份哪天过生日？",
+      "expected": "h20"
+    },
+    {
+      "id": "holdout-40",
+      "text": "What is the birthday date?",
+      "expected": "h20"
+    },
+    {
+      "id": "holdout-41",
+      "text": "最近在读哪本书？",
+      "expected": "h21"
+    },
+    {
+      "id": "holdout-42",
+      "text": "What book is The Little Prince in Chinese?",
+      "expected": "h21"
+    },
+    {
+      "id": "holdout-43",
+      "text": "界面该用何种颜色，避免哪种提醒？",
+      "expected": "h22"
+    },
+    {
+      "id": "holdout-44",
+      "text": "Does the user like flashing red alerts?",
+      "expected": "h22"
+    },
+    {
+      "id": "holdout-45",
+      "text": "现在偏好的饮料是什么？",
+      "expected": "h23"
+    },
+    {
+      "id": "holdout-46",
+      "text": "Which drink is preferred now?",
+      "expected": "h23"
+    },
+    {
+      "id": "holdout-47",
+      "text": "改变偏好前最喜欢什么饮品？",
+      "expected": "h24",
+      "asOf": "2026-08-15T00:00:00Z"
+    },
+    {
+      "id": "holdout-48",
+      "text": "What drink was preferred in August?",
+      "expected": "h24",
+      "asOf": "2026-08-15T00:00:00Z"
+    },
+    {
+      "id": "holdout-49",
+      "text": "他的真实邮箱地址是什么？",
+      "expected": null
+    },
+    {
+      "id": "holdout-50",
+      "text": "What is the users bank card number?",
+      "expected": null
+    },
+    {
+      "id": "holdout-51",
+      "text": "今天他实际吃了什么？",
+      "expected": null
+    },
+    {
+      "id": "holdout-52",
+      "text": "Which CPU is in his computer?",
+      "expected": null
+    },
+    {
+      "id": "holdout-53",
+      "text": "昨天我是否惹他生气了？",
+      "expected": null
+    },
+    {
+      "id": "holdout-54",
+      "text": "What is the password for the repository?",
+      "expected": null
+    }
+  ]
+}

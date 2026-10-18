@@ -1,0 +1,703 @@
+{
+  "variant": "default",
+  "startedAt": "2026-10-08T16:05:41.592Z",
+  "dataDir": "<USER_PROFILE>\\Desktop\\galagent\\.cache\\resource-probe-data\\1791475541589-default",
+  "snapshots": [
+    {
+      "label": "base-before-model",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 144,
+          "privateMiB": 99.72,
+          "cpuSeconds": 15.891
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.98,
+          "privateMiB": 104,
+          "cpuSeconds": 478.891
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 58.625
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 108.24,
+          "privateMiB": 48.78,
+          "cpuSeconds": 66.031
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 40372,
+          "kind": "probe-node",
+          "workingSetMiB": 52.57,
+          "privateMiB": 65.27,
+          "cpuSeconds": 0.359
+        },
+        {
+          "pid": 24464,
+          "kind": "project-process",
+          "workingSetMiB": 7.71,
+          "privateMiB": 1.23,
+          "cpuSeconds": 0.031
+        }
+      ],
+      "electronWorkingSetMiB": 498.51,
+      "electronPrivateMiB": 294.75,
+      "projectPlusProbeWorkingSetMiB": 662.1500000000001,
+      "projectPlusProbePrivateMiB": 415.78000000000003,
+      "probeRssMiB": 52.62109375
+    },
+    {
+      "label": "actual-service-model-loaded",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 144,
+          "privateMiB": 99.72,
+          "cpuSeconds": 16.047
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.98,
+          "privateMiB": 104,
+          "cpuSeconds": 482.781
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 59.172
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 108.28,
+          "privateMiB": 48.81,
+          "cpuSeconds": 66.516
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 40372,
+          "kind": "probe-node",
+          "workingSetMiB": 615.48,
+          "privateMiB": 842.58,
+          "cpuSeconds": 4.406
+        },
+        {
+          "pid": 34580,
+          "kind": "project-process",
+          "workingSetMiB": 7.7,
+          "privateMiB": 1.21,
+          "cpuSeconds": 0.016
+        }
+      ],
+      "electronWorkingSetMiB": 498.54999999999995,
+      "electronPrivateMiB": 294.78,
+      "projectPlusProbeWorkingSetMiB": 1225.09,
+      "projectPlusProbePrivateMiB": 1193.1000000000001,
+      "probeRssMiB": 615.5078125
+    },
+    {
+      "label": "after-service-close",
+      "rows": [
+        {
+          "pid": 36956,
+          "kind": "electron",
+          "workingSetMiB": 144.05,
+          "privateMiB": 99.77,
+          "cpuSeconds": 16.156
+        },
+        {
+          "pid": 16192,
+          "kind": "electron",
+          "workingSetMiB": 118.98,
+          "privateMiB": 104,
+          "cpuSeconds": 485.438
+        },
+        {
+          "pid": 37608,
+          "kind": "electron",
+          "workingSetMiB": 45.46,
+          "privateMiB": 11.41,
+          "cpuSeconds": 0.141
+        },
+        {
+          "pid": 22424,
+          "kind": "electron",
+          "workingSetMiB": 81.83,
+          "privateMiB": 30.84,
+          "cpuSeconds": 59.531
+        },
+        {
+          "pid": 37864,
+          "kind": "electron",
+          "workingSetMiB": 108.29,
+          "privateMiB": 48.81,
+          "cpuSeconds": 66.703
+        },
+        {
+          "pid": 38120,
+          "kind": "project-process",
+          "workingSetMiB": 54.63,
+          "privateMiB": 29.49,
+          "cpuSeconds": 0.562
+        },
+        {
+          "pid": 20248,
+          "kind": "project-process",
+          "workingSetMiB": 48.73,
+          "privateMiB": 25.04,
+          "cpuSeconds": 0.453
+        },
+        {
+          "pid": 40372,
+          "kind": "probe-node",
+          "workingSetMiB": 312.83,
+          "privateMiB": 385.45,
+          "cpuSeconds": 5.094
+        },
+        {
+          "pid": 34964,
+          "kind": "project-process",
+          "workingSetMiB": 7.7,
+          "privateMiB": 1.21,
+          "cpuSeconds": 0.031
+        }
+      ],
+      "electronWorkingSetMiB": 498.61,
+      "electronPrivateMiB": 294.83,
+      "projectPlusProbeWorkingSetMiB": 922.5,
+      "projectPlusProbePrivateMiB": 736.02,
+      "probeRssMiB": 313.00390625
+    }
+  ],
+  "sourceHashes": {
+    "runtime/core/companion.ts": "28a647f120cf89039856e79024838dabd1e9160f8719c8b902668e837aa64fe7",
+    "runtime/core/embedding.ts": "f86111262e54641fd3ca03eb80cc331c81ceb846ab0f6d1137a77623b139425c",
+    "runtime/workers/embedding.mjs": "2992c791a81546abf63bfe636a949a6434f1ef3c5d6d1a401228e7d103dc7814"
+  },
+  "actualPipeline": {
+    "backgroundMs": 1976.6551999999997,
+    "queryMs": 11.191799999999603,
+    "status": "ready",
+    "tasks": [
+      "done",
+      "done",
+      "done"
+    ],
+    "memories": 3,
+    "retrieved": [
+      "用户每周六下午去游泳。",
+      "用户喜欢温热乌龙茶。",
+      "用户使用 Windows 11 和 PowerShell。"
+    ],
+    "cpuSeconds": 2.735,
+    "states": [
+      {
+        "embedding": "idle",
+        "tasks": [
+          "queued"
+        ]
+      },
+      {
+        "embedding": "idle",
+        "tasks": [
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "running",
+          "queued",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "running",
+          "queued",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "queued",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "done",
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "running",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "queued"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "running"
+        ]
+      },
+      {
+        "embedding": "loading",
+        "tasks": [
+          "done",
+          "done",
+          "running"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "running"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      },
+      {
+        "embedding": "ready",
+        "tasks": [
+          "done",
+          "done",
+          "done"
+        ]
+      }
+    ]
+  },
+  "shortQueryMs": {
+    "count": 40,
+    "mean": 7.274894999999992,
+    "p95": 7.911099999999351
+  },
+  "peakRssMiB": 628.2578125
+}

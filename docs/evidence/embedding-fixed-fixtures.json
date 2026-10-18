@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "facts": [
+    {
+      "id": "f01",
+      "text": "用户喜欢无糖热咖啡。",
+      "valid": true
+    },
+    {
+      "id": "f02",
+      "text": "用户正在开发桌面陪伴应用 GalAgent。",
+      "valid": true
+    },
+    {
+      "id": "f03",
+      "text": "用户希望人物有银白长发、深蓝裙子和虹彩配饰。",
+      "valid": true
+    },
+    {
+      "id": "f04",
+      "text": "用户的工作时间通常是晚上九点到凌晨一点。",
+      "valid": true
+    },
+    {
+      "id": "f05",
+      "text": "用户希望专注写代码时不要主动打断。",
+      "valid": true
+    },
+    {
+      "id": "f06",
+      "text": "用户将生日定在六月十五日。",
+      "valid": true
+    },
+    {
+      "id": "f07",
+      "text": "用户每周六下午会去游泳。",
+      "valid": true
+    },
+    {
+      "id": "f08",
+      "text": "用户不吃香菜。",
+      "valid": true
+    },
+    {
+      "id": "f09",
+      "text": "用户更喜欢简短自然的中文回答。",
+      "valid": true
+    },
+    {
+      "id": "f10",
+      "text": "用户常用 Windows 11 和 PowerShell。",
+      "valid": true
+    },
+    {
+      "id": "f11",
+      "text": "用户的猫叫团团。",
+      "valid": true
+    },
+    {
+      "id": "f12",
+      "text": "用户喜欢下雨天听钢琴曲。",
+      "valid": true
+    },
+    {
+      "id": "f13",
+      "text": "用户计划明天上午十点去牙科复诊。",
+      "valid": true
+    },
+    {
+      "id": "f14",
+      "text": "用户上个月去过杭州西湖。",
+      "valid": true
+    },
+    {
+      "id": "f15",
+      "text": "用户要求窗口标题采集默认关闭。",
+      "valid": true
+    },
+    {
+      "id": "f16",
+      "text": "用户希望角色自己给自己取名字。",
+      "valid": true
+    },
+    {
+      "id": "f17",
+      "text": "用户不喜欢恐怖电影。",
+      "valid": true
+    },
+    {
+      "id": "f18",
+      "text": "用户已纠正饮品偏好：现在喜欢温热乌龙茶，不再喜欢冰绿茶。",
+      "valid": true
+    },
+    {
+      "id": "f19",
+      "text": "用户昨晚完成了桌面透明窗口的初步验证。",
+      "valid": true
+    },
+    {
+      "id": "f20",
+      "text": "用户喜欢冰绿茶。",
+      "valid": false
+    }
+  ],
+  "queries": [
+    {
+      "id": "q01",
+      "text": "咖啡要怎么准备？",
+      "expected": "f01"
+    },
+    {
+      "id": "q02",
+      "text": "他喝咖啡加糖吗？",
+      "expected": "f01"
+    },
+    {
+      "id": "q03",
+      "text": "他在做什么项目？",
+      "expected": "f02"
+    },
+    {
+      "id": "q04",
+      "text": "桌面搭档软件叫什么名字？",
+      "expected": "f02"
+    },
+    {
+      "id": "q05",
+      "text": "女孩的发色和服装是什么？",
+      "expected": "f03"
+    },
+    {
+      "id": "q06",
+      "text": "形象用什么颜色的裙装？",
+      "expected": "f03"
+    },
+    {
+      "id": "q07",
+      "text": "他通常几点工作？",
+      "expected": "f04"
+    },
+    {
+      "id": "q08",
+      "text": "晚上写代码到什么时候？",
+      "expected": "f04"
+    },
+    {
+      "id": "q09",
+      "text": "他写程序时能主动找他说话吗？",
+      "expected": "f05"
+    },
+    {
+      "id": "q10",
+      "text": "专注时应当怎么相处？",
+      "expected": "f05"
+    },
+    {
+      "id": "q11",
+      "text": "他的生日是哪一天？",
+      "expected": "f06"
+    },
+    {
+      "id": "q12",
+      "text": "六月份有什么纪念日？",
+      "expected": "f06"
+    },
+    {
+      "id": "q13",
+      "text": "周末有什么运动安排？",
+      "expected": "f07"
+    },
+    {
+      "id": "q14",
+      "text": "星期六下午通常做什么？",
+      "expected": "f07"
+    },
+    {
+      "id": "q15",
+      "text": "给他点菜要避开什么？",
+      "expected": "f08"
+    },
+    {
+      "id": "q16",
+      "text": "他能吃香菜吗？",
+      "expected": "f08"
+    },
+    {
+      "id": "q17",
+      "text": "他喜欢什么语言和长度的回应？",
+      "expected": "f09"
+    },
+    {
+      "id": "q18",
+      "text": "回复他的文字应该多长？",
+      "expected": "f09"
+    },
+    {
+      "id": "q19",
+      "text": "他使用哪种操作系统？",
+      "expected": "f10"
+    },
+    {
+      "id": "q20",
+      "text": "他的终端工具是什么？",
+      "expected": "f10"
+    },
+    {
+      "id": "q21",
+      "text": "家里的猫叫什么？",
+      "expected": "f11"
+    },
+    {
+      "id": "q22",
+      "text": "团团是什么动物？",
+      "expected": "f11"
+    },
+    {
+      "id": "q23",
+      "text": "下雨时喜欢听什么音乐？",
+      "expected": "f12"
+    },
+    {
+      "id": "q24",
+      "text": "他喜欢钢琴音乐吗？",
+      "expected": "f12"
+    },
+    {
+      "id": "q25",
+      "text": "明早十点有什么安排？",
+      "expected": "f13"
+    },
+    {
+      "id": "q26",
+      "text": "下一次牙医预约是什么时候？",
+      "expected": "f13"
+    },
+    {
+      "id": "q27",
+      "text": "上月旅行去了哪里？",
+      "expected": "f14"
+    },
+    {
+      "id": "q28",
+      "text": "什么时候去了西湖？",
+      "expected": "f14"
+    },
+    {
+      "id": "q29",
+      "text": "应该默认读取窗口标题吗？",
+      "expected": "f15"
+    },
+    {
+      "id": "q30",
+      "text": "女孩的名字由谁来取？",
+      "expected": "f16"
+    },
+    {
+      "id": "q31",
+      "text": "他喜欢看惊悚片吗？",
+      "expected": "f17"
+    },
+    {
+      "id": "q32",
+      "text": "现在应该给他泡什么茶？",
+      "expected": "f18"
+    },
+    {
+      "id": "q33",
+      "text": "他对冰绿茶的偏好后来怎样改变？",
+      "expected": "f18"
+    },
+    {
+      "id": "q34",
+      "text": "饮料偏好以哪条最新纠正为准？",
+      "expected": "f18"
+    },
+    {
+      "id": "q35",
+      "text": "昨天晚上验证了什么功能？",
+      "expected": "f19"
+    },
+    {
+      "id": "q36",
+      "text": "他的手机号码是多少？",
+      "expected": null
+    },
+    {
+      "id": "q37",
+      "text": "他最喜欢哪支足球队？",
+      "expected": null
+    },
+    {
+      "id": "q38",
+      "text": "他今天午饭吃了什么？",
+      "expected": null
+    },
+    {
+      "id": "q39",
+      "text": "他的显卡型号是什么？",
+      "expected": null
+    },
+    {
+      "id": "q40",
+      "text": "他住在哪个街道？",
+      "expected": null
+    }
+  ]
+}

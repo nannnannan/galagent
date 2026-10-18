@@ -1,0 +1,140 @@
+# GalAgent 更新日志 (CHANGELOG)
+
+本文件记录 GalAgent 桌面陪伴项目及星月魔女 Kimi 专属 Live2D 模型的重要版本演进、问题修复与验收节点。
+
+---
+
+## [2026-10-18] 反代自检拉起、Live2D 桌面来回小跑、TTS 语音接口与本地存档人设清洗（ROAM-TTS-PROXY-ARCHIVE-20261018）
+
+按用户要求完成开机/启动自动检查并拉起 Mira 反代服务、Live2D 桌宠桌面来回跑动特效、TTS 语音合成接口，并清洗升级用户 `%APPDATA%\GalAgent\companion.sqlite` 存档至最新统一人设。
+
+### 新增与更新 (Added & Changed)
+- **启动自动检查并拉起本地 Mira 反代服务**（[`runtime/main/proxy-autostart.ts`](runtime/main/proxy-autostart.ts)、[`runtime/main/index.ts`](runtime/main/index.ts)、[`启动 GalAgent.cmd`](启动%20GalAgent.cmd)、[`启动 GalAgent 双核心版.cmd`](启动%20GalAgent%20双核心版.cmd)）：
+  - 自动检测 `127.0.0.1:18890`（`Desktop\mira反代\kimi-api\start.ps1`）与 `127.0.0.1:8787`（`Desktop\mira反代\start.ps1`）健康状态，未启动时自动后台拉起并同步本地 API Key；统一两个 `.cmd` 启动入口至最新 `release\dual-core\win-unpacked\GalAgent.exe`。
+- **Live2D 桌面来回跑动特效动作**（[`runtime/main/index.ts`](runtime/main/index.ts)、[`runtime/renderer/living-character.ts`](runtime/renderer/living-character.ts)、[`runtime/renderer/kimi-live2d.ts`](runtime/renderer/kimi-live2d.ts)、[`runtime/renderer/living-character.css`](runtime/renderer/living-character.css)）：
+  - 新增 `PetAction: 'run'`、`pet.roam` 指令与 `roamingEnabled` 设置；主进程在桌面工作区驱动窗口左右来回小跑（悬停/拖拽/输入/安静时自动暂停），渲染器同步驱动 Live2D 步伐弹跳、朝向倾角、发丝裙摆物理摆动与脚下星光拖尾。
+- **TTS 语音合成接口（原生接入小米官方 `mimo-v2.5-tts`）与实时口型同步**（[`runtime/main/tts.ts`](runtime/main/tts.ts)、[`runtime/main/index.ts`](runtime/main/index.ts)、[`runtime/renderer/living-character.ts`](runtime/renderer/living-character.ts)、[`runtime/renderer/main.ts`](runtime/renderer/main.ts)）：
+  - 原生支持小米官方 `mimo-v2.5-tts`（`POST https://api.xiaomimimo.com/v1/chat/completions`、`audio: { format: 'wav', voice: '冰糖' }` + 随可黎实时表情变化的导演指令 `buildMimoStyleInstruction`），兼容 OpenAI `/v1/audio/speech`、`/tts`（API Key 由 DPAPI `tts-key.bin` 独立加密）及 Windows 原生 `System.Speech` 内存 WAV 流与 Web Speech 保底；通过 `AudioContext` 60Hz RMS 音量包络实时驱动 Kimi Live2D `ParamMouthOpenY` 口型；已为用户正式存档配置好 `mimo-v2.5-tts` 与 `冰糖` 音色。
+- **旧存档统一人设平滑迁移**：
+  - 清除旧 S0（`adapting`）阶段在 `records` 与 `transport:*` `reasoning_content` 中的冷淡期残留及机械场景播报，升级为最新统一人设基线（爱弹钢琴、亲近、娇多傲极少、有活力）。
+- **双 API 接入模式与致谢名单**（[`runtime/core/openai-agent.ts`](runtime/core/openai-agent.ts)、[`runtime/core/companion.ts`](runtime/core/companion.ts)、[`runtime/renderer/main.ts`](runtime/renderer/main.ts)、[`README.md`](README.md)）：
+  - 支持 `mira-proxy`（Mira 本地反代 K3 适配）与 `native-api`（官方/原生无工具 API，由 GalAgent 在本机类比 Kimi Code 直接绑定并提供全部 25 个本地工具）两种模式切换及一键预设；新增致谢名单（`Gemini4argon`、`opus5.5`、`gpt-Astra`）。
+
+### 验证 (Verified)
+- `npm run typecheck` 通过、`npm test` **120/120** 全绿、`npm run build` 通过。
+- 重新打包 `release/dual-core/win-unpacked/GalAgent.exe` 并运行 `node tests/e2e/dual-core.mjs` 通过（[`docs/evidence/双核心原生验收.json`](docs/evidence/双核心原生验收.json)，`passed: true`）。
+
+---
+
+## [2026-10-18] 实施蓝图全量收官：LD4 正式合入主程序、禁止目录隔离与 Edge Native Messaging 桥接（FULL-BLUEPRINT-20261018）
+
+按用户「continue 把蓝图所有内容实现了吧」指令，完成实施蓝图与总设计案中剩余的全部功能模块，并完成 `release/dual-core/win-unpacked/GalAgent.exe` 打包端到端验收。
+
+### 新增 (Added)
+- **`LD4` · Kimi 专属 Live2D 正式合入主程序 `runtime/`**（[`runtime/renderer/kimi-live2d.ts`](runtime/renderer/kimi-live2d.ts)、[`runtime/renderer/living-character.ts`](runtime/renderer/living-character.ts)、[`scripts/build.mjs`](scripts/build.mjs)）：
+  - 将 Cubism 5 SDK for Web R5 封装至 `runtime/renderer/vendor/cubism-framework.js`，在正式桌宠窗口加载 `art/live2d/export/kimi.model3.json`、`kimi.moc3`（27 参数、20 绘制部件）、`kimi.physics3.json`（3 组物理摆）、`kimi.2048/texture_00.png` 与 6 套 `.exp3.json` 表情。
+  - 新增 `galagent:live2d-asset` IPC 二进制读取接口（含 Preload 到 Main World 的跨 Realm `ArrayBuffer` 拷贝），并在无 Live2D 资产时自动回退二维 WebGL 变形网格。
+- **总设计案 9.3 · 可选禁止访问文件夹（`forbiddenPaths`）与权限版本（`policyVersion`）**（[`runtime/core/tool-host.ts`](runtime/core/tool-host.ts)、[`runtime/core/openai-agent.ts`](runtime/core/openai-agent.ts)、[`runtime/core/companion.ts`](runtime/core/companion.ts)、[`runtime/renderer/main.ts`](runtime/renderer/main.ts)）：
+  - 默认完整访问（`full-access`），配置 `forbiddenPaths` 时切换为 `directory-guarded`；修改禁止目录时自动递增 `policyVersion` 并立即中止旧权限版本下的在途任务。
+  - 通过 `realpathSync.native` 祖先链解析与 NTFS `bigint` `(dev, ino)` 硬链接核对，在 `Read`、`Write`、`Edit`、`Glob`、`Grep`、`ReadMediaFile`、`Skill`、`Agent`、`AgentSwarm`、`Bash` 全工具链拦截相对路径穿越、符号链接/目录联接（Junction）及 NTFS 硬链接别名越界。
+  - 前端「相处」页新增「禁止访问的文件夹」配置项，「连接」页展示当前目录保护模式与权限版本号。
+- **总设计案 9.1 · Edge 配套扩展 Native Messaging 本地桥接与一键注册脚本**（[`extensions/edge-companion/native-host.mjs`](extensions/edge-companion/native-host.mjs)、[`scripts/register-edge-companion.mjs`](scripts/register-edge-companion.mjs)、[`runtime/main/index.ts`](runtime/main/index.ts)）：
+  - 实现 `writeBrowserBridgeReport` 原子写入 `%APPDATA%/GalAgent/browser-bridge.json` 及主进程 3 秒定时轮询桥接；提供 `scripts/register-edge-companion.mjs` 一键生成 Native Messaging 清单并注册 Windows `HKCU` Edge/Chrome 注册表项。
+
+### 验证 (Verified)
+- `npm run typecheck` 通过、`npm test` **119/119** 全绿、`npm run build` 通过。
+- 重新打包 `release/dual-core/win-unpacked/GalAgent.exe` 并运行 `node tests/e2e/dual-core.mjs` 通过（[`docs/evidence/双核心原生验收.json`](docs/evidence/双核心原生验收.json)，`passed: true`）。
+
+---
+
+## [2026-10-17] 主动陪伴完整补齐与 Kimi 原生多模态/视频输入（ACTIVE-VIDEO-20261017）
+
+按用户要求补齐实施蓝图第 7 节主动陪伴剩余模块，并按 Kimi Code 0.29.2 原生多模态协议实现视频输入。
+
+### 新增 (Added)
+- **浏览器感知模块与 Edge 配套扩展**（[`runtime/desktop/browser.ts`](runtime/desktop/browser.ts)、[`extensions/edge-companion/`](extensions/edge-companion/manifest.json)）：
+  - 实现四类元数据感知（当前标签页 `activeTab`、全部打开标签页 `openTabs`、带关键词/时间检索的历史记录 `queryHistory()`、收藏夹 `bookmarks` 与增删改事件 `bookmarkChange`）。
+  - 独立实现当前活动标签页正文 `pageContent` 通道：导航/切页立即失效，拒绝后台标签页、历史记录或收藏夹伪装正文，自动跳过 `captureBlocklist` 黑名单域名与应用。
+- **持久关注列表（Watchlist）前后端闭环**（[`runtime/core/companion.ts`](runtime/core/companion.ts)、[`runtime/renderer/main.ts`](runtime/renderer/main.ts)）：
+  - 新增 `watch.add`、`watch.dismiss`、`browser.report`、`browser.disconnect` 命令；主角色回复 JSON 支持携带 `watch: { title, condition }` 自动注册持久关注事项。
+  - 前端「相处」页新增「她在留意的事项」列表、添加表单、一键移除按钮及「浏览器感知」连接状态展示。
+- **窗口标题变更、异常退出重逢与断网恢复事件**：
+  - `windowTitlesEnabled` 开启时，同一应用内窗口标题切换即时触发观察与注意力事件；新增 SQLite `session-lifecycle` 异常退出重逢（`crash-reunion`）与断网恢复（`online-recovery`）系统事件。
+- **Kimi 原生多模态与视频输入协议**（[`runtime/core/tool-host.ts`](runtime/core/tool-host.ts)、[`runtime/core/openai-agent.ts`](runtime/core/openai-agent.ts)）：
+  - 对齐 Kimi Code 0.29.2 内嵌源码（`readMediaFileTool.ts`、`videoUpload.ts`、`kimi-files.ts`、`openai-common.ts`）：支持 `.mp4`、`.mpeg`/`.mpg`、`.mov`、`.webm`、`.mkv`、`.avi`、`.flv`、`.3gp` 共 8 种视频格式（上限 100MB）。
+  - `ReadMediaFile` 优先通过 `videoUploader`（`POST /v1/files`，`purpose="video"`）上传并生成 `{ type: "video_url", video_url: { url: "ms://<file_id>", id: "<file_id>" } }`，在无 `/v1/files` 通道时自动回退至内联 `{ type: "video_url", video_url: { url: "data:video/<ext>;base64,..." } }`，包裹 `<video path="...">` 与 `<system>` 标签，并通过 `role: "tool"` 消息的 `keep_parts` 数组原样发送给模型。
+
+### 验证 (Verified)
+- `npm run typecheck` 通过、`npm test` **117/117** 全绿、`npm run build` 通过（见 [`tests/core/tool-adapter.test.ts`](tests/core/tool-adapter.test.ts) 与 [`tests/core/dual-core.test.ts`](tests/core/dual-core.test.ts)）。
+
+---
+
+## [2026-10-17] 双核心：主动陪伴 + 上下文管理（DUAL-CORE-20261017）
+
+按用户确认的双核心方案实现 DC1–DC5（设计与证据见 [`docs/主动陪伴与上下文管理-v1.md`](docs/主动陪伴与上下文管理-v1.md)）。运行包 `release/dual-core`，入口「`启动 GalAgent 双核心版.cmd`」；默认入口未切换。
+
+### 新增 (Added)
+- **全局并发池** [`runtime/core/pool.ts`](runtime/core/pool.ts)：所有 K3 请求共用上限 20（上限非配额），优先级 用户对话 > 注意力 > 执行 > 记忆/日记，超出排队不报错，429 时临时减半；执行器接入同一池。
+- **注意力代理** [`runtime/core/attention.ts`](runtime/core/attention.ts)：独立上下文判断 `silent/observe/schedule/wake`；重要事件即时判断，其余随 1 分钟心跳，无变化不调用模型；single-flight、证据 ID 校验、持久关注列表与预约检查、叫醒在主角色忙碌时延后且 10 分钟过期、用户输入/安静/暂停使在途结论作废、失败指数退避。
+- **感知** [`runtime/desktop/perception.ts`](runtime/desktop/perception.ts)：截屏（主进程内存生成、变化时≤1张/分钟、空闲/锁屏/全屏/黑名单/暂停不截、原图不落盘只存文字摘要）；剪贴板最近 50 条，由固定观察助手先检查 `ExcludeClipboardContentFromMonitorProcessing`、`Clipboard Viewer Ignore`、`CanIncludeInClipboardHistory=0` 再读正文。按键内容不采集。
+- **记忆** [`runtime/core/memory-plus.ts`](runtime/core/memory-plus.ts)：事实抽取改为 ADD/UPDATE/DELETE/NOOP（UPDATE/DELETE 保留历史区间）、重要度 1–5、检索轻量混合重要度与新近度、核心记忆常驻；每 10 次互动（10 输入 + 10 输出）由她写一篇第一人称日记，可检索、不晋升为用户事实。
+- **闭环**：后台任务结束 → 注意力代理判断 → 主角色只收事件结论并以人设口吻汇报；执行代理接收简报包（摘要 + 相关记忆），不复制完整对话。
+- **界面**：截屏/剪贴板开关、截屏黑名单编辑、并发/注意力/日记状态、日记卡片；托盘「暂停观察」立即停止截屏与剪贴板。
+
+### 验证 (Verified)
+- `npm test` **115/115**（新增 [`tests/core/dual-core.test.ts`](tests/core/dual-core.test.ts) 20 项）；隔离打包原生验收 [`docs/evidence/双核心原生验收.json`](docs/evidence/双核心原生验收.json)（`passed: true`）；真机剪贴板敏感格式探针通过。
+- **真实 Mira 0.0.479 平台 K3 端到端验收** [`docs/evidence/双核心真实K3验收.json`](docs/evidence/双核心真实K3验收.json)（`passed: true`，[`tests/e2e/dual-core-live.mjs`](tests/e2e/dual-core-live.mjs)）：10 轮真实 K3 对话、饮品偏好更正走 `UPDATE` 替换旧记忆、满 10 轮自动生成第一人称角色日记《把阿黄轻轻放进星图》、真实 `agent.run` 调用 `Read` 工具统计 `README.md` 二级章节、注意力代理独立上下文返回 `wake` 并唤醒主角色主动汇报结果、并发峰值 `2 ≤ 20`。
+
+---
+
+## [2026-10-17] Kimi 专属 Live2D 模型完整交付与立绘级精修定稿
+
+按「独立做好专属 Live2D 模型并通过透明窗口真机验收，暂不改动正式 GalAgent 主运行包」的目标，完成星月魔女 Kimi 专属 20 层 PSD 拆层补画、Cubism Editor 5.3.04 官方绑定导出、高分屏抗锯齿查看器及多轮立绘级面部/发丝精修。
+
+### 新增 (Added)
+- **专属 20 层无损 PSD 与遮挡补画管线**（[`scripts/build-aligned-live2d-layers.mjs`](scripts/build-aligned-live2d-layers.mjs)、[`scripts/prepare-live2d-source.mjs`](scripts/prepare-live2d-source.mjs)、[`scripts/write-layered-psd.mjs`](scripts/write-layered-psd.mjs)）：
+  - 基于 `1024×1536` 母版 [`art/live2d/front-master-v02.png`](art/live2d/front-master-v02.png) 与三视图/角色设定图，自动拆分并补画 20 个独立图层 [`art/live2d/layers/*-v02.png`](art/live2d/layers/)（含后发 `back-hair`、衣裙躯干 `body-and-skirt`、左右手臂 `arm-left/right`、腰部挂饰与长笛丝带 `waist-accessories`、无五官立体肤色脸底 `face-base`、左右眼白 `eye-white-left/right`、2x 超采样手绘虹膜 `iris-left/right`、上眼睑睫毛 `eyelash-left/right`、闭口唇线 `mouth-closed`、张口粉润内腔 `mouth-interior`、左右侧发 `side-hair-left/right`、前发刘海 `bangs`、双眉 `eyebrow-left/right`、女仆发带与棱镜彩虹蝴蝶结 `head-accessories`）。
+  - 封装无损分层 [`art/live2d/kimi-layered-source-v02.psd`](art/live2d/kimi-layered-source-v02.psd)（20 图层）。
+- **Live2D Cubism Editor 5.3.04（FREE 模式合规）全自动绑定与导出**：
+  - 建立 `Warp_Body` 与 `Warp_Head` 层级弯曲变形器、20 个高密度网格部件、左右眼白对左右虹膜的 Clipping Mask 遮罩。
+  - 绑定 27 个有效参数：头部三轴（`ParamAngleX/Y/Z`）、身体三轴（`ParamBodyAngleX/Y/Z`）、呼吸（`ParamBreath`）、双眼开合与笑眼（`ParamEyeLOpen/ROpen/LSmile/RSmile`）、视线追踪（`ParamEyeBallX/Y`）、双眉高低与角度（`ParamBrowLY/RY/LAngle/RAngle`）、嘴形与开合（`ParamMouthForm/OpenY`）、脸颊红晕（`ParamCheek`）及 3 组多重摆物理（`ParamHairFront/Side/Back`）。
+  - 导出 [`art/live2d/kimi.cmo3`](art/live2d/kimi.cmo3)、[`art/live2d/export/kimi.moc3`](art/live2d/export/kimi.moc3)（`136,768 bytes`）、[`art/live2d/export/kimi.2048/texture_00.png`](art/live2d/export/kimi.2048/texture_00.png)（`2048×2048` 纹理图集）、[`art/live2d/export/kimi.physics3.json`](art/live2d/export/kimi.physics3.json) 及 6 种角色表情 [`art/live2d/export/expressions/*.exp3.json`](art/live2d/export/expressions/)（`neutral`、`curious`、`pleased`、`flustered`、`annoyed`、`softened`）。
+- **高清抗锯齿大视窗与全屏/景别控制**（[`prototypes/live2d/`](prototypes/live2d/)）：
+  - 预览窗口升级为 `1120×920`，新增「**全屏**」一键切换按钮及「**特写 / 近景 / 全身**」三档景别按钮。
+  - 启用 `>= 2.0x` 超采样渲染分辨率、WebGL 三线性 Mipmap 过滤（`gl.LINEAR_MIPMAP_LINEAR`）与各向异性过滤（Anisotropic Filtering），彻底消除小窗口像素压缩感。
+
+### 修复与视觉精修 (Fixed)
+- **面部中轴线扶正与五官对称校准**：
+  - 修复原图母版头部自带 `-7.9°` 倾斜及下巴右偏导致的「脸歪」问题，通过 `srcFromStraightHead` 将双眼、鼻梁、鼻尖、嘴唇与下巴统一对齐至垂直中心线 `x = 500.2`（双眼水平位于 `(463.2, 160.3)` 与 `(536.8, 160.3)`）。
+- **原画级 2x 超采样星空紫瞳与立体鼻梁/面中过渡**：
+  - 从高清立绘原图双线性超采样提取手绘星空紫虹膜纹理，移除生硬的程序化纯白圆点反光；完整保留原画师手绘的柔光鼻梁高光、暖杏色鼻尖点、额头刘海投影与面中立体过渡。
+- **嘴部造型重绘与张口唇线阴影修复**：
+  - 在扶正后的水平坐标系 `(500.2, 201.2)` 重绘柔和闭口唇线 `mouth-closed` 与粉润张口内腔 `mouth-interior`，去除闭口下方挂着的歪斜 U 型阴影块。
+  - 修复张口时 `mouth-closed` 未隐藏且向上位移导致的「上唇悬空阴影条」问题：为 `ParamMouthOpenY` 配置 `{0, 0.12, 0.5, 1.0}` 关键帧，当 `open > 0.05` 时将 `mouth-closed` 不透明度设为 `0.0`，张口时仅显示干净饱满的粉色口腔。
+- **闭眼与笑眼眼部瑕疵及弧度修复**：
+  - 消除 `face-base` 眼窝区域的浅白矩形块、外眼角 `x = 444 / 553` 竖向深色条纹以及左眼内角 `x = 479` 与刘海交界处的竖白印；清除 `bangs` 在 `(479, 158)` 的原图深色睫毛残点。
+  - 修正闭眼变形公式：使**闭眼/眨眼**自然向下柔和弯折（`︶` `︶`），**笑脸/欣喜**向上弯起成月牙笑眼（`︵` `︵`），并在闭眼时将上眼睑折痕收拢（`scaleClose = 0.42f`），消除闭眼睫毛上方的深色双线阴影。
+- **转头时腮红穿帮修复**：
+  - 将左右侧发 `side-hair-left/right` 在 `y <= 204`（太阳穴与脸颊红晕高度）的水平摆动权重锁死为 `w = 0`，使侧发在转头时与脸颊 100% 同步运动，不再滑过腮红或露出脸颊硬边。
+- **左侧头发外延深色背景白边修复**：
+  - 修复 `back-hair` 生成逻辑中内部防穿帮椭圆遮罩 `mCore` 在 `ma === 0`（角色轮廓外纯透明区域）仍绘制 `RGB(220, 214, 236)` 半透明像素的问题，增加 `if (ma === 0) continue;` 门控并收紧内核半轴至 `rx = 128`，在深紫色/深色桌面壁纸下发丝边缘 100% 干净锐利。
+
+---
+
+## [2026-10-10] 全时期统一人设接入与 OpenAI-Kimi 25 工具正式适配
+
+### 新增与变更 (Added & Changed)
+- **全时期统一人设运行接入 (`UNIFIED-PERSONA-20261010`)**：
+  - [`runtime/core/persona.ts`](runtime/core/persona.ts) 接入 [`docs/人设总册-v1.md`](docs/人设总册-v1.md) v1.3 统一人设（爱弹钢琴、亲近、娇多傲极少、有活力、吃醋胡闹但很好哄），取消变量驱动的分阶段性格切换，全时期统一口吻与动作上限。
+  - 产出正式运行包 `release/unified-persona/win-unpacked/GalAgent.exe`。
+- **OpenAI 兼容反代 25 工具正式适配 (`OPENAI-KIMI-TOOLS-20261010`)**：
+  - 新增 `tool-protocol.ts`、`tool-host.ts`、`openai-agent.ts`，通过本地 OpenAI 兼容反代（`http://127.0.0.1:18890/v1`、`kimi-code/k3`）原生支持 25 个 Kimi Code 工具定义、本地执行与 `tool_call_id` 闭环回传。
+  - 详见 [`docs/OpenAI-Kimi工具正式适配.md`](docs/OpenAI-Kimi工具正式适配.md)。
+
+---
+
+## [2026-10-09] 人物变量系统与动态桌宠首版交付
+
+### 新增 (Added)
+- **人物变量系统 (`VARIABLES-20261009`)**：实现关系四轴、衰减情绪、场景面、真实时间 1:1 及 SQLite 持久化与隐私删除账本（[`docs/人物变量系统-v1.md`](docs/人物变量系统-v1.md)）。
+- **透明动态桌宠首版 (`living-pet`)**：实现 Windows 透明桌面窗口、双击贴身短输入、SQLite 记忆/札记管线、`multilingual-e5-small` 本地语义检索与 RRF 融合。

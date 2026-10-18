@@ -1,0 +1,11 @@
+{
+  "stopReason": "end_turn",
+  "toolCount": 1,
+  "tools": [
+    {
+      "title": "Reading probe.txt",
+      "status": "completed"
+    }
+  ],
+  "fixtureMatched": true
+}

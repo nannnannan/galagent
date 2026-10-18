@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "scope": "packaged GalAgent -> ACP -> installed Kimi Code 0.29.2 -> real Read tool",
+  "fullAccessMode": "yolo",
+  "fixtureMatched": true,
+  "toolCount": 1,
+  "parentChatConfigured": false,
+  "userProductionDataUsed": false
+}

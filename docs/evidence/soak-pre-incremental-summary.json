@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 2,
+  "status": "interrupted_for_incremental_summary_package",
+  "pid": 2924,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T18:33:04.637Z",
+  "updatedAt": "2026-10-08T18:39:04.699Z",
+  "targetMs": 172800000,
+  "activeObservedMs": 360058,
+  "sampleCount": 7,
+  "peakWorkingSetMiB": 520.46875,
+  "meanWholeCPUPercent": 2.482601334285707,
+  "firstTenMinuteSamples": [
+    {
+      "cpu": null,
+      "memory": 520.46875
+    },
+    {
+      "cpu": 2.9102617980585546,
+      "memory": 452.71875
+    },
+    {
+      "cpu": 2.5869463194444444,
+      "memory": 455.69140625
+    },
+    {
+      "cpu": 2.4374938889907396,
+      "memory": 458.7421875
+    },
+    {
+      "cpu": 2.491984781062853,
+      "memory": 459.64453125
+    },
+    {
+      "cpu": 2.4440932234462767,
+      "memory": 451.25
+    },
+    {
+      "cpu": 2.024827994711374,
+      "memory": 450.69140625
+    }
+  ],
+  "note": "Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality.",
+  "interruptionNote": "Archived before stopping only the verified project executable family for the incremental summary rebuild; not a graceful recorder stop."
+}

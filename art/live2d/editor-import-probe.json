@@ -1,0 +1,8 @@
+{
+  "width": 1024,
+  "height": 1536,
+  "composite": "art/live2d/front-master-v02.png",
+  "layers": [{"name":"reference-master-only","file":"art/live2d/front-master-v02.png"}],
+  "output": "art/live2d/editor-import-probe.psd",
+  "purpose": "Editor PSD import proof only; NOT the finished separated artwork"
+}

@@ -1,0 +1,43 @@
+{
+  "at": "2026-10-08T20:15:55.594Z",
+  "kind": "actual packaged Windows application, no remote model",
+  "page": "file:///<USER_PROFILE>/Desktop/galagent/release/win-unpacked/resources/app.asar/dist/renderer/index.html?view=chat",
+  "passed": [
+    "all seven packaged transparent sprites load and renderer bridge works",
+    "asar embedding worker imports native ONNX and offline packaged model; actual 384-dimensional vector persisted",
+    "packaged model idle-release returns state to idle, fixture source deleted"
+  ],
+  "resources": [
+    {
+      "label": "packaged-before-index",
+      "at": "2026-10-08T20:15:56.335Z",
+      "processes": 5,
+      "workingSetMiB": 508.28125,
+      "privateMiB": 468.578125,
+      "cpuSeconds": 3.96875
+    },
+    {
+      "label": "packaged-model-ready",
+      "at": "2026-10-08T20:15:58.414Z",
+      "processes": 5,
+      "workingSetMiB": 970.73046875,
+      "privateMiB": 848.66796875,
+      "cpuSeconds": 6.90625
+    },
+    {
+      "label": "packaged-after-idle-release",
+      "at": "2026-10-08T20:16:43.374Z",
+      "processes": 5,
+      "workingSetMiB": 576.33203125,
+      "privateMiB": 450.3203125,
+      "cpuSeconds": 23.703125
+    }
+  ],
+  "idleReleaseWaitMs": 44222,
+  "frameTime": {
+    "count": 180,
+    "medianMs": 4.19999999999709,
+    "p95Ms": 8.400000000001455,
+    "over33ms": 0
+  }
+}

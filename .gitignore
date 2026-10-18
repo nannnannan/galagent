@@ -1,0 +1,15 @@
+node_modules/
+dist/
+release/
+.cache/
+.tools/
+*.log
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.bin
+docs/history/
+scripts/migrate-user-archive-persona.mjs
+runtime/assets/candidates/
+art/live2d/*-v01.*
+art/live2d/editor-import-probe.psd

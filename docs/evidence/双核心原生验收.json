@@ -1,0 +1,87 @@
+{
+  "at": "2026-10-18T05:23:26.404Z",
+  "passed": true,
+  "scope": "actual dual-core packaged app, isolated data dir, local fixture model (no real K3: proxy unavailable)",
+  "productionDataUsed": false,
+  "live2d": {
+    "active": true,
+    "modelName": "Kimi (kimi.moc3)",
+    "parameters": 27,
+    "drawables": 20,
+    "physicsLoaded": true,
+    "expressionsLoaded": [
+      "neutral",
+      "curious",
+      "pleased",
+      "flustered",
+      "annoyed",
+      "softened"
+    ],
+    "roamingEnabled": true
+  },
+  "tts": {
+    "enabled": true,
+    "provider": "http",
+    "voice": "冰糖"
+  },
+  "directoryGuard": {
+    "mode": "directory-guarded",
+    "policyVersion": 2,
+    "forbiddenCount": 1
+  },
+  "browserPerception": {
+    "connected": true,
+    "activeTab": {
+      "url": "https://example.com/ci",
+      "title": "CI Build",
+      "updatedAt": "2026-10-18T05:23:23.941Z"
+    },
+    "readable": true,
+    "watches": 1
+  },
+  "journal": [
+    {
+      "title": "十次对话",
+      "sources": 20
+    }
+  ],
+  "attention": {
+    "evaluations": 1,
+    "wakes": 1,
+    "lastDecision": "wake",
+    "requests": [
+      {
+        "events": [
+          "browser",
+          "task"
+        ],
+        "screenAttached": false,
+        "hasMainContext": false
+      }
+    ],
+    "separateFromMainContext": true
+  },
+  "wakeEvents": [
+    [
+      "task"
+    ]
+  ],
+  "pool": {
+    "limit": 20,
+    "effectiveLimit": 20,
+    "inflight": 0,
+    "queued": 0,
+    "peak": 2
+  },
+  "fixturePeakConcurrency": 2,
+  "counts": {
+    "chat": 11,
+    "executor": 1,
+    "journal": 1,
+    "extract": 10
+  },
+  "lastScreenAt": null,
+  "lastSkip": "screen-locked",
+  "reply": "[隔离] README 检查完啦，三个章节都没问题～",
+  "errors": []
+}

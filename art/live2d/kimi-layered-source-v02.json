@@ -1,0 +1,129 @@
+{
+  "width": 1024,
+  "height": 1536,
+  "layers": [
+    {
+      "name": "back-hair",
+      "file": "art/live2d/layers/back-hair-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "body-and-skirt",
+      "file": "art/live2d/layers/body-and-skirt-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "arm-left",
+      "file": "art/live2d/layers/arm-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "arm-right",
+      "file": "art/live2d/layers/arm-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "waist-accessories",
+      "file": "art/live2d/layers/waist-accessories-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "face-base",
+      "file": "art/live2d/layers/face-base-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eye-white-left",
+      "file": "art/live2d/layers/eye-white-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eye-white-right",
+      "file": "art/live2d/layers/eye-white-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "iris-left",
+      "file": "art/live2d/layers/iris-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "iris-right",
+      "file": "art/live2d/layers/iris-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eyelash-left",
+      "file": "art/live2d/layers/eyelash-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eyelash-right",
+      "file": "art/live2d/layers/eyelash-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "mouth-interior",
+      "file": "art/live2d/layers/mouth-interior-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "mouth-closed",
+      "file": "art/live2d/layers/mouth-closed-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "side-hair-left",
+      "file": "art/live2d/layers/side-hair-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "side-hair-right",
+      "file": "art/live2d/layers/side-hair-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "bangs",
+      "file": "art/live2d/layers/bangs-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eyebrow-left",
+      "file": "art/live2d/layers/eyebrow-left-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "eyebrow-right",
+      "file": "art/live2d/layers/eyebrow-right-v02.png",
+      "left": 0,
+      "top": 0
+    },
+    {
+      "name": "head-accessories",
+      "file": "art/live2d/layers/head-accessories-v02.png",
+      "left": 0,
+      "top": 0
+    }
+  ],
+  "composite": "art/live2d/front-master-v02.png",
+  "output": "art/live2d/kimi-layered-source-v02.psd",
+  "purpose": "Geometrically aligned 20-layer PSD (1024x1536) with occluded underpainting completed for Live2D Cubism Editor 5.3."
+}

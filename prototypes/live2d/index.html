@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'"><title>GalAgent · Kimi 专属 Live2D 样机</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font:12.5px "Microsoft YaHei",system-ui,sans-serif;color:#eef0ff;user-select:none}
+canvas{width:100%;height:100%;display:block}
+header,footer{position:absolute;left:16px;right:16px;padding:9px 14px;background:#14172ce8;border:1px solid #7c88be66;border-radius:12px;backdrop-filter:blur(8px);max-width:760px;margin:0 auto}
+header{top:10px;-webkit-app-region:drag}
+header small{display:block;color:#b8c0e0;margin-top:3px;font-size:11px}
+footer{bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:5px;align-items:center}
+.row span.lbl{font-size:11px;color:#9da8d6;margin-right:2px}
+button{border:1px solid #6c759e;border-radius:6px;background:#2a304d;color:#f2f4ff;padding:4px 9px;font-size:11.5px;cursor:pointer;-webkit-app-region:no-drag;transition:background .15s,border-color .15s}
+button:hover{background:#3c456e;border-color:#9aa6dc}
+button.active{background:#4b5791;border-color:#c5d0ff;font-weight:600}
+#status{font-size:11px;line-height:1.4;color:#cbd2eb}
+#fallback{position:absolute;top:40%;left:20px;right:20px;background:#17192ded;padding:20px;border-radius:12px;border:1px solid #ff6b8b88;max-width:600px;margin:0 auto}
+#close,#fullscreen{float:right;margin-left:6px}
+.credit{font-size:10px;color:#9ea7c7;margin-top:3px}
+</style></head>
+<body>
+<canvas id="model"></canvas>
+<header><button id="close">关闭</button><button id="fullscreen">全屏</button>GalAgent · Kimi 专属 Live2D 模型<small>星月魔女 Kimi · Cubism 5.3 真模型实时渲染 · 高清抗锯齿大视窗 · 物理/表情/视线验证</small></header>
+<section id="fallback" hidden></section>
+<footer>
+  <div class="row">
+    <span class="lbl">姿态:</span>
+    <button data-pose="auto" class="active">自动</button>
+    <button data-pose="left">左转</button>
+    <button data-pose="right">右转</button>
+    <button data-pose="blink">闭眼</button>
+    <button data-pose="smile">笑脸</button>
+    <button data-pose="talk">说话</button>
+    <span class="lbl" style="margin-left:6px">景别:</span>
+    <button data-zoom="closeup">特写</button>
+    <button data-zoom="bust" id="zoom" class="active">近景</button>
+    <button data-zoom="full">全身</button>
+    <button id="pause" style="margin-left:4px">暂停</button>
+  </div>
+  <div class="row">
+    <span class="lbl">表情:</span>
+    <button data-exp="neutral" class="active">平静</button>
+    <button data-exp="curious">好奇</button>
+    <button data-exp="pleased">欣喜</button>
+    <button data-exp="flustered">害羞</button>
+    <button data-exp="annoyed">嗔怪</button>
+    <button data-exp="softened">温柔</button>
+  </div>
+  <div id="status">正在加载 Kimi 专属 Live2D 模型…</div>
+  <div class="credit">Kimi Original Character Rig · Powered by Live2D Cubism 5 SDK for Web</div>
+</footer>
+<script src="/vendor/CubismSdkForWeb-5-r.5/Core/live2dcubismcore.min.js"></script>
+<script src="/probe.js"></script>
+</body></html>

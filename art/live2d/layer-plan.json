@@ -1,0 +1,131 @@
+{
+  "version": 2,
+  "canvas": {
+    "width": 1024,
+    "height": 1536
+  },
+  "master": "front-master-v02.png",
+  "status": "aligned 20-layer PSD ready for Live2D Cubism rigging",
+  "layers": [
+    {
+      "id": "back-hair",
+      "order": 0,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/back-hair-v02.png"
+    },
+    {
+      "id": "body-and-skirt",
+      "order": 1,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/body-and-skirt-v02.png"
+    },
+    {
+      "id": "arm-left",
+      "order": 2,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/arm-left-v02.png"
+    },
+    {
+      "id": "arm-right",
+      "order": 3,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/arm-right-v02.png"
+    },
+    {
+      "id": "waist-accessories",
+      "order": 4,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/waist-accessories-v02.png"
+    },
+    {
+      "id": "face-base",
+      "order": 5,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/face-base-v02.png"
+    },
+    {
+      "id": "eye-white-left",
+      "order": 6,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eye-white-left-v02.png"
+    },
+    {
+      "id": "eye-white-right",
+      "order": 7,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eye-white-right-v02.png"
+    },
+    {
+      "id": "iris-left",
+      "order": 8,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/iris-left-v02.png"
+    },
+    {
+      "id": "iris-right",
+      "order": 9,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/iris-right-v02.png"
+    },
+    {
+      "id": "eyelash-left",
+      "order": 10,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eyelash-left-v02.png"
+    },
+    {
+      "id": "eyelash-right",
+      "order": 11,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eyelash-right-v02.png"
+    },
+    {
+      "id": "mouth-interior",
+      "order": 12,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/mouth-interior-v02.png"
+    },
+    {
+      "id": "mouth-closed",
+      "order": 13,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/mouth-closed-v02.png"
+    },
+    {
+      "id": "side-hair-left",
+      "order": 14,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/side-hair-left-v02.png"
+    },
+    {
+      "id": "side-hair-right",
+      "order": 15,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/side-hair-right-v02.png"
+    },
+    {
+      "id": "bangs",
+      "order": 16,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/bangs-v02.png"
+    },
+    {
+      "id": "eyebrow-left",
+      "order": 17,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eyebrow-left-v02.png"
+    },
+    {
+      "id": "eyebrow-right",
+      "order": 18,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/eyebrow-right-v02.png"
+    },
+    {
+      "id": "head-accessories",
+      "order": 19,
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed",
+      "file": "layers/head-accessories-v02.png"
+    }
+  ]
+}

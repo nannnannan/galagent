@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 2,
+  "status": "running",
+  "pid": 32928,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T18:10:41.327Z",
+  "updatedAt": "2026-10-08T18:18:41.491Z",
+  "targetMs": 172800000,
+  "activeObservedMs": 480161,
+  "sampleCount": 9,
+  "peakWorkingSetMiB": 573.20703125,
+  "meanWholeCPUPercent": 3.0047036433012195,
+  "firstTenMinuteSamples": [
+    {
+      "cpu": null,
+      "memory": 513.8046875
+    },
+    {
+      "cpu": 2.6629596001665976,
+      "memory": 458.65625
+    },
+    {
+      "cpu": 3.128680032442282,
+      "memory": 573.20703125
+    },
+    {
+      "cpu": 2.9652232666144465,
+      "memory": 455.87890625
+    },
+    {
+      "cpu": 3.010906025354711,
+      "memory": 455.49609375
+    },
+    {
+      "cpu": 2.994376103909088,
+      "memory": 458.77734375
+    },
+    {
+      "cpu": 3.039878918921922,
+      "memory": 455.36328125
+    },
+    {
+      "cpu": 3.0616095430107517,
+      "memory": 457.6640625
+    },
+    {
+      "cpu": 3.173995655989957,
+      "memory": 454.22265625
+    }
+  ],
+  "note": "Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality."
+}

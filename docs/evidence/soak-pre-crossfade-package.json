@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "status": "interrupted_for_final_package",
+  "pid": 38088,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T18:20:06.382Z",
+  "updatedAt": "2026-10-08T18:29:06.456Z",
+  "targetMs": 172800000,
+  "activeObservedMs": 540071,
+  "sampleCount": 10,
+  "peakWorkingSetMiB": 628.6953125,
+  "meanWholeCPUPercent": 3.564767351601417,
+  "firstTenMinuteSamples": [
+    {
+      "cpu": null,
+      "memory": 521.1171875
+    },
+    {
+      "cpu": 3.2625914293806964,
+      "memory": 471.09765625
+    },
+    {
+      "cpu": 3.044543333333334,
+      "memory": 628.6953125
+    },
+    {
+      "cpu": 3.5779678177394088,
+      "memory": 473.34375
+    },
+    {
+      "cpu": 3.759066585001362,
+      "memory": 474.53125
+    },
+    {
+      "cpu": 3.6826418280179083,
+      "memory": 476.11328125
+    },
+    {
+      "cpu": 3.7756395032305017,
+      "memory": 466.81640625
+    },
+    {
+      "cpu": 3.631133132791148,
+      "memory": 466.1640625
+    },
+    {
+      "cpu": 3.7014097916666646,
+      "memory": 468.7890625
+    },
+    {
+      "cpu": 3.647912743251728,
+      "memory": 469.6328125
+    }
+  ],
+  "note": "Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality.",
+  "interruptionNote": "Archived before terminating only the verified project executable family for the final crossfade rebuild; this was not a graceful recorder stop."
+}

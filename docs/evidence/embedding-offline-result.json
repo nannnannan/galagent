@@ -1,0 +1,1028 @@
+{
+  "fixtureVersion": 1,
+  "model": "Xenova/multilingual-e5-small",
+  "dtype": "q8",
+  "offline": true,
+  "cacheDir": "<USER_PROFILE>\\Desktop\\galagent\\.cache\\models",
+  "startedAt": "2026-10-08T16:38:02.684Z",
+  "results": [
+    {
+      "id": "q01",
+      "text": "咖啡要怎么准备？",
+      "expected": "f01",
+      "top3": [
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8499416111168197
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8330493461826729
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.82885672665163
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q02",
+      "text": "他喝咖啡加糖吗？",
+      "expected": "f01",
+      "top3": [
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8769498167878993
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8438133355547421
+        },
+        {
+          "id": "f08",
+          "valid": true,
+          "score": 0.8258548918055323
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q03",
+      "text": "他在做什么项目？",
+      "expected": "f02",
+      "top3": [
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8474576702408524
+        },
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.8444645164528313
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8419961822525109
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q04",
+      "text": "桌面搭档软件叫什么名字？",
+      "expected": "f02",
+      "top3": [
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8892130549765079
+        },
+        {
+          "id": "f19",
+          "valid": true,
+          "score": 0.8620263019527017
+        },
+        {
+          "id": "f10",
+          "valid": true,
+          "score": 0.8617102066613253
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q05",
+      "text": "女孩的发色和服装是什么？",
+      "expected": "f03",
+      "top3": [
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.8739242864237424
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8354583232331194
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.832971880989817
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q06",
+      "text": "形象用什么颜色的裙装？",
+      "expected": "f03",
+      "top3": [
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.888979967769503
+        },
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.8469842888924384
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8350658492701656
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q07",
+      "text": "他通常几点工作？",
+      "expected": "f04",
+      "top3": [
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8625832848244166
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8233724834439422
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.821521117901022
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q08",
+      "text": "晚上写代码到什么时候？",
+      "expected": "f04",
+      "top3": [
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.894104787403226
+        },
+        {
+          "id": "f05",
+          "valid": true,
+          "score": 0.8667819295541724
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.859696902560675
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q09",
+      "text": "他写程序时能主动找他说话吗？",
+      "expected": "f05",
+      "top3": [
+        {
+          "id": "f05",
+          "valid": true,
+          "score": 0.8790044912068127
+        },
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.8599434120753094
+        },
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8542095096781884
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q10",
+      "text": "专注时应当怎么相处？",
+      "expected": "f05",
+      "top3": [
+        {
+          "id": "f05",
+          "valid": true,
+          "score": 0.8591236729252779
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8403994949617766
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8354318018679304
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q11",
+      "text": "他的生日是哪一天？",
+      "expected": "f06",
+      "top3": [
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8860709061064396
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8371482313379965
+        },
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8330752408156975
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q12",
+      "text": "六月份有什么纪念日？",
+      "expected": "f06",
+      "top3": [
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8581087558563144
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.8504181981404988
+        },
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8349695400622155
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q13",
+      "text": "周末有什么运动安排？",
+      "expected": "f07",
+      "top3": [
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.8678877780998433
+        },
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8441009304137685
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8349373955310195
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q14",
+      "text": "星期六下午通常做什么？",
+      "expected": "f07",
+      "top3": [
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8503869827366953
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.826570825024568
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8062822830089147
+        }
+      ],
+      "correctTop1": false,
+      "correctTop3": true
+    },
+    {
+      "id": "q15",
+      "text": "给他点菜要避开什么？",
+      "expected": "f08",
+      "top3": [
+        {
+          "id": "f08",
+          "valid": true,
+          "score": 0.8750316593551553
+        },
+        {
+          "id": "f05",
+          "valid": true,
+          "score": 0.8521698484693532
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8475878722020137
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q16",
+      "text": "他能吃香菜吗？",
+      "expected": "f08",
+      "top3": [
+        {
+          "id": "f08",
+          "valid": true,
+          "score": 0.8796865584414668
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.829778736506831
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.823683038887696
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q17",
+      "text": "他喜欢什么语言和长度的回应？",
+      "expected": "f09",
+      "top3": [
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8811049329384095
+        },
+        {
+          "id": "f12",
+          "valid": true,
+          "score": 0.8607610919836453
+        },
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.8582655068405751
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q18",
+      "text": "回复他的文字应该多长？",
+      "expected": "f09",
+      "top3": [
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8638355295884556
+        },
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8409025475443991
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8396000354650291
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q19",
+      "text": "他使用哪种操作系统？",
+      "expected": "f10",
+      "top3": [
+        {
+          "id": "f10",
+          "valid": true,
+          "score": 0.8587199409073585
+        },
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8500010056901575
+        },
+        {
+          "id": "f11",
+          "valid": true,
+          "score": 0.8393586237125723
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q20",
+      "text": "他的终端工具是什么？",
+      "expected": "f10",
+      "top3": [
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8378504248976206
+        },
+        {
+          "id": "f10",
+          "valid": true,
+          "score": 0.8332787452264172
+        },
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.8313984863989798
+        }
+      ],
+      "correctTop1": false,
+      "correctTop3": true
+    },
+    {
+      "id": "q21",
+      "text": "家里的猫叫什么？",
+      "expected": "f11",
+      "top3": [
+        {
+          "id": "f11",
+          "valid": true,
+          "score": 0.8828169111604381
+        },
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.8339012104464343
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8261058302764954
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q22",
+      "text": "团团是什么动物？",
+      "expected": "f11",
+      "top3": [
+        {
+          "id": "f11",
+          "valid": true,
+          "score": 0.8734137259048675
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.805027427568287
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.803564014210051
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q23",
+      "text": "下雨时喜欢听什么音乐？",
+      "expected": "f12",
+      "top3": [
+        {
+          "id": "f12",
+          "valid": true,
+          "score": 0.9386690763018685
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8581654883584473
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8534526151237303
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q24",
+      "text": "他喜欢钢琴音乐吗？",
+      "expected": "f12",
+      "top3": [
+        {
+          "id": "f12",
+          "valid": true,
+          "score": 0.8983441743632505
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.844364822523183
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.839774237345368
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q25",
+      "text": "明早十点有什么安排？",
+      "expected": "f13",
+      "top3": [
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8638817424909504
+        },
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8534337665199637
+        },
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8365986285127385
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q26",
+      "text": "下一次牙医预约是什么时候？",
+      "expected": "f13",
+      "top3": [
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8998318923780133
+        },
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.850501768891273
+        },
+        {
+          "id": "f14",
+          "valid": true,
+          "score": 0.8463854806963834
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q27",
+      "text": "上月旅行去了哪里？",
+      "expected": "f14",
+      "top3": [
+        {
+          "id": "f14",
+          "valid": true,
+          "score": 0.8715090581653175
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.8345602947375332
+        },
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.8175671158305031
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q28",
+      "text": "什么时候去了西湖？",
+      "expected": "f14",
+      "top3": [
+        {
+          "id": "f14",
+          "valid": true,
+          "score": 0.8789749126522056
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.8164689229368075
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8120887565120752
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q29",
+      "text": "应该默认读取窗口标题吗？",
+      "expected": "f15",
+      "top3": [
+        {
+          "id": "f15",
+          "valid": true,
+          "score": 0.9107844044353346
+        },
+        {
+          "id": "f19",
+          "valid": true,
+          "score": 0.8601177379116807
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8599090535709718
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q30",
+      "text": "女孩的名字由谁来取？",
+      "expected": "f16",
+      "top3": [
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.861782143431393
+        },
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8399858419530585
+        },
+        {
+          "id": "f03",
+          "valid": true,
+          "score": 0.834582471739646
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q31",
+      "text": "他喜欢看惊悚片吗？",
+      "expected": "f17",
+      "top3": [
+        {
+          "id": "f17",
+          "valid": true,
+          "score": 0.8677506484133655
+        },
+        {
+          "id": "f12",
+          "valid": true,
+          "score": 0.8367448027195356
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8297544800991439
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q32",
+      "text": "现在应该给他泡什么茶？",
+      "expected": "f18",
+      "top3": [
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8999140227392662
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8578186570696319
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8501571295611404
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q33",
+      "text": "他对冰绿茶的偏好后来怎样改变？",
+      "expected": "f18",
+      "top3": [
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.9089521219848333
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.851525471372961
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8485224908592229
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q34",
+      "text": "饮料偏好以哪条最新纠正为准？",
+      "expected": "f18",
+      "top3": [
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.9012806807206147
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8528020568497128
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8521707544980586
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q35",
+      "text": "昨天晚上验证了什么功能？",
+      "expected": "f19",
+      "top3": [
+        {
+          "id": "f19",
+          "valid": true,
+          "score": 0.9072682489646304
+        },
+        {
+          "id": "f04",
+          "valid": true,
+          "score": 0.8670924734644934
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8661074752721669
+        }
+      ],
+      "correctTop1": true,
+      "correctTop3": true
+    },
+    {
+      "id": "q36",
+      "text": "他的手机号码是多少？",
+      "expected": null,
+      "top3": [
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8518234782171653
+        },
+        {
+          "id": "f11",
+          "valid": true,
+          "score": 0.8507176957535119
+        },
+        {
+          "id": "f16",
+          "valid": true,
+          "score": 0.8381246961102355
+        }
+      ],
+      "correctTop1": null,
+      "correctTop3": null
+    },
+    {
+      "id": "q37",
+      "text": "他最喜欢哪支足球队？",
+      "expected": null,
+      "top3": [
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8253760127795627
+        },
+        {
+          "id": "f09",
+          "valid": true,
+          "score": 0.8241492249947359
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8237962390513243
+        }
+      ],
+      "correctTop1": null,
+      "correctTop3": null
+    },
+    {
+      "id": "q38",
+      "text": "他今天午饭吃了什么？",
+      "expected": null,
+      "top3": [
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.8582675883273974
+        },
+        {
+          "id": "f18",
+          "valid": true,
+          "score": 0.8553451325344068
+        },
+        {
+          "id": "f01",
+          "valid": true,
+          "score": 0.8470221262278036
+        }
+      ],
+      "correctTop1": null,
+      "correctTop3": null
+    },
+    {
+      "id": "q39",
+      "text": "他的显卡型号是什么？",
+      "expected": null,
+      "top3": [
+        {
+          "id": "f06",
+          "valid": true,
+          "score": 0.8502363173682632
+        },
+        {
+          "id": "f11",
+          "valid": true,
+          "score": 0.8404039762113226
+        },
+        {
+          "id": "f02",
+          "valid": true,
+          "score": 0.8347733379597918
+        }
+      ],
+      "correctTop1": null,
+      "correctTop3": null
+    },
+    {
+      "id": "q40",
+      "text": "他住在哪个街道？",
+      "expected": null,
+      "top3": [
+        {
+          "id": "f14",
+          "valid": true,
+          "score": 0.815343534711801
+        },
+        {
+          "id": "f07",
+          "valid": true,
+          "score": 0.7983593639489884
+        },
+        {
+          "id": "f13",
+          "valid": true,
+          "score": 0.7973065208605555
+        }
+      ],
+      "correctTop1": null,
+      "correctTop3": null
+    }
+  ],
+  "coldStartMs": 3181.2833,
+  "dimensions": 384,
+  "recallTop1": 0.9428571428571428,
+  "recallTop3": 1,
+  "queryMs": {
+    "mean": 7.1806924999999975,
+    "p95": 8.167399999999816
+  },
+  "syntheticScan": {
+    "vectors": 10000,
+    "dimensions": 384,
+    "passes": 100,
+    "p95Ms": 23.127599999999802,
+    "meanMs": 21.228299000000057,
+    "checksum": 915555.7080039822,
+    "note": "Synthetic repeated vectors; not 10000 independently embedded passages."
+  },
+  "cpuSeconds": 7.938,
+  "rssMiB": 660.484375,
+  "peakRssMiB": 660.484375,
+  "totalMs": 5834.7109,
+  "modelFiles": [
+    {
+      "path": "base-model-metadata.json",
+      "bytes": 2295925,
+      "sha256": "715999f2c31aa321bb1222b1f7f9925aeb8bd66eb556c228d6be37527ec7887c"
+    },
+    {
+      "path": "model-metadata.json",
+      "bytes": 5889,
+      "sha256": "b15f12c83691bfb1f6a416547c8f774fd79f2893bd8fe3b6870d1f127780e5f9"
+    },
+    {
+      "path": "Xenova\\multilingual-e5-small\\config.json",
+      "bytes": 658,
+      "sha256": "cb99455288675345e1a4f411438d5d0adbba5fbd3a67ea4fb03c015433b996c1"
+    },
+    {
+      "path": "Xenova\\multilingual-e5-small\\onnx\\model_quantized.onnx",
+      "bytes": 118308185,
+      "sha256": "f80102d3f2a1229f387d3c81909990d8945513e347b0eab049f7de3c6f98c193"
+    },
+    {
+      "path": "Xenova\\multilingual-e5-small\\README.md",
+      "bytes": 1077,
+      "sha256": "561a19594636657fe033f8b4427a7743b5f6f3a12f16cecc5f286feca0453245"
+    },
+    {
+      "path": "Xenova\\multilingual-e5-small\\tokenizer.json",
+      "bytes": 17082730,
+      "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39"
+    },
+    {
+      "path": "Xenova\\multilingual-e5-small\\tokenizer_config.json",
+      "bytes": 443,
+      "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b"
+    }
+  ]
+}

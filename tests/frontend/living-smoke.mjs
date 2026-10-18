@@ -1,0 +1,34 @@
+// Owned headless page + explicit UI fixture; no production app or model call.
+import assert from 'node:assert/strict';
+import {access,mkdir} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+import {createHash} from 'node:crypto';
+const {chromium}=await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE||((process.env.USERPROFILE || "C:/Users/User").replace(/\\/g, "/") + "/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs")).href);
+const browser=await chromium.launch({channel:'msedge',headless:true});
+try{
+ const page=await browser.newPage({viewport:{width:360,height:620}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/assets/character/*.png',async route=>{const name=new URL(route.request().url()).pathname.split('/').at(-1),file=`runtime/assets/character/${name}`;await access(file);await route.fulfill({path:file,contentType:'image/png'});});
+ await page.addInitScript(()=>{const s={identity:{id:'fixture',name:'她',onboarding:'intro',stage:'S0'},visual:{expression:'neutral',action:'idle',bubble:'',revision:0},messages:[],memories:[],diary:[],settings:{observationEnabled:false,windowTitlesEnabled:false,initiativeEnabled:true,mischiefEnabled:true,quietUntil:0,proactiveIntervalMinutes:20,proactiveHourlyLimit:2,proactiveDailyLimit:8,petScale:1,reducedMotion:false},provider:{configured:false,baseUrl:'https://api.moonshot.cn/v1',model:'kimi-k3'},status:{busy:false,online:false,embedding:'idle',contextTokens:0,contextBudget:6000,tasks:[]},observation:{available:false,observedAt:''},stats:{conversations:0,memories:0,proactiveToday:0,tokensToday:0}};window.fixture=s;window.commands=[];window.galagent={getSnapshot:async()=>s,onSnapshot:fn=>{window.emit=()=>fn(s);return()=>{};},getWindowVisibility:async()=>true,onWindowVisibility:fn=>{window.visibility=fn;return()=>{};},onHitTest:fn=>{window.nativeHit=fn;return()=>{};},dispatch:async c=>{window.commands.push(c);return{ok:true};}};});
+ await page.goto((process.env.GALAGENT_UI_URL||'http://127.0.0.1:5191/')+'?view=pet');
+ await page.waitForFunction(()=>Number(document.querySelector('canvas.living-canvas')?.dataset.frameCount)>10);
+ const diagnostics=()=>page.locator('canvas.living-canvas').evaluate(canvas=>canvas.getLivingDiagnostics());
+ assert.equal((await diagnostics()).renderer,'webgl');assert.equal((await diagnostics()).hitGeometry,'deformed-alpha');
+ const before=await diagnostics();await page.evaluate(()=>window.nativeHit({x:1000,y:30}));await page.waitForTimeout(700);const after=await diagnostics();assert.ok(after.frameCount>before.frameCount);assert.ok(Math.abs(after.headOffset.angle-before.headOffset.angle)>.015);assert.notEqual(after.hairOffset.x,after.bodyOffset.x,'hair and body have independent lag');
+ assert.equal(await page.evaluate(()=>window.nativeHit({x:5,y:330})),false);
+ await page.evaluate(()=>{window.fixture.visual.bubble='[界面测试] 文字说话演出。';window.fixture.visual.revision++;window.emit();});await page.waitForTimeout(300);assert.ok((await diagnostics()).mouthOpen>0);assert.equal((await diagnostics()).mouthSource,'text-only');
+ await page.waitForFunction(()=>Number(document.querySelector('canvas.living-canvas').dataset.blink)>.2,null,{timeout:11000});
+ await page.evaluate(()=>window.visibility(false));const hidden=(await diagnostics()).frameCount;await page.waitForTimeout(350);assert.equal((await diagnostics()).frameCount,hidden,'native hidden cancels actual draw loop');
+ await page.evaluate(()=>window.visibility(true));await page.waitForTimeout(150);assert.ok((await diagnostics()).frameCount>hidden);
+ await page.evaluate(()=>{window.fixture.settings.reducedMotion=true;window.emit();});const reduced=(await diagnostics()).frameCount;await page.waitForTimeout(250);assert.equal((await diagnostics()).frameCount,reduced,'reduced motion cancels actual draw loop');
+ await page.evaluate(()=>{window.fixture.visual.expression='annoyed';window.fixture.visual.intensity=.25;window.fixture.visual.revision++;window.emit();});assert.equal((await diagnostics()).intensity,.25);
+ const subtle=await page.locator('canvas.living-canvas').screenshot();
+ await page.evaluate(()=>{window.fixture.visual.intensity=.85;window.emit();});assert.equal((await diagnostics()).intensity,.85);const expressive=await page.locator('canvas.living-canvas').screenshot();assert.notEqual(createHash('sha256').update(subtle).digest('hex'),createHash('sha256').update(expressive).digest('hex'),'variable intensity changes actual rendered pixels with all motion stopped');
+ await page.evaluate(()=>{window.fixture.settings.reducedMotion=false;window.fixture.settings.quietUntil=Date.now()+60000;window.emit();});const quiet=(await diagnostics()).frameCount;await page.waitForTimeout(250);assert.ok((await diagnostics()).frameCount>quiet,'quiet retains gentle local motion');
+ const rect=await page.locator('.character').boundingBox();await page.locator('#pet-body').dispatchEvent('dblclick',{clientX:rect.x+rect.width*.5,clientY:rect.y+rect.height*.5});await page.locator('#pet-text').waitFor();assert.equal(await page.evaluate(()=>window.commands.some(c=>c.type==='shell.input'&&c.open)),true);
+ await page.locator('#pet-text').fill('测试中文草稿');await page.locator('#pet-input').getByRole('button',{name:'发送'}).click();assert.match(await page.locator('#pet-input-note').textContent(),/尚未配置模型/);assert.equal(await page.locator('#pet-text').inputValue(),'测试中文草稿');assert.equal(await page.evaluate(()=>window.commands.some(c=>c.type==='chat.send')),false);
+ await page.evaluate(()=>{window.fixture.provider.configured=true;window.emit();});await page.locator('#pet-text').dispatchEvent('compositionstart');await page.locator('#pet-text').press('Enter');assert.equal(await page.evaluate(()=>window.commands.some(c=>c.type==='chat.send')),false,'IME confirmation does not submit short input');await page.locator('#pet-text').dispatchEvent('compositionend');await page.locator('#pet-text').press('Enter');await page.waitForFunction(()=>document.querySelector('#pet-input').hidden);assert.equal(await page.evaluate(()=>window.commands.some(c=>c.type==='chat.send'&&c.text==='测试中文草稿')),true,'configured short input sends through the actual bridge contract');
+ await page.locator('#pet-body').dispatchEvent('dblclick',{clientX:rect.x+rect.width*.5,clientY:rect.y+rect.height*.5});await page.locator('#pet-text').waitFor();
+ await page.locator('#pet-text').press('Escape');assert.equal(await page.locator('#pet-input').isVisible(),false);
+ await mkdir('tests/frontend/evidence',{recursive:true});await page.screenshot({path:'tests/frontend/evidence/living-pet.png',omitBackground:true});assert.deepEqual(errors,[]);
+ console.log(JSON.stringify({passed:true,scope:'owned headless UI fixture; actual WebGL draw, alpha and variable intensity pixel comparison',diagnostics:await diagnostics()}));
+}finally{await browser.close();}

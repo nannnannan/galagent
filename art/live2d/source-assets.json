@@ -1,0 +1,311 @@
+{
+  "version": 2,
+  "method": "geometrically aligned to front-master-v02.png (1024x1536) with occluded underpainting completed; lossless PSD packaging",
+  "master": "front-master-v02.png",
+  "refs": [
+    "references/character-sheet.png",
+    "references/three-views.jpg"
+  ],
+  "assets": [
+    {
+      "id": "back-hair",
+      "file": "art/live2d/layers/back-hair-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 93,
+        "top": 79,
+        "right": 916,
+        "bottom": 841
+      },
+      "visiblePixels": 207628,
+      "sha256": "21d87addc006fedb587853a8c41a570005615d1ef832ac1754b4a1cc92b7c454",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "body-and-skirt",
+      "file": "art/live2d/layers/body-and-skirt-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 121,
+        "top": 211,
+        "right": 833,
+        "bottom": 1486
+      },
+      "visiblePixels": 613737,
+      "sha256": "7d7d212596ddaa953bbf91c6d0f5afe1c891a36bab60349a5d8521151f5565f7",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "arm-left",
+      "file": "art/live2d/layers/arm-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 242,
+        "top": 368,
+        "right": 413,
+        "bottom": 763
+      },
+      "visiblePixels": 18170,
+      "sha256": "7b973dce5f71ad033c19ab2f2026d3e20ba5084eb803383a466c01dcfce3e952",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "arm-right",
+      "file": "art/live2d/layers/arm-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 572,
+        "top": 365,
+        "right": 743,
+        "bottom": 763
+      },
+      "visiblePixels": 19249,
+      "sha256": "915428a5e840d7312b8c5dcead392e39e26fa4137499b01ed391a92a0ed2458d",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "waist-accessories",
+      "file": "art/live2d/layers/waist-accessories-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 380,
+        "top": 460,
+        "right": 713,
+        "bottom": 1229
+      },
+      "visiblePixels": 51344,
+      "sha256": "bae67f91ac63f9a17f859ed245586c75338a64419bbb21d565966a0203f5913c",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "face-base",
+      "file": "art/live2d/layers/face-base-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 435,
+        "top": 81,
+        "right": 579,
+        "bottom": 227
+      },
+      "visiblePixels": 15156,
+      "sha256": "42b291a21553ec1a2125eae8f3dda64819f3b8137117db2920e2a9c74ff3bb25",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eye-white-left",
+      "file": "art/live2d/layers/eye-white-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 446,
+        "top": 152,
+        "right": 481,
+        "bottom": 170
+      },
+      "visiblePixels": 489,
+      "sha256": "db5bbb8810b8253f3f742757ff3632f79a6dd3e5648d65dd9e07c774527179ef",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eye-white-right",
+      "file": "art/live2d/layers/eye-white-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 520,
+        "top": 152,
+        "right": 555,
+        "bottom": 170
+      },
+      "visiblePixels": 489,
+      "sha256": "f6fcd7d6402a5685304c8e7ffaf1558ea1578bb18d4b9916ab72e64f4b96e081",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "iris-left",
+      "file": "art/live2d/layers/iris-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 455,
+        "top": 151,
+        "right": 479,
+        "bottom": 171
+      },
+      "visiblePixels": 380,
+      "sha256": "dd4aa0fde3e22ee97c764936073af0867f9b7fcbc938d653e01b0a85b4603753",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "iris-right",
+      "file": "art/live2d/layers/iris-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 522,
+        "top": 151,
+        "right": 546,
+        "bottom": 171
+      },
+      "visiblePixels": 380,
+      "sha256": "378bfee58803a0967d3d3847001289b02b3128fd0b74ca350c4ffca69514e4d3",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eyelash-left",
+      "file": "art/live2d/layers/eyelash-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 444,
+        "top": 148,
+        "right": 483,
+        "bottom": 161
+      },
+      "visiblePixels": 235,
+      "sha256": "1da975e14866ad916a6b14b4fd5516271a2cc4bfe664a54ce9559362cc358399",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eyelash-right",
+      "file": "art/live2d/layers/eyelash-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 518,
+        "top": 148,
+        "right": 557,
+        "bottom": 161
+      },
+      "visiblePixels": 235,
+      "sha256": "7d05c55c644d8d5ccfa70cf51495f6b18ff4d40d2e25409ffc00ce0323cfd5ba",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "mouth-interior",
+      "file": "art/live2d/layers/mouth-interior-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 496,
+        "top": 199,
+        "right": 506,
+        "bottom": 204
+      },
+      "visiblePixels": 38,
+      "sha256": "4b1d30ed9a07f45de4ab07565f1d6c0e7ac562907a8beb2675bf7ba5313ac11e",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "mouth-closed",
+      "file": "art/live2d/layers/mouth-closed-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 494,
+        "top": 201,
+        "right": 507,
+        "bottom": 203
+      },
+      "visiblePixels": 24,
+      "sha256": "e000ecf6042e7a7fd816ba85b8965686a603f2667bdc66bb0f4f763f05a3a9f8",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "side-hair-left",
+      "file": "art/live2d/layers/side-hair-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 398,
+        "top": 120,
+        "right": 447,
+        "bottom": 440
+      },
+      "visiblePixels": 11707,
+      "sha256": "8713660df7fdfeb3a766fddd43953bc3ad4964b8416c21dbc4fe4720bb562969",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "side-hair-right",
+      "file": "art/live2d/layers/side-hair-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 542,
+        "top": 144,
+        "right": 607,
+        "bottom": 440
+      },
+      "visiblePixels": 10135,
+      "sha256": "fa3fc0071c4d22f5974f7a54a4ce5c05c11b684ab7398028e9fd73ece22b6bee",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "bangs",
+      "file": "art/live2d/layers/bangs-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 411,
+        "top": 19,
+        "right": 573,
+        "bottom": 164
+      },
+      "visiblePixels": 17150,
+      "sha256": "a0aa3ee2a61a568faa874a96f155a88b3620400311228d9eb50f1ae35f3b6b0b",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eyebrow-left",
+      "file": "art/live2d/layers/eyebrow-left-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 449,
+        "top": 132,
+        "right": 478,
+        "bottom": 135
+      },
+      "visiblePixels": 72,
+      "sha256": "b2b77950f4cb1f35aba081211fbb965ef196b1cb1c41c9494420b737c49a0298",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "eyebrow-right",
+      "file": "art/live2d/layers/eyebrow-right-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 523,
+        "top": 132,
+        "right": 552,
+        "bottom": 135
+      },
+      "visiblePixels": 72,
+      "sha256": "a948c151903191d34f70760833b6784db5dfcfbdba733248bdaae69dcd932485",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    },
+    {
+      "id": "head-accessories",
+      "file": "art/live2d/layers/head-accessories-v02.png",
+      "width": 1024,
+      "height": 1536,
+      "opaqueBounds": {
+        "left": 401,
+        "top": 7,
+        "right": 650,
+        "bottom": 230
+      },
+      "visiblePixels": 18411,
+      "sha256": "89b1043b1ea353f4cc21e5de63147b6f73901c0ba4168887da8126e0a70fe23f",
+      "status": "aligned to 1024x1536 master canvas with occluded underpainting completed"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "recordType": "summary-of-confirmed-execution-output",
+  "note": "Original default result path was reused by a later short smoke. These aggregate numbers preserve the earlier captured terminal evidence; this is not reconstructed raw per-process output.",
+  "actualPipeline": { "memories": 3, "embedding": "ready", "tasks": ["done", "done", "done"], "queryMs": 11.175, "cpuSeconds": 4.094 },
+  "snapshots": [
+    { "label": "base-before-model", "electronWorkingSetMiB": 495.49, "probeWorkingSetMiB": 52.55, "projectPlusProbeWorkingSetMiB": 659.13, "projectPlusProbePrivateMiB": 414.43 },
+    { "label": "actual-service-model-loaded", "electronWorkingSetMiB": 495.53, "probeWorkingSetMiB": 614.45, "projectPlusProbeWorkingSetMiB": 1221.06, "projectPlusProbePrivateMiB": 1086.40 },
+    { "label": "after-service-close", "electronWorkingSetMiB": 495.54, "probeWorkingSetMiB": 302.61, "projectPlusProbeWorkingSetMiB": 909.23, "projectPlusProbePrivateMiB": 728.44 },
+    { "label": "actual-store-10000-model-loaded", "electronWorkingSetMiB": 495.85, "probeWorkingSetMiB": 998.71, "projectPlusProbeWorkingSetMiB": 1605.64, "projectPlusProbePrivateMiB": 1564.60 },
+    { "label": "after-10000-close", "electronWorkingSetMiB": 495.84, "probeWorkingSetMiB": 653.57, "projectPlusProbeWorkingSetMiB": 1260.48, "projectPlusProbePrivateMiB": 1058.68 }
+  ],
+  "syntheticStore": { "count": 10000, "totalMemories": 10003, "seedMs": 23932.1311, "firstRetrieveMs": 2810.5515, "hotQueries": 20, "hotMeanMs": 93.51962, "hotP95Ms": 96.1946, "hotMaxMs": 97.4067, "databaseBytes": 91754496, "peakProbeRssMiB": 1000.69921875 }
+}

@@ -1,0 +1,10 @@
+{
+  "fixtureVersion": 1,
+  "model": "Xenova/multilingual-e5-small",
+  "dtype": "q8",
+  "offline": false,
+  "cacheDir": "<USER_PROFILE>\\Desktop\\galagent\\.cache\\models",
+  "startedAt": "2026-10-08T15:48:38.572Z",
+  "results": [],
+  "error": "Error: fetch failed\n    at Worker.<anonymous> (<USER_PROFILE>\\Desktop\\galagent\\runtime\\core\\embedding.ts:16:112)\n    at Worker.emit (node:events:509:28)\n    at MessagePort.<anonymous> (node:internal/worker:332:53)\n    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:843:20)\n    at MessagePort.<anonymous> (node:internal/per_context/messageport:23:28)"
+}

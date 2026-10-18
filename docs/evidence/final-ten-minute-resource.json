@@ -1,0 +1,28 @@
+{
+  "pid": 6100,
+  "executable": "<USER_PROFILE>\\Desktop\\galagent\\release\\win-unpacked\\GalAgent.exe",
+  "startedAt": "2026-10-08T20:18:46.770Z",
+  "checkedAt": "2026-10-08T20:31:46.847Z",
+  "scope": "first ten one-minute CPU intervals of final production app; no model configured",
+  "sampleCount": 10,
+  "meanWholeCPUPercent": 1.415671343058572,
+  "minWholeCPUPercent": 1.403539385454687,
+  "maxWholeCPUPercent": 1.4379057521828968,
+  "workingSetMiB": [
+    522.6328125,
+    443.6171875,
+    448.234375,
+    451.4140625,
+    452.45703125,
+    448.140625,
+    443.24609375,
+    444.22265625,
+    447.3984375,
+    448.4296875,
+    447.97265625
+  ],
+  "cpuTargetPercent": 2,
+  "cpuTargetPassed": true,
+  "memoryTargetPassed": false,
+  "limits": "This confirms only the visible idle/no-model sample, not 48h, network behavior or all user interactions."
+}

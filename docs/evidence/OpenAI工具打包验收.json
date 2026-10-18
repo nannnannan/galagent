@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "scope": "isolated packaged GalAgent + scripted OpenAI SSE fixture; no real K3 in this harness",
+  "checks": [
+    "packaged media dependency and image_url returned",
+    "actual package file effect and no public reasoning",
+    "native question selection roundtrip",
+    "native plan review blocks until user approval",
+    "native restart resumes matching private execution session",
+    "native cancel discards late reply",
+    "packaged video decoder and sampled frame payload"
+  ],
+  "toolSchemaCount": 25,
+  "cliUsed": false,
+  "productionDataUsed": false
+}
