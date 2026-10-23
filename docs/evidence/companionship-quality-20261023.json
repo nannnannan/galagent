@@ -1,0 +1,23 @@
+{
+  "at": "2026-10-23T14:32:21.731Z",
+  "passed": true,
+  "scope": "isolated packaged Electron, fixture model and silent PCM TTS; real IPC, UI, Web Audio decode and restart",
+  "sandboxDiagnostic": true,
+  "productionDataUsed": false,
+  "checks": {
+    "focusAllowsChatWithoutInterruption": true,
+    "feedbackButtons": true,
+    "restPausesObservation": true,
+    "crossWindowStopCancelsHttp": true,
+    "newSpeechAbortsPreviousHttp": true,
+    "stopDuringRealAudioDecode": true,
+    "keyboardModeSelection": true,
+    "modeAndFeedbackSurviveNativeRestart": true
+  },
+  "live2d": {
+    "parameters": 27,
+    "drawables": 20,
+    "physicsLoaded": true
+  },
+  "errors": []
+}

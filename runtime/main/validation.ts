@@ -1,4 +1,5 @@
 import type { AppCommand } from '../shared/contracts';
+import { validMode } from '../shared/companionship';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
 const settingsBounds: Record<string, [number, number]> = {
@@ -34,7 +35,11 @@ export function validateCommand(value: unknown): AppCommand {
       if (!bounded(command.id, 100) || !command.id.trim()) throw new Error('关注事项标识无效。'); break;
     case 'browser.report':
       if (!plain(command.report)) throw new Error('浏览器观察报告格式无效。'); break;
-    case 'browser.disconnect': break;
+    case 'browser.disconnect': case 'tts.stop': break;
+    case 'initiative.feedback':
+      if (!bounded(command.messageId, 100) || !command.messageId || !['welcome', 'mute'].includes(String(command.value))) throw new Error('互动反馈无效。');
+      break;
+    case 'initiative.resetFeedback': break;
     case 'pet.roam':
       if (command.active !== undefined && typeof command.active !== 'boolean') throw new Error('漫步状态无效。');
       if (command.direction !== undefined && command.direction !== -1 && command.direction !== 1) throw new Error('漫步方向无效。');
@@ -65,7 +70,8 @@ export function validateCommand(value: unknown): AppCommand {
     case 'settings.update':
       if (!plain(command.settings)) throw new Error('相处设置格式不正确。');
       for (const [key, val] of Object.entries(command.settings)) {
-        if (settingFlags.has(key)) { if (typeof val !== 'boolean') throw new Error('相处设置格式不正确。'); }
+        if (key === 'companionMode') { if (!validMode(val)) throw new Error('陪伴模式无效。'); }
+        else if (settingFlags.has(key)) { if (typeof val !== 'boolean') throw new Error('相处设置格式不正确。'); }
         else if (settingStrings[key]) { if (!bounded(val, settingStrings[key])) throw new Error('相处设置格式不正确。'); }
         else if (key === 'captureBlocklist') { if (!Array.isArray(val) || val.length > 80 || val.some(item => !bounded(item, 80))) throw new Error('截屏黑名单格式不正确。'); }
         else if (key === 'forbiddenPaths') { if (!Array.isArray(val) || val.length > 200 || val.some(item => !bounded(item, 500) || item.includes('\0'))) throw new Error('禁止访问目录列表格式不正确。'); }

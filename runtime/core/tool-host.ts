@@ -56,24 +56,10 @@ const isSubOrEqual=(cand:string,rule:string)=>{const c=normCompare(cand),r=normC
 function sharesForbiddenHardlink(resolvedFile:string,canonicalRules:string[]):boolean {
  try{
   const st=statSync(resolvedFile,{bigint:true,throwIfNoEntry:false});
-  if(!st||!st.isFile()||st.nlink<=1n||st.ino<=0n)return false;
-  let scanned=0;
-  const checkDir=(dir:string):boolean=>{
-   if(scanned>1500)return false;
-   let entries;
-   try{entries=readdirSync(dir,{withFileTypes:true});}catch{return false;}
-   for(const entry of entries){
-    if(++scanned>1500)return false;
-    const full=path.join(dir,entry.name);
-    if(entry.isDirectory()){if(checkDir(full))return true;}
-    else if(entry.isFile()){
-     try{const es=statSync(full,{bigint:true,throwIfNoEntry:false});if(es&&es.ino===st.ino&&es.dev===st.dev)return true;}catch{}
-    }
-   }
-   return false;
-  };
-  return canonicalRules.some(rule=>checkDir(rule));
- }catch{return false;}
+  // A bounded directory scan cannot prove where every hardlink points.
+  // In guarded mode, refuse multiply-linked files instead of failing open.
+  return Boolean(canonicalRules.length&&st?.isFile()&&st.nlink>1n);
+ }catch{return true;}
 }
 export function isForbiddenPath(candidate:string,forbiddenPaths:readonly string[],cwd=process.cwd()):boolean {
  if(!forbiddenPaths.length||!candidate.trim())return false;
@@ -121,22 +107,7 @@ export class ToolHost {
  private policyVersion(){return this.hooks.policyVersion?.()??0;}
  assertAllowed(target:string,cwd=process.cwd()){if(isForbiddenPath(target,this.forbiddenList(),cwd))throw new Error('Access to forbidden directory is blocked by user policy');}
  private assertCommandAllowed(command:string,cwd:string){
-  const rules=this.forbiddenList();if(!rules.length)return;
-  this.assertAllowed(cwd,cwd);
-  const tokens=new Set<string>();
-  for(const m of command.matchAll(/"([^"\r\n]+)"|'([^'\r\n]+)'|([^\s;|&><()`"$']+)/g)){
-   const tok=(m[1]||m[2]||m[3]||'').trim();
-   if(!tok||tok.startsWith('-'))continue;
-   tokens.add(tok.replace(/^file:\/\//i,''));
-  }
-  for(const tok of tokens){
-   if(isForbiddenPath(tok,rules,cwd))throw new Error('Command references a forbidden directory blocked by user policy');
-  }
-  try{
-   for(const entry of readdirSync(cwd).slice(0,200)){
-    if(command.includes(entry)&&isForbiddenPath(path.join(cwd,entry),rules,cwd))throw new Error('Command references a link to a forbidden directory blocked by user policy');
-   }
-  }catch(e){if(e instanceof Error&&e.message.includes('forbidden directory'))throw e;}
+  if(this.forbiddenList().length)throw new Error('Bash is disabled under forbidden directory protection: scripts can access paths that command-text checks cannot enforce. Use the checked file tools.');
  }
  invalidatePolicy(){
   for(const task of this.tasks.values())if(active(task)){task.status='cancelled';task.output=bounded(task.output+'\n[Cancelled: directory permission policy updated]');this.update(task);}
@@ -175,13 +146,43 @@ export class ToolHost {
   else{if(!old)throw new Error('File does not exist');const original=this.text(old),crlf=original.includes('\r\n')&&!original.replace(/\r\n/g,'').includes('\n'),view=crlf?original.replace(/\r\n/g,'\n'):original;if(a.old_string===a.new_string)throw new Error('Replacement has no change');const count=view.split(a.old_string).length-1;if(!count||(!a.replace_all&&count!==1))throw new Error('old_string not found or not unique');output=a.replace_all?view.split(a.old_string).join(a.new_string):view.replace(a.old_string,a.new_string);if(crlf)output=output.replace(/\r?\n/g,'\r\n');}
   await mkdir(path.dirname(file),{recursive:true});const temporary=file+'.galagent-'+randomUUID();await writeFile(temporary,output);await rename(temporary,file);session.reads[file]=digest(Buffer.from(output));return{content:`${name} succeeded: ${file}`};
  });}
+ private async guardedSearchFiles(root:string,signal:AbortSignal):Promise<string[]> {
+  const files:string[]=[];let visited=0;
+  const walk=async(target:string)=>{
+   if(signal.aborted)throw new Error('Search cancelled');
+   if(++visited>10000)throw new Error('Guarded search is limited to 10000 entries; choose a narrower folder.');
+   if(secret(target)||path.basename(target)==='.git'||isForbiddenPath(target,this.forbiddenList()))return;
+   const info=await stat(target);
+   if(info.isFile()){files.push(target);return;}
+   if(!info.isDirectory())return;
+   for(const entry of await readdir(target,{withFileTypes:true})) {
+    // Do not let ripgrep traverse unchecked links or protected subtrees.
+    if(entry.isSymbolicLink())continue;
+    await walk(path.join(target,entry.name));
+   }
+  };
+  await walk(root);return files;
+ }
  private async search(session:HostSession,name:string,a:any,signal:AbortSignal){const root=this.safeFile(session,a.path||'.');if(path.basename(root)==='.git')throw new Error('VCS metadata is excluded');const args=['--hidden','--glob','!.git/**','--glob','!**/.git/**','--glob','!.env','--glob','!**/.env','--glob','!.env.*','--glob','!**/.env.*','--glob','!**/id_rsa','--glob','!**/id_ed25519'];if(a.include_ignored)args.push('--no-ignore');
+  const policy=this.policyVersion();
   if(name==='Glob')args.push('--files','--glob',a.pattern);
   else{const mode=a.output_mode||'files_with_matches';args.push(mode==='content'?'--line-number':mode==='count_matches'?'--count':'--files-with-matches');if(a['-n']===false&&mode==='content')args.push('--no-line-number');if(a['-i'])args.push('--ignore-case');if(a.multiline)args.push('--multiline');for(const flag of ['-A','-B','-C'])if(a[flag]!==undefined)args.push(flag,String(a[flag]));if(a.glob)args.push('--glob',a.glob);if(a.type)args.push('--type',a.type);args.push('--regexp',a.pattern);}
-  args.push('--glob','!**/.git/**','--glob','!**/.env','--glob','!**/.env.*','--glob','!**/id_rsa','--glob','!**/id_ed25519','--',root);const {finished}=this.spawnTask(session,`${name}: ${a.pattern}`,this.rgPath(),args,session.cwd,signal,30000),task=await finished;
-  if(task.status==='cancelled')throw new Error('Search cancelled');if(task.exitCode!==0&&task.exitCode!==1)throw new Error(task.output||'ripgrep failed');
+  const targets=this.forbiddenList().length?await this.guardedSearchFiles(root,signal):[root];
+  if(!targets.length)return{content:''};
+  if(name==='Grep')args.push('--with-filename');
+  args.push('--glob','!**/.git/**','--glob','!**/.env','--glob','!**/.env.*','--glob','!**/id_rsa','--glob','!**/id_ed25519','--');
+  const chunks:string[][]=[];let batch:string[]=[],length=0;
+  for(const file of targets){if(length+file.length>18000&&batch.length){chunks.push(batch);batch=[];length=0;}batch.push(file);length+=file.length+3;}if(batch.length)chunks.push(batch);
+  let output='';
+  for(const chunk of chunks){
+   if(policy!==this.policyVersion())throw new Error('Directory permission policy changed during search');
+   for(const file of chunk)this.assertAllowed(file,session.cwd);
+   const {finished}=this.spawnTask(session,`${name}: ${a.pattern}`,this.rgPath(),[...args,...chunk],session.cwd,signal,30000),task=await finished;
+   if(task.status==='cancelled')throw new Error('Search cancelled');if(task.exitCode!==0&&task.exitCode!==1)throw new Error(task.output||'ripgrep failed');
+   output+=task.output+'\n';if(output.length>200000){output=bounded(output,200000);break;}
+  }
   const extractFile=(line:string)=>{if(name==='Glob')return line;const m=line.match(/^([A-Za-z]:[\\/][^:]+|[^:]+):/);return m?m[1]:line;};
-  let lines=task.output.split(/\r?\n/).filter(Boolean).filter(line=>{const f=extractFile(line);return !secret(f)&&!isForbiddenPath(f,this.forbiddenList(),root);});
+  let lines=output.split(/\r?\n/).filter(Boolean).filter(line=>{const f=extractFile(line);return !secret(f)&&!isForbiddenPath(f,this.forbiddenList(),root);});
   if(name==='Glob'){const dated=await Promise.all(lines.map(async file=>({file,time:await stat(file).then(s=>s.mtimeMs,()=>0)})));lines=dated.sort((a,b)=>b.time-a.time).map(x=>x.file);}
   const offset=a.offset||0,cap=name==='Glob'?100:a.head_limit===0?lines.length:a.head_limit||250;return{content:bounded(lines.slice(offset,offset+cap).join('\n')+(lines.length>offset+cap?'\n[More matches remain]':''))};
  }

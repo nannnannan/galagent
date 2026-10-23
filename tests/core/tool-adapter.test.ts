@@ -187,11 +187,25 @@ test('forbiddenPaths enforces canonical path, relative traversal, junction and N
   assert.equal(grepParent.content.startsWith('ToolError:'),false);
   assert.equal(grepParent.content.includes('top-secret-token'),false);
 
+  // A shell script or variable can hide its file accesses: reject the command before spawning.
+  await writeFile(path.join(publicDir,'task.sh'),'cat ../secret-vault/credentials.txt');
+  for(const command of ['bash task.sh','p=../secret-vault; cat "$p/credentials.txt"','echo harmless'])
+   assert.match((await host.execute(session,'Bash',{command},signal())).content,/Bash is disabled/);
+  // Search subprocesses receive individual checked files, never the unchecked parent tree.
+  const originalSpawn=(host as any).spawnTask, searchArgs:string[][]=[];
+  (host as any).spawnTask=(_s:unknown,_d:unknown,_e:unknown,args:string[])=>{searchArgs.push(args);return{finished:Promise.resolve({status:'done',exitCode:0,output:''})};};
+  try{await host.execute(session,'Grep',{path:dir,pattern:'secret'},signal());}finally{(host as any).spawnTask=originalSpawn;}
+  assert.ok(searchArgs.length>0);
+  for(const args of searchArgs){assert.ok(args.includes(path.join(publicDir,'readme.txt')));assert.equal(args.includes(dir),false);assert.equal(args.includes(secretFile),false);assert.equal(args.includes(hardlinkPath),false);}
+
   // Policy invalidation stops background shell tasks
+  // Arbitrary shell is unavailable while guarded; start in full access and then enable the guard.
+  assert.match((await host.execute(session,'Bash',{command:'echo harmless'},signal())).content,/Bash is disabled/);
+  forbidden=[];
   const bg=await host.execute(session,'Bash',{command:'sleep 10',description:'wait',run_in_background:true},signal());
   const bgId=JSON.parse(bg.content).task_id;
   assert.equal(host.tasks.get(bgId)?.status,'running');
-  version++;
+  forbidden=[secretDir];version++;
   host.invalidatePolicy();
   assert.equal(host.tasks.get(bgId)?.status,'cancelled');
  } finally {

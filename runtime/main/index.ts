@@ -9,6 +9,7 @@ import { SoakRecorder } from './soak';
 import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
+import { companionModes } from '../shared/companionship';
 import type { ClipboardRead } from '../desktop/perception';
 
 app.setName('GalAgent');
@@ -38,6 +39,14 @@ let roamAutoPhaseUntil = 0;
 let roamAutoActive = false;
 let lastPublishedRoam = '';
 let lastProxyCheckAt = 0;
+const speechRequests = new Map<number, AbortController>();
+let speechPolicy = '';
+function stopSpeech(senderId?: number, notify = true) {
+  for (const [id, controller] of speechRequests) if (senderId === undefined || id === senderId) {
+    controller.abort(); speechRequests.delete(id);
+  }
+  if (notify) for (const win of [pet, chat]) if (win && !win.isDestroyed() && (senderId === undefined || win.webContents.id === senderId)) win.webContents.send('galagent:tts-stop');
+}
 // DUAL-CORE perception. Screenshots are captured in memory only for one attention
 // evaluation and never written to disk; the signature is a 32x18 grayscale grid.
 async function captureScreen(): Promise<{ dataUrl: string; signature: number[] } | undefined> {
@@ -103,7 +112,7 @@ function stepDesktopRoam() {
   if (!pet || pet.isDestroyed() || !pet.isVisible() || !companion) return;
   const snap = companion.getSnapshot();
   const now = Date.now();
-  const quiet = snap.settings.quietUntil > now;
+  const quiet = snap.settings.quietUntil > now || (snap.settings.companionMode || 'daily') !== 'daily';
   const reduced = snap.settings.reducedMotion;
   const forcedRun = now < roamManualUntil || snap.visual.action === 'run';
   const autoAllowed = !process.env.GALAGENT_DEBUG_PORT && snap.settings.roamingEnabled !== false;
@@ -145,9 +154,12 @@ function wireWindowVisibility(win:BrowserWindow){
   win.webContents.on('did-finish-load',()=>publishWindowVisibility(win));
 }
 function sendSnapshot(snapshot: AppSnapshot) {
+  const nextPolicy = JSON.stringify([snapshot.settings.ttsEnabled, snapshot.settings.quietUntil, snapshot.settings.ttsBaseUrl, snapshot.settings.ttsModel, snapshot.settings.ttsVoice, snapshot.settings.ttsSpeed, snapshot.settings.companionMode]);
+  if (speechPolicy && speechPolicy !== nextPolicy) stopSpeech();
+  speechPolicy = nextPolicy;
   for (const win of [pet, chat]) if (win && !win.isDestroyed() && !win.webContents.isLoading()) win.webContents.send('galagent:snapshot', snapshot);
-  const key = JSON.stringify([snapshot.settings.observationEnabled, snapshot.settings.windowTitlesEnabled, snapshot.settings.clipboardEnabled]);
-  if (key !== previousSettings) { previousSettings = key; observer?.setOptions({ enabled: snapshot.settings.observationEnabled, includeTitles: snapshot.settings.windowTitlesEnabled, includeClipboard: snapshot.settings.observationEnabled && snapshot.settings.clipboardEnabled }); }
+  const key = JSON.stringify([snapshot.settings.observationEnabled, snapshot.settings.windowTitlesEnabled, snapshot.settings.clipboardEnabled, snapshot.settings.companionMode]);
+  if (key !== previousSettings) { previousSettings = key; observer?.setOptions({ enabled: snapshot.settings.observationEnabled && snapshot.settings.companionMode !== 'rest', includeTitles: snapshot.settings.windowTitlesEnabled, includeClipboard: snapshot.settings.observationEnabled && snapshot.settings.clipboardEnabled }); }
   if (pet && !pet.isDestroyed()) { pet.setTitle(snapshot.identity.name || 'GalAgent'); const scale = snapshot.settings.petScale; const width = Math.round(360 * scale), height = Math.round(620 * scale); const bounds = pet.getBounds(); if (bounds.width !== width || bounds.height !== height) pet.setBounds(clamp({ ...bounds, width, height })); }
 }
 function clamp(bounds: Electron.Rectangle): Electron.Rectangle {
@@ -170,10 +182,12 @@ function menu() {
   const snapshot = companion.getSnapshot();
   return Menu.buildFromTemplate([
     { label: snapshot.identity.name ? `与 ${snapshot.identity.name} 说话` : '和她说话', click: () => openChat() },
+    { label: '陪伴模式', submenu: companionModes.map(mode => ({ label: mode.label, type: 'radio' as const, checked: (snapshot.settings.companionMode || 'daily') === mode.value, click: () => { void companion.handle({ type: 'settings.update', settings: { companionMode: mode.value } }); } })) },
     { type: 'separator' },
     { label: '让她在桌面跑一圈', click: () => { roamManualUntil = Date.now() + 20000; void companion.handle({ type: 'pet.roam', active: true }); stepDesktopRoam(); } },
     { label: '允许桌面自在小跑', type: 'checkbox', checked: snapshot.settings.roamingEnabled !== false, click: item => { void companion.handle({ type: 'settings.update', settings: { roamingEnabled: item.checked } }); } },
     { label: '语音合成朗读 (TTS)', type: 'checkbox', checked: Boolean(snapshot.settings.ttsEnabled), click: item => { void companion.handle({ type: 'settings.update', settings: { ttsEnabled: item.checked } }); } },
+    { label: '停止当前朗读', click: () => stopSpeech() },
     { type: 'separator' },
     { label: snapshot.settings.quietUntil > Date.now() ? '恢复主动互动' : '安静一小时', click: () => { void companion.handle({ type: 'settings.update', settings: { quietUntil: snapshot.settings.quietUntil > Date.now() ? 0 : Date.now() + 3600000 } }); } },
     { label: '回到屏幕角落', click: resetPet },
@@ -202,7 +216,11 @@ async function makeWindows() {
   // remain available from the menu rather than replacing her on first launch.
   screen.on('display-removed', () => { if (pet && !pet.isDestroyed()) pet.setBounds(clamp(pet.getBounds())); });
 }
-async function runTts(text: string) {
+async function runTts(text: string, senderId: number) {
+  stopSpeech(senderId, false);
+  const controller = new AbortController();
+  speechRequests.set(senderId, controller);
+  try {
   const snap = companion.getSnapshot();
   const ttsApiKey = await ttsCredentials.get();
   return await synthesizeTtsSpeech({
@@ -213,12 +231,15 @@ async function runTts(text: string) {
     ttsVoice: snap.settings.ttsVoice,
     ttsSpeed: snap.settings.ttsSpeed,
     expression: snap.visual.expression,
+    signal: controller.signal,
   });
+  } finally { if (speechRequests.get(senderId) === controller) speechRequests.delete(senderId); }
 }
 async function shellCommand(raw: unknown, senderId: number): Promise<CommandResult> {
   if (!allowedSender(senderId)) return { ok: false, error: '无法识别的窗口。' };
   try {
     const command = validateCommand(raw);
+    if (['chat.send', 'chat.cancel', 'app.import', 'tts.configure'].includes(command.type)) stopSpeech();
     switch (command.type) {
       case 'shell.chat': openChat(command.open ?? true); return { ok: true };
       case 'shell.input': {
@@ -256,9 +277,10 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         return await companion.handle(command);
       }
       case 'tts.speak': {
-        const res = await runTts(command.text);
+        const res = await runTts(command.text, senderId);
         return { ok: res.ok, error: res.error, data: res };
       }
+      case 'tts.stop': stopSpeech(); return { ok: true };
       case 'shell.menu': menu().popup({ window: pet }); return { ok: true };
       case 'shell.resetPosition': resetPet(); return { ok: true };
       case 'app.export': {
@@ -304,8 +326,9 @@ else {
     ipcMain.handle('galagent:tts-speak', async (event, text: unknown) => {
       if (!allowedSender(event.sender.id)) throw new Error('未知窗口');
       if (typeof text !== 'string' || !text.trim() || text.length > 2000) return { ok: false, error: '无效语音文本' };
-      return await runTts(text);
+      return await runTts(text, event.sender.id);
     });
+    ipcMain.on('galagent:tts-cancel', event => { if (allowedSender(event.sender.id)) stopSpeech(event.sender.id, false); });
     ipcMain.handle('galagent:live2d-asset', async (event, relPath: unknown) => {
       if (!allowedSender(event.sender.id)) throw new Error('未知窗口');
       if (typeof relPath !== 'string' || !relPath || relPath.length > 200 || relPath.includes('\0') || relPath.includes('..')) {
@@ -365,6 +388,7 @@ else {
   app.on('before-quit', event => {
     if (quitting) return;
     event.preventDefault(); quitting = true;
+    stopSpeech();
     if (timer) clearInterval(timer); if (roamTimer) clearInterval(roamTimer); if (saveTimer) clearTimeout(saveTimer); if(cursorTimer)clearInterval(cursorTimer);
     observer?.stop();
     void (async () => {

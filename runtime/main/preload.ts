@@ -37,5 +37,11 @@ const bridge: GalAgentBridge = {
   },
   readLive2DAsset: (relPath: string) => ipcRenderer.invoke('galagent:live2d-asset', relPath),
   synthesizeSpeech: (text: string) => ipcRenderer.invoke('galagent:tts-speak', text),
+  cancelSpeech: () => ipcRenderer.send('galagent:tts-cancel'),
+  onSpeechStop(listener) {
+    const handler = () => listener();
+    ipcRenderer.on('galagent:tts-stop', handler);
+    return () => ipcRenderer.removeListener('galagent:tts-stop', handler);
+  },
 };
 contextBridge.exposeInMainWorld('galagent', Object.freeze(bridge));

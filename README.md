@@ -18,13 +18,17 @@ Windows 透明动态 Live2D AI 陪伴桌宠与本地多模态 Agent 宿主。
 4. **OpenAI-Kimi 25 工具本地执行宿主与原生多模态**：
    - 完整实现 25 个 Kimi Code 原生工具（`Read`、`Write`、`Edit`、`Glob`、`Grep`、`Bash`、`TaskList/Output/Stop`、`ReadMediaFile`、`FetchURL`、`Skill`、`TodoList`、`SetGoal/UpdateGoal`、`EnterPlanMode/ExitPlanMode`、`AskUserQuestion`、`Agent`、`AgentSwarm`、`CronCreate/List/Delete`）。
    - 支持 **Kimi 原生多模态图像与视频输入**（`image_url` 与 `video_url`，支持 `ms://` 上传与内联 `data:video/*` `keep_parts`）。
-   - 支持 **可选禁止访问文件夹（`forbiddenPaths`）**：通过 `realpathSync.native` 祖先链与 NTFS `(dev, ino)` 硬链接核对，在全工具链拦截越界访问，修改即刻递增 `policyVersion` 并使在途旧任务失效。
+   - 支持 **可选禁止访问文件夹（`forbiddenPaths`）**：通过 `realpathSync.native` 最终路径检查与多硬链接保守拒绝，执行应用内目录检查。启用后任意 Bash 不可用，多硬链接文件被拒绝，搜索先检查文件再读取；不等同操作系统沙箱。修改即刻递增 `policyVersion` 并使在途旧任务失效。
 5. **TTS 语音合成接口（原生支持小米 `mimo-v2.5-tts` 导演模式）与反代自启动**：
    - 原生支持小米官方 `mimo-v2.5-tts`（`/v1/chat/completions` 音频输出、`冰糖`/`茉莉` 等预设音色 + 随实时表情动态变化的导演演绎指令），同时兼容 OpenAI `/v1/audio/speech` 及 Windows SAPI / Web Speech 保底。
    - 启动时自动检测本机 Mira 反代（`127.0.0.1:18890` / `127.0.0.1:8787`），未启动时自动后台拉起。
    - API Key 与 TTS Key 均由 Windows DPAPI（Electron `safeStorage`）独立加密保存在本地 `%APPDATA%/GalAgent/`，严禁写入渲染进程、SQLite 或仓库。
 
 ---
+
+## 陪伴改进版（2026-10-23）
+
+新增日常、专注、休息模式，主动回应反馈和停止朗读。专用入口为 **[启动 GalAgent 陪伴改进版.cmd](启动%20GalAgent%20陪伴改进版.cmd)**，旧入口保留。当前执行宿主存在 Electron 普通启动限制，隔离原生验收使用临时诊断参数；正常入口没有关闭沙箱，详见 [本轮验收与限制](docs/evidence/陪伴体验改进-20261023.md)。
 
 ## 快速启动
 

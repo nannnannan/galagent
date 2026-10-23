@@ -11,6 +11,7 @@ export interface TtsSynthesizeOptions {
   expression?: Expression;
   fetchImpl?: typeof fetch;
   windowsSapiFallback?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface TtsSynthesizeResult {
@@ -120,8 +121,8 @@ export function resolveTtsEndpoint(baseUrl: string, model?: string): string {
   return `${trimmed}/v1/audio/speech`;
 }
 
-function synthesizeWithWindowsSapi(text: string, speed = 1.0): Promise<string | null> {
-  if (process.platform !== 'win32') return Promise.resolve(null);
+function synthesizeWithWindowsSapi(text: string, speed = 1.0, signal?: AbortSignal): Promise<string | null> {
+  if (process.platform !== 'win32' || signal?.aborted) return Promise.resolve(null);
   return new Promise((resolve) => {
     const rate = Math.max(-5, Math.min(5, Math.round((speed - 1.0) * 6)));
     const psScript = [
@@ -145,6 +146,9 @@ function synthesizeWithWindowsSapi(text: string, speed = 1.0): Promise<string | 
       },
     );
     let out = '';
+    const abort = () => { child.kill(); resolve(null); };
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
     const timer = setTimeout(() => {
       try {
         child.kill();
@@ -158,10 +162,12 @@ function synthesizeWithWindowsSapi(text: string, speed = 1.0): Promise<string | 
     });
     child.on('error', () => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       resolve(null);
     });
     child.on('close', (code) => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       const trimmed = out.trim();
       resolve(code === 0 && trimmed.length > 100 ? trimmed : null);
     });
@@ -169,6 +175,7 @@ function synthesizeWithWindowsSapi(text: string, speed = 1.0): Promise<string | 
 }
 
 export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promise<TtsSynthesizeResult> {
+  if (options.signal?.aborted) return { ok: false, error: '语音已停止' };
   const text = cleanTtsText(options.text);
   if (!text) {
     return { ok: false, error: '没有可朗读的文字' };
@@ -190,6 +197,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 18000);
+    const signal = options.signal ? AbortSignal.any([controller.signal, options.signal]) : controller.signal;
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
@@ -215,7 +223,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
               ? { format: 'wav', optimize_text_preview: false }
               : { format: 'wav', voice },
           }),
-          signal: controller.signal,
+          signal,
         });
         if (!res.ok) {
           const errText = await res.text().catch(() => '');
@@ -225,6 +233,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
           choices?: { message?: { audio?: { data?: string } } }[];
         };
         const audioBase64 = data?.choices?.[0]?.message?.audio?.data;
+        if (signal.aborted) return { ok: false, error: '语音已停止' };
         if (typeof audioBase64 !== 'string' || audioBase64.length < 64) {
           return { ok: false, error: '小米 MiMo TTS 返回的音频数据为空' };
         }
@@ -250,12 +259,13 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
           response_format: 'mp3',
           speed,
         }),
-        signal: controller.signal,
+        signal,
       });
       if (!res.ok) {
         return { ok: false, error: `TTS 接口返回状态 ${res.status}` };
       }
       const buf = Buffer.from(await res.arrayBuffer());
+      if (signal.aborted) return { ok: false, error: '语音已停止' };
       if (buf.byteLength < 32) {
         return { ok: false, error: 'TTS 接口返回的音频为空' };
       }
@@ -284,7 +294,8 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
   }
 
   if (options.windowsSapiFallback !== false) {
-    const wavBase64 = await synthesizeWithWindowsSapi(text, speed);
+    const wavBase64 = await synthesizeWithWindowsSapi(text, speed, options.signal);
+    if (options.signal?.aborted) return { ok: false, error: '语音已停止' };
     if (wavBase64) {
       return {
         ok: true,
@@ -297,6 +308,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
     }
   }
 
+  if (options.signal?.aborted) return { ok: false, error: '语音已停止' };
   return {
     ok: true,
     provider: 'web-speech',

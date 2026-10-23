@@ -110,11 +110,22 @@ export class LivingCharacter {
  touch(x:number,y:number){this.pointerAt(x,y);this.touchAt=this.clock;this.head.vy-=.45;this.hair.vx+=this.pointer.x*.65;}
  dragDelta(dx:number,dy:number){this.inertia.vx-=clamp(dx,-30,30)*.085;this.inertia.vy-=clamp(dy,-30,30)*.05;this.head.vx-=clamp(dx,-30,30)*.035;}
  playText(text:string){if(!text.trim()){this.mouthUntil=0;return;}this.mouthStart=this.clock;this.mouthUntil=this.clock+clamp(text.length*.09,2.4,12);}
- async playAudio(audioBase64:string,mimeType='audio/wav'){
+ private speechRevision=0;
+ private fallbackAudio?:HTMLAudioElement;
+ stopSpeech(){
+  this.speechRevision++;
+  try{this.audioSource?.stop();}catch{}
+  this.audioSource=undefined;
+  this.fallbackAudio?.pause();this.fallbackAudio=undefined;
+  window.speechSynthesis?.cancel();
+  this.audioUntil=0;this.audioEnvelope=undefined;this.mouthUntil=0;
+ }
+ async playAudio(audioBase64:string,mimeType='audio/wav',isCurrent:()=>boolean=()=>true){
   if(!audioBase64)return;
-  try{
-   this.audioSource?.stop();
-  }catch{}
+  if(!isCurrent())return;
+  this.stopSpeech();
+  const revision=this.speechRevision;
+  const current=()=>revision===this.speechRevision&&isCurrent();
   try{
    const bin=atob(audioBase64);const bytes=new Uint8Array(bin.length);
    for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
@@ -123,6 +134,7 @@ export class LivingCharacter {
    if(!this.audioCtx)this.audioCtx=new AudioCtx();
    if(this.audioCtx.state==='suspended')await this.audioCtx.resume();
    const decoded=await this.audioCtx.decodeAudioData(bytes.buffer.slice(0));
+   if(!current())return;
    const ch=decoded.getChannelData(0),fps=60,totalFrames=Math.max(1,Math.ceil(decoded.duration*fps)),samplesPerFrame=Math.max(1,Math.floor(ch.length/totalFrames));
    const env=new Float32Array(totalFrames);
    for(let f=0;f<totalFrames;f++){
@@ -137,20 +149,24 @@ export class LivingCharacter {
    src.start(0);
    this.updateLoop();
   }catch{
+   if(!current())return;
    try{
     const audio=new Audio(`data:${mimeType};base64,${audioBase64}`);
+    this.fallbackAudio=audio;
     void audio.play();
    }catch{}
   }
  }
  speakFallback(text:string,speed=1){
   if(!text.trim()||typeof window.speechSynthesis==='undefined')return;
+  this.stopSpeech();
+  const revision=this.speechRevision;
   try{
    window.speechSynthesis.cancel();
    const utter=new SpeechSynthesisUtterance(text);
    utter.lang='zh-CN';utter.rate=clamp(speed,.6,1.6);
    this.playText(text);
-   utter.onend=()=>{this.mouthUntil=0;};
+   utter.onend=()=>{if(revision===this.speechRevision)this.mouthUntil=0;};
    window.speechSynthesis.speak(utter);
   }catch{}
  }
@@ -216,5 +232,5 @@ export class LivingCharacter {
   this.canvas.dataset.frameCount=String(++this.draws);this.canvas.dataset.blink=String(this.blinkAmount);this.canvas.dataset.mouth=String(mouth);this.canvas.dataset.head=String(this.pose.headAngle);this.canvas.dataset.hair=String(this.pose.hairX);this.canvas.dataset.motion=this.visible&&!this.reduced&&!this.media.matches?'continuous':'paused';
  }
  getDiagnostics(){return{renderer:this.gl?'webgl':'static-fallback',frameCount:this.draws,visible:this.visible,reducedMotion:this.reduced||this.media.matches,loopRunning:!!this.frame,intensity:this.intensity,roaming:this.roamActive,roamDirection:this.roamDirection,ttsActive:this.clock<this.audioUntil,headOffset:{x:this.pose.headX,y:this.pose.headY,angle:this.pose.headAngle},bodyOffset:{x:this.pose.bodyX,y:this.pose.bodyY},hairOffset:{x:this.pose.hairX,y:this.pose.hairY},blinkAmount:this.blinkAmount,mouthOpen:Number(this.canvas.dataset.mouth||0),mouthSource:'text-only',hitGeometry:this.alpha||this.live2d?.isReady()?'deformed-alpha':'rectangle-fallback',...this.live2d?.getDiagnostics()};}
- destroy(){this.stop();try{this.audioSource?.stop();void this.audioCtx?.close();}catch{}this.resizeObserver.disconnect();this.live2d?.destroy();if(this.gl){for(const texture of this.textures.values())this.gl.deleteTexture(texture);if(this.buffer)this.gl.deleteBuffer(this.buffer);if(this.indices)this.gl.deleteBuffer(this.indices);if(this.program)this.gl.deleteProgram(this.program);}this.canvas.remove();}
+ destroy(){this.stopSpeech();this.stop();try{this.audioSource?.stop();void this.audioCtx?.close();}catch{}this.resizeObserver.disconnect();this.live2d?.destroy();if(this.gl){for(const texture of this.textures.values())this.gl.deleteTexture(texture);if(this.buffer)this.gl.deleteBuffer(this.buffer);if(this.indices)this.gl.deleteBuffer(this.indices);if(this.program)this.gl.deleteProgram(this.program);}this.canvas.remove();}
 }

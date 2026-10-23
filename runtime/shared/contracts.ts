@@ -2,6 +2,10 @@ export type Expression = 'neutral' | 'curious' | 'pleased' | 'flustered' | 'anno
 export type PetAction = 'idle' | 'nod' | 'sway' | 'peek' | 'sulk' | 'celebrate' | 'wave' | 'sparkle' | 'doodle' | 'run';
 export type PersonaStage = 'adapting' | 'awkward' | 'tsundere' | 'settled';
 export type PersonaFace = 'daily' | 'work' | 'disagreement';
+export type CompanionMode = 'daily' | 'focus' | 'rest';
+export type InitiativeTopic = 'window' | 'clipboard' | 'browser' | 'task' | 'watch' | 'reunion' | 'unanswered' | 'system' | 'screen';
+export type InitiativeFeedback = 'welcome' | 'mute';
+export type CompanionPreferences = { version: 1; topics: Partial<Record<InitiativeTopic, InitiativeFeedback>>; ratings: Record<string, InitiativeFeedback> };
 export type PersonaVariables = {
   version: 1;
   core: { traits: readonly string[]; hobbies: readonly string[]; motifs: readonly string[] };
@@ -24,6 +28,8 @@ export type Observation = {
   error?: string;
 };
 export type Settings = {
+  /** Missing in old saves means daily. Modes never change personality or access permissions. */
+  companionMode?: CompanionMode;
   observationEnabled: boolean;
   windowTitlesEnabled: boolean;
   initiativeEnabled: boolean;
@@ -49,7 +55,7 @@ export type Settings = {
   ttsVoice?: string;
   ttsSpeed?: number;
 };
-export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene' };
+export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[] };
 export type MemoryItem = { id: string; kind: 'fact' | 'episode' | 'reflection'; text: string; sourceId: string; createdAt: string; valid: boolean; validFrom?: string; validTo?: string; supersedes?: string; importance?: number };
 export type DiaryEntry = { id: string; text: string; createdAt: string; sourceIds: string[]; kind?: 'note' | 'journal'; title?: string };
 export type StoryScene = { type: 'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06'; key: string; sourceIds: string[]; evidence: Record<string, unknown> };
@@ -74,6 +80,7 @@ export type BrowserView = {
 };
 export type ProviderMode = 'mira-proxy' | 'native-api';
 export type AppSnapshot = {
+  companionship?: CompanionPreferences;
   agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string}};
   variables?: PersonaVariables;
   story?: StorySnapshot;
@@ -100,6 +107,7 @@ export type AppCommand =
   | { type: 'pet.interact'; interaction: 'tap' | 'drag' }
   | { type: 'pet.roam'; active?: boolean; direction?: -1 | 1 }
   | { type: 'tts.speak'; text: string }
+  | { type: 'tts.stop' }
   | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string }
   | { type: 'settings.update'; settings: Partial<Settings> }
   | { type: 'config.save'; apiKey?: string; baseUrl: string; model: string; mode?: ProviderMode }
@@ -111,6 +119,8 @@ export type AppCommand =
   | { type: 'browser.report'; report: Record<string, unknown> }
   | { type: 'browser.disconnect' }
   | { type: 'initiative.check' }
+  | { type: 'initiative.feedback'; messageId: string; value: InitiativeFeedback }
+  | { type: 'initiative.resetFeedback' }
   | { type: 'shell.chat'; open?: boolean }
   | { type: 'shell.input'; open: boolean }
   | { type: 'shell.drag'; dx: number; dy: number }
@@ -131,6 +141,8 @@ export type GalAgentBridge = {
   onRoamState?(listener: (state: { active: boolean; direction: -1 | 0 | 1 }) => void): () => void;
   readLive2DAsset?(relPath: string): Promise<Uint8Array | ArrayBuffer>;
   synthesizeSpeech?(text: string): Promise<{ ok: boolean; provider?: string; audioBase64?: string; mimeType?: string; fallbackText?: string; voice?: string; speed?: number; error?: string }>;
+  cancelSpeech?(): void;
+  onSpeechStop?(listener: () => void): () => void;
 };
 declare global { interface Window { galagent: GalAgentBridge } }
 
