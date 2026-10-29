@@ -2,7 +2,7 @@
   "name": "galagent",
   "version": "0.1.0",
   "private": true,
-  "description": "A little constellation on your desktop — a persistent Kimi companion",
+  "description": "A customizable desktop companion: pick or write a character, choose a pixel pet, and let it keep you company.",
   "main": "dist/main/index.cjs",
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -10,7 +10,10 @@
     "start": "electron .",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "package": "npm run build && electron-builder --win dir --x64"
+    "package": "npm run build && electron-builder --win dir --x64",
+    "preview:ui": "node scripts/ui-preview.mjs",
+    "pet:validate": "node scripts/pixel-pet/validate.mjs",
+    "pet:preview": "node scripts/pixel-pet/preview.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -60,6 +63,10 @@
       {
         "from": "THIRD-PARTY-NOTICES.md",
         "to": "THIRD-PARTY-NOTICES.md"
+      },
+      {
+        "from": "skills",
+        "to": "skills"
       }
     ],
     "asarUnpack": [

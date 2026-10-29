@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CompanionService } from '../../runtime/core/companion';
+import { CompanionService, CONTEXT_BUDGET } from '../../runtime/core/companion';
 import { Store } from '../../runtime/core/store';
 import { randomUUID } from 'node:crypto';
 const local = () => ({ get: async () => 'test-secret-never-persist', set: async (_key: string) => { } });
@@ -34,12 +34,12 @@ test('explicit facts survive restart and semantic paraphrase; corrected/deleted 
     await restarted.close();
     await rm(dir, { recursive: true, force: true });
 });
-test('first complete response names identity transactionally; unknown sources rejected', async () => {
+test('the active character card names the identity on first contact; unknown sources rejected', async () => {
     let bad = false;
     const { core, cleanup } = await setup(async (_url,init) => isMemoryRequest(init)?emptyMemory():reply('认识你了。', bad ? { sourceIds: ['invented-id'] } : {}));
     assert.equal((await core.handle({ type: 'chat.send', text: '我是黄' })).ok, true);
     await core.waitForBackground();
-    assert.equal(core.getSnapshot().identity.name, '星棱');
+    assert.equal(core.getSnapshot().identity.name, core.getSnapshot().persona!.active.name);
     assert.equal(core.getSnapshot().identity.onboarding, 'ready');
     const count = core.getSnapshot().messages.length;
     bad = true;
@@ -188,10 +188,10 @@ test('12000-character ASCII chat can fit the context budget and restore; over-bu
     const {core,cleanup}=await setup(async(_url,init)=>{calls++;return isMemoryRequest(init)?emptyMemory():reply();});
     const ascii='a'.repeat(12000);
     assert.equal((await core.handle({type:'chat.send',text:ascii})).ok,true);await core.waitForBackground();
-    assert.equal(core.getSnapshot().messages[0].text.length,12000);assert.ok(core.getSnapshot().status.contextTokens<=6000);
+    assert.equal(core.getSnapshot().messages[0].text.length,12000);assert.ok(core.getSnapshot().status.contextTokens<=CONTEXT_BUDGET);
     const archive=core.exportArchive();await core.importArchive(archive);await core.waitForBackground();assert.equal(core.getSnapshot().messages[0].text,ascii);
     const count=calls, messages=core.getSnapshot().messages.length;
-    const result=await core.handle({type:'chat.send',text:'星'.repeat(12000)});assert.equal(result.ok,false);assert.match(result.error||'',/上下文超过预算/);assert.equal(calls,count);assert.equal(core.getSnapshot().messages.length,messages);assert.equal(core.getSnapshot().status.busy,false);
+    const result=await core.handle({type:'chat.send',text:'星'.repeat(12000)});assert.equal(result.ok,true,'a maximal Chinese message fits the larger budget');await core.waitForBackground();assert.ok(core.getSnapshot().status.contextTokens<=CONTEXT_BUDGET);assert.ok(calls>count);assert.equal(core.getSnapshot().messages.length,messages+2);assert.equal(core.getSnapshot().status.busy,false);
     assert.equal((await core.handle({type:'chat.send',text:'a'.repeat(12001)})).ok,false);
     assert.equal((await core.handle({type:'chat.send',text:'短消息重试'})).ok,true);await core.waitForBackground();await cleanup();
 });
@@ -213,10 +213,10 @@ test('K3 sends supported low-reasoning parameters and replays the complete priva
 });
 test('raw thinking tokens consume context allowance and pairs are omitted whole rather than truncated', async () => {
     const contexts:any[]=[];let turn=0;
-    const raw={role:'assistant',content:JSON.stringify({text:'可见短句',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'星'.repeat(7000),opaque_field:'untouched'};
+    const raw={role:'assistant',content:JSON.stringify({text:'可见短句',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'星'.repeat(15000),opaque_field:'untouched'};
     const {core,cleanup}=await setup(async(_url,init)=>{const body=JSON.parse(String(init?.body));if(String(body.messages[0].content).includes('facts每项'))return new Response(JSON.stringify({choices:[{message:{content:'{"facts":[],"diary":""}'}}]}));contexts.push(body.messages);return new Response(JSON.stringify({choices:[{message:++turn===1?raw:{...raw,reasoning_content:'small'}}]}));});
     await core.handle({type:'chat.send',text:'必须整对裁剪的原问题'});await core.waitForBackground();await core.handle({type:'chat.send',text:'第二问'});await core.waitForBackground();
-    assert.equal(contexts[1].filter((m:any)=>m.role==='assistant').length,0);assert.equal(contexts[1].filter((m:any)=>m.role==='user').length,1);assert.equal(JSON.stringify(contexts[1]).includes('星'.repeat(100)),false);assert.ok(core.getSnapshot().status.contextTokens<=6000);
+    assert.equal(contexts[1].filter((m:any)=>m.role==='assistant').length,0);assert.equal(contexts[1].filter((m:any)=>m.role==='user').length,1);assert.equal(JSON.stringify(contexts[1]).includes('星'.repeat(100)),false);assert.ok(core.getSnapshot().status.contextTokens<=CONTEXT_BUDGET);
     const archive=core.exportArchive();await core.importArchive(archive);await core.waitForBackground();await core.handle({type:'chat.send',text:'恢复后的第三问'});await core.waitForBackground();assert.equal(contexts[2].filter((m:any)=>m.role==='assistant').length,0);assert.match(contexts[2][0].content,/visibleHistoryData/);await cleanup();
 });
 test('non-K3 omits K3-only knobs, and truncated/empty thinking output has an actionable error', async () => {
@@ -319,7 +319,7 @@ test('empty or failed summaries never advance coverage; deleting a source invali
         if(system.includes('facts每项'))return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({facts:['我喜欢茶'],diary:''})}}]}));
         if(system.includes('压缩为短摘要')){
             attempts++;batches.push(JSON.parse(body.messages.at(-1).content));
-            if(attempts===1)return new Response('failure',{status:503});
+            if(attempts===1)return new Response('failure',{status:400});
             return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({summary:attempts===2?'':'有来源的摘要'})}}]}));
         }
         return reply();

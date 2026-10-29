@@ -23,10 +23,23 @@ test('pool: 30 simultaneous requests never exceed the 20 ceiling, all complete, 
     const results = await Promise.all(jobs);
     assert.equal(results.length, 30);
     assert.ok(peak <= 20, `peak ${peak}`);
-    assert.equal(peak, 20);
+    assert.equal(peak, 18, 'bulk work leaves two slots of headroom');
     assert.equal(pool.stats().inflight, 0);
     assert.equal(pool.stats().queued, 0);
-    assert.equal(pool.stats().peak, 20);
+    assert.equal(pool.stats().peak, 18);
+});
+test('pool: a swarm of executions cannot starve the user chat; chat may use the reserved slots', async () => {
+    const pool = new RequestPool(20);
+    const bulk = await Promise.all(Array.from({ length: 18 }, () => pool.acquire('execution')));
+    const blocked = pool.acquire('execution');
+    let late = false; void blocked.then(() => { late = true; });
+    const chats = await Promise.all([pool.acquire('chat'), pool.acquire('attention')]);
+    assert.equal(pool.stats().inflight, 20);
+    await new Promise(r => setTimeout(r, 5));
+    assert.equal(late, false, 'the 19th execution waits even though chat got through');
+    for (const release of [...bulk, ...chats]) release();
+    (await blocked)();
+    pool.close();
 });
 test('pool: user dialogue jumps the queue ahead of attention, execution and background', async () => {
     const pool = new RequestPool(1);
@@ -41,7 +54,7 @@ test('pool: user dialogue jumps the queue ahead of attention, execution and back
 test('pool: aborting a queued request frees its place; throttling halves the usable ceiling temporarily', async () => {
     let now = 0;
     const pool = new RequestPool(20, () => now);
-    const holds = await Promise.all(Array.from({ length: 20 }, () => pool.acquire('execution')));
+    const holds = await Promise.all([...Array.from({ length: 18 }, () => pool.acquire('execution')), pool.acquire('chat'), pool.acquire('chat')]);
     const controller = new AbortController();
     const queued = pool.acquire('background', controller.signal);
     assert.equal(pool.stats().queued, 1);
@@ -242,8 +255,8 @@ const isAttention = (body: any) => String(body.messages[0].content).startsWith('
 const isJournal = (body: any) => String(body.messages[0].content).includes('你在写自己的日记');
 const isExtract = (body: any) => String(body.messages[0].content).includes('facts每项');
 const json = (value: unknown) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(value) } }], usage: { total_tokens: 10 } }), { status: 200 });
-async function service(handler: (body: any) => unknown, runner?: AgentRunner) {
-    const dir = await mkdtemp(join(tmpdir(), 'galagent-dual-'));
+async function service(handler: (body: any) => unknown, runner?: AgentRunner, existingDir?: string) {
+    const dir = existingDir || await mkdtemp(join(tmpdir(), 'galagent-dual-'));
     const bodies: any[] = [];
     const core = new CompanionService({
         dataDir: dir, workingDir: dir, agentRunner: runner,
@@ -279,27 +292,72 @@ test('closed loop: delegated task result → attention judges → main character
     assert.equal(JSON.stringify(attentionBody).includes('状态数据'), false, 'attention context is separate from the main character context');
     await f.cleanup();
 });
-test('journal: exactly one first-person entry after 10 inputs + 10 outputs, counter survives restart', async () => {
-    let journals = 0;
-    const handler = (body: any) => isExtract(body) ? { ops: [], diary: '' } : isJournal(body) ? (journals++, { title: '第一篇', journal: '今天他跟我说了好多话，我一直很认真地听着，觉得心里暖暖的。' }) : isAttention(body) ? { decision: 'silent', reason: '无', evidence: [], nextCheck: null } : chatReply();
+test('daily archive: a finished day is archived once after midnight, replaces yesterday’s transcript in context, survives restart and stays idempotent', async () => {
+    const realNow = Date.now; let now = new Date(2026, 9, 28, 21, 0).getTime(); Date.now = () => now;
+    let archives = 0; const contexts: any[] = [];
+    const isDaily = (body: any) => String(body.messages[0].content).includes('每日档案');
+    const handler = (body: any) => {
+        if (isExtract(body)) return { ops: [], diary: '' };
+        if (isDaily(body)) { archives++; return { title: '面试前夜', summary: '用户说明天上午有面试，有点紧张，想早点睡。', diary: '今天他说明天要面试，我陪他聊了一会儿，希望他睡个好觉。', mood: '期待', topics: ['面试'], highlights: ['约好明天问结果'], openThreads: ['问面试结果'], portrait: '正在找工作，认真又容易紧张。' }; }
+        if (isAttention(body)) return { decision: 'silent', reason: '无', evidence: [], nextCheck: null };
+        const system = String(body.messages[0].content); if (system.includes('状态数据：')) contexts.push(JSON.parse(system.split('\n状态数据：')[1]));
+        return chatReply();
+    };
     let f = await service(handler);
-    for (let i = 0; i < 6; i++) assert.equal((await f.core.handle({ type: 'chat.send', text: `第${i}句` })).ok, true);
-    await f.core.waitForBackground();
-    assert.equal(f.core.getSnapshot().status.journal!.counter, 6);
-    await f.core.close();
-    const dir = f.dir;
-    const core = new CompanionService({ dataDir: dir, features: { attention: true, journal: true }, credentials: { get: async () => 'k', set: async () => {} }, embeddings: { encode: async () => [0, 1], close: async () => {} }, fetch: async (_u, init) => json(handler(JSON.parse(String(init?.body)))) });
-    await core.init();
-    for (let i = 6; i < 10; i++) assert.equal((await core.handle({ type: 'chat.send', text: `第${i}句` })).ok, true);
-    await core.waitForBackground();
-    const entries = core.getSnapshot().diary.filter(d => d.kind === 'journal');
-    assert.equal(journals, 1);
-    assert.equal(entries.length, 1);
-    assert.equal(entries[0].sourceIds.length, 20);
-    assert.equal(core.getSnapshot().status.journal!.counter, 0);
-    assert.equal(core.getSnapshot().memories.length, 0, 'a journal never becomes a user fact');
-    await core.close();
-    await rm(dir, { recursive: true, force: true });
+    try {
+        for (const text of ['明天上午我要面试', '有点紧张', '我先去睡了']) assert.equal((await f.core.handle({ type: 'chat.send', text })).ok, true);
+        await f.core.waitForBackground();
+        await f.core.tick(); await f.core.waitForBackground();
+        assert.equal(archives, 0, 'the day is not over yet');
+        now = new Date(2026, 9, 29, 0, 0, 20).getTime();
+        await f.core.tick(); await f.core.waitForBackground();
+        assert.equal(archives, 1, 'archived right after midnight');
+        const snap = f.core.getSnapshot();
+        assert.equal(snap.archives![0].day, '2026-10-28');
+        assert.equal(snap.archives![0].messageCount, 6);
+        assert.equal(snap.diary.filter(d => d.kind === 'journal').length, 1);
+        assert.ok(snap.bond!.achievements.find(a => a.id === 'archivist')!.unlockedAt);
+        await f.core.close();
+        f = await service(handler, undefined, f.dir);
+        now += 120_000; await f.core.tick(); await f.core.waitForBackground();
+        assert.equal(archives, 1, 'restart does not archive the same day again');
+        const again = await f.core.handle({ type: 'archive.rebuild', day: '2026-10-28' });
+        assert.equal(again.ok, true);
+        const twice = await f.core.handle({ type: 'archive.rebuild', day: '2026-10-28' });
+        assert.equal(twice.ok, true); await f.core.waitForBackground();
+        assert.equal(archives, 2, 'double-click rebuild runs once');
+        assert.equal((await f.core.handle({ type: 'archive.rebuild', day: '2026-10-29' })).ok, false, 'today cannot be archived early');
+        now = new Date(2026, 9, 29, 9, 0).getTime();
+        await f.core.handle({ type: 'chat.send', text: '我面试回来了' }); await f.core.waitForBackground();
+        const ctx = contexts.at(-1);
+        assert.equal(ctx.visibleHistoryData.some((m: any) => m.text === '明天上午我要面试'), false, 'yesterday is summarised, not verbatim');
+        assert.equal(ctx.dailyArchives[0].title, '面试前夜');
+        assert.match(ctx.userPortrait, /找工作/);
+        assert.ok(f.core.getSnapshot().messages.some(m => m.text === '明天上午我要面试'), 'the full transcript is still stored locally');
+        assert.equal(f.core.getSnapshot().memories.length, 0, 'a diary never becomes a user fact');
+    } finally { Date.now = realNow; await f.core.close(); await rm(f.dir, { recursive: true, force: true }); }
+});
+test('daily archive: deleting a source record drops the archive at once and falls back to the verbatim day', async () => {
+    const realNow = Date.now; let now = new Date(2026, 9, 28, 20, 0).getTime(); Date.now = () => now;
+    const contexts: any[] = [];
+    const handler = (body: any) => {
+        const system = String(body.messages[0].content);
+        if (isExtract(body)) return { ops: [{ op: 'ADD', text: '我叫阿青', importance: 4 }], diary: '' };
+        if (system.includes('每日档案')) return { title: '认识', summary: '用户自我介绍叫阿青。', diary: '认识了阿青。', mood: '开心', topics: [], highlights: [], openThreads: [], portrait: '' };
+        if (system.includes('状态数据：')) contexts.push(JSON.parse(system.split('\n状态数据：')[1]));
+        return chatReply();
+    };
+    const f = await service(handler);
+    try {
+        await f.core.handle({ type: 'chat.send', text: '我叫阿青' }); await f.core.waitForBackground();
+        now = new Date(2026, 9, 29, 10, 0).getTime(); await f.core.tick(); await f.core.waitForBackground();
+        assert.equal(f.core.getSnapshot().archives!.length, 1);
+        const memory = f.core.getSnapshot().memories.find(m => m.text === '我叫阿青')!;
+        await f.core.handle({ type: 'memory.delete', id: memory.id });
+        await f.core.handle({ type: 'chat.send', text: '你好' }); await f.core.waitForBackground();
+        assert.deepEqual(contexts.at(-1).dailyArchives, [], 'the stale archive is never shown to the model');
+        assert.equal(JSON.stringify(contexts.at(-1)).includes('阿青'), false);
+    } finally { Date.now = realNow; await f.core.close(); await rm(f.dir, { recursive: true, force: true }); }
 });
 test('memory ops: UPDATE supersedes with history, DELETE invalidates without erasing source', async () => {
     let step = 0;
@@ -404,9 +462,10 @@ test('browser perception: 4 metadata categories, active-tab pageContent navigati
     assert.equal(bp.getPageContent(), undefined, 'old pageContent expired on navigation');
 });
 test('companion: watch.add/dismiss, model watch output, window title change, browser.report, crash reunion and network recovery', async () => {
-    let failNext = false;
+    let failNext = 0;
     const f = await service(body => {
-        if (failNext) { failNext = false; throw new Error('network down'); }
+        // Transient network errors are retried; only an outage outlasting every attempt fails the turn.
+        if (failNext > 0) { failNext--; throw new Error('network down'); }
         if (isExtract(body)) return { ops: [], diary: '' };
         if (isAttention(body)) return { decision: 'silent', reason: '已知悉', evidence: [], nextCheck: null };
         return { ...chatReply('好的，我帮你盯着这个构建页面～'), watch: { title: '留意 CI 构建结果', condition: '页面显示成功或失败时' } };
@@ -435,7 +494,7 @@ test('companion: watch.add/dismiss, model watch output, window title change, bro
     assert.equal(f.core.getSnapshot().browser?.connected, false);
 
     // 4. Network error & online recovery event
-    failNext = true;
+    failNext = 3;
     const failed = await f.core.handle({ type: 'chat.send', text: '测试断网' });
     assert.equal(failed.ok, false);
     assert.equal(f.core.getSnapshot().status.online, false);
@@ -570,7 +629,9 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
     assert.equal(resolveMimoVoice('冰糖'), '冰糖');
     assert.equal(resolveMimoVoice('茉莉'), '茉莉');
     assert.equal(resolveMimoVoice('unknown-custom-voice'), '冰糖');
-    assert.ok(buildMimoStyleInstruction('flustered', 1).includes('害羞脸红'));
+    assert.ok(buildMimoStyleInstruction('flustered', 1).includes('害羞'));
+    const directed = buildMimoStyleInstruction('neutral', 1, undefined, { name: '团子', tagline: '猫室友', voiceStyle: '慵懒声线' });
+    assert.ok(directed.includes('团子') && directed.includes('慵懒声线') && !directed.includes('可黎'));
 
     const fakeWav = new Uint8Array(64);
     fakeWav.set([82, 73, 70, 70, 56, 0, 0, 0, 87, 65, 86, 69]);
@@ -689,7 +750,7 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
         assert.equal(capturedNativeToolBody.tools.length, 25);
         assert.equal('thinking' in capturedNativeToolBody, false);
         assert.equal(capturedNativeToolBody.max_tokens, 4096);
-        assert.ok(String(capturedNativeToolBody.messages[0].content).includes('官方/原生无工具API模式'));
+        assert.ok(String(capturedNativeToolBody.messages[0].content).includes('25个本地工具'));
     } finally {
         await f.core.close();
         await rm(f.dir, { recursive: true, force: true });

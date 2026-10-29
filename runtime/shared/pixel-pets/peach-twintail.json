@@ -1,0 +1,282 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "peach-twintail",
+  "name": "小桃",
+  "description": "扎着粉色双马尾的水手服少女，一激动双马尾就甩来甩去，最爱和你分享今天的小发现。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "双马尾",
+    "活泼"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#4a2738",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#ff9cc2",
+    "H": "#e06d9c",
+    "L": "#ffd3e4",
+    "c": "#ffffff",
+    "C": "#d9e0f0",
+    "d": "#3c5a9a",
+    "r": "#ff5d6e",
+    "b": "#3c3045",
+    "k": "#2d1b2e",
+    "e": "#c0407a",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "............oooooooo............",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhHHhhhHHhhhHHhhhhho....",
+    "....ohhhhHSSHhHSSHhHSSHhhhho....",
+    "....ohhhHSssSHSssSHSssSHhhho....",
+    "....ohhHSssssSssssSssssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhHssssssssssssssHhhho....",
+    "....oHHHoHssssssssssssHoHHHo....",
+    ".....ooo.oossssssssssoo.ooo.....",
+    "........oo.oddssssddo.oo........",
+    ".......occodddCrrCdddocco.......",
+    ".......oCCoCcCrrrrCcCoCCo.......",
+    ".......oCCoCccccccccCoCCo.......",
+    ".......ossoCCCCCCCCCCosso.......",
+    "........ooddddddddddddoo........",
+    ".........oddddddddddddo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 13],
+    "mouth": [14, 19],
+    "blush": [8, 18],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..ss.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "twintails",
+      "kind": "accessory",
+      "layer": "back",
+      "at": [0, 6],
+      "frames": [
+        [
+          "....oo....................oo....",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "..ohhho..................ohhho..",
+          ".ohhhho..................ohhhho.",
+          ".ohLhho..................ohhLho.",
+          "ohhLhho..................ohhLhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhHo................oHhhhhho",
+          "oHhhhho..................ohhhhHo",
+          ".ohhhho..................ohhhho.",
+          ".oHhhHo..................oHhhHo.",
+          "..oHHo....................oHHo..",
+          "...oo......................oo..."
+        ],
+        [
+          "....oo....................oo....",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "..oohho..................ohho...",
+          ".ohhhHo..................ohhho..",
+          "ohhhho...................ohhho..",
+          "ohhLhho.................ohhhLho.",
+          "ohhLhho.................ohhhLho.",
+          "ohhhhho.................ohhhhho.",
+          "ohhhhho.................ohhhhho.",
+          "ohhhhho.................ohhhhho.",
+          "ohhhhho.................ohhhhho.",
+          "ohhhhho.................ohhhhho.",
+          "ohhhhHo.................oHhhhHo.",
+          "oHhhho...................ohhho..",
+          ".oHHHo...................oHHHo..",
+          "..ooo.....................ooo..."
+        ],
+        [
+          "....oo....................oo....",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "..ohhho..................ohhho..",
+          ".ohhhho..................ohhhho.",
+          ".ohLhho..................ohhLho.",
+          "ohhLhho..................ohhLhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhho................ohhhhhho",
+          "ohhhhhHo................oHhhhhho",
+          "oHhhhho..................ohhhhHo",
+          ".ohhhho..................ohhhho.",
+          ".oHhhHo..................oHhhHo.",
+          "..oHHo....................oHHo..",
+          "...oo......................oo..."
+        ],
+        [
+          "....oo....................oo....",
+          "...ohho..................ohho...",
+          "...ohho..................ohho...",
+          "...ohho..................ohhoo..",
+          "..ohhho..................oHhhho.",
+          "..ohhho...................ohhhho",
+          ".ohLhhho.................ohhLhho",
+          ".ohLhhho.................ohhLhho",
+          ".ohhhhho.................ohhhhho",
+          ".ohhhhho.................ohhhhho",
+          ".ohhhhho.................ohhhhho",
+          ".ohhhhho.................ohhhhho",
+          ".ohhhhho.................ohhhhho",
+          ".oHhhhHo.................oHhhhho",
+          "..ohhho...................ohhhHo",
+          "..oHHHo...................oHHHo.",
+          "...ooo.....................ooo.."
+        ]
+      ]
+    },
+    {
+      "id": "bobbles",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [4, 5],
+      "frames": [
+        [
+          ".oo..................oo.",
+          "orro................orro",
+          "orro................orro",
+          ".oo..................oo."
+        ]
+      ]
+    }
+  ]
+}

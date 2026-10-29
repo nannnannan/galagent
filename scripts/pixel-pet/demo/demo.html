@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>像素小人演示</title>
+
+<style>
+  body { margin: 0; padding: 12px; background: #2b2540; color: #e9e3ff; font: 12px/1.4 "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; }
+  #grid { display: grid; grid-template-columns: repeat(7, 150px); gap: 8px; }
+  .cell { background: #3a3352; border-radius: 8px; padding: 4px; text-align: center; }
+  .host { width: 142px; height: 142px; margin: 0 auto; }
+  pre { white-space: pre-wrap; font-size: 10px; }
+</style>
+</head>
+<body>
+<div id="grid"></div>
+<pre id="out">pending</pre>
+<script src="./demo.js"></script>
+</body>
+</html>

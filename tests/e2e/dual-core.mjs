@@ -94,19 +94,16 @@ try {
   await send({ type: 'settings.update', settings: { observationEnabled: true, screenCaptureEnabled: true, clipboardEnabled: true, forbiddenPaths: [path.join(dataDir, 'forbidden-vault')] } });
   await send({ type: 'tts.configure', ttsEnabled: true, ttsBaseUrl: `http://127.0.0.1:${server.address().port}/v1`, ttsModel: 'mimo-v2.5-tts', ttsVoice: '冰糖', ttsSpeed: 1.0, ttsApiKey: 'tts-fixture' });
   await send({ type: 'pet.roam', active: true, direction: 1 });
-  const ttsRes = await pet.evaluate(() => window.galagent.synthesizeSpeech('哼，这首曲子只弹给你听。'));
+  const ttsRes = await pet.evaluate(() => window.galagent.synthesizeSpeech('你好，很高兴认识你。'));
   assert.equal(ttsRes.ok, true);
   assert.equal(ttsRes.provider, 'http');
   await send({ type: 'watch.add', title: '留意 CI 构建结果', condition: 'Build succeeded' });
   await send({ type: 'browser.report', report: { activeTab: { url: 'https://example.com/ci', title: 'CI Build' }, openTabs: [{ url: 'https://example.com/ci', title: 'CI Build', active: true }], pageContent: { url: 'https://example.com/ci', title: 'CI Build', text: 'Build succeeded', readable: true } } });
-  const loaded = await until(() => pet.evaluate(() => Boolean(document.querySelector('canvas.living-canvas')?.getLivingDiagnostics?.()?.live2d)), 10000);
-  const live2dDiag = await pet.evaluate(() => document.querySelector('canvas.living-canvas')?.getLivingDiagnostics?.());
-  assert.ok(loaded, `Kimi Live2D model loaded in pet window: ${JSON.stringify(live2dDiag)}`);
-  assert.equal(live2dDiag.live2d, true);
-  assert.equal(live2dDiag.live2dParameters, 27);
-  assert.equal(live2dDiag.live2dDrawables, 20);
-  assert.equal(live2dDiag.physicsLoaded, true);
-  assert.equal(live2dDiag.expressionsLoaded.length, 6);
+  const loaded = await until(() => pet.evaluate(() => Boolean(document.querySelector('canvas.pixel-pet-canvas')?.getPixelPetDiagnostics?.()?.pet)), 10000);
+  const petDiag = await pet.evaluate(() => document.querySelector('canvas.pixel-pet-canvas')?.getPixelPetDiagnostics?.());
+  assert.ok(loaded, `pixel pet rendered in pet window: ${JSON.stringify(petDiag)}`);
+  assert.equal(petDiag.renderer, 'pixel-canvas');
+  assert.ok(petDiag.draws > 0);
   let state = await snap();
   assert.equal(state.settings.screenCaptureEnabled, true);
   assert.equal(state.settings.roamingEnabled, true);
@@ -130,15 +127,7 @@ try {
   const report = {
     at: new Date().toISOString(), passed: true, scope: 'actual dual-core packaged app, isolated data dir, local fixture model (no real K3: proxy unavailable)',
     productionDataUsed: false,
-    live2d: {
-      active: live2dDiag.live2d,
-      modelName: live2dDiag.modelName,
-      parameters: live2dDiag.live2dParameters,
-      drawables: live2dDiag.live2dDrawables,
-      physicsLoaded: live2dDiag.physicsLoaded,
-      expressionsLoaded: live2dDiag.expressionsLoaded,
-      roamingEnabled: state.settings.roamingEnabled,
-    },
+    pixelPet: { pet: petDiag.pet, unit: petDiag.unit, draws: petDiag.draws },
     tts: {
       enabled: state.settings.ttsEnabled,
       provider: ttsRes.provider,

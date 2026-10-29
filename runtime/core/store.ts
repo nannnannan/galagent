@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type StatementSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 export const KEYWORD_INDEX_VERSION = '2-han-runs-latin-words';
@@ -21,39 +21,43 @@ export class Store {
       CREATE TABLE IF NOT EXISTS tombstones(id TEXT PRIMARY KEY);
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(id UNINDEXED, terms);
       CREATE TABLE IF NOT EXISTS vectors(id TEXT PRIMARY KEY, body TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS index_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);`);
+      CREATE TABLE IF NOT EXISTS index_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS records_kind ON records(kind);`);
         try { this.ensureKeywordIndex(); } catch (error) { this.db.close(); throw error; }
     }
+    // Prepared statements are cached: re-preparing on every call dominated hot paths such as snapshot refreshes.
+    private statements = new Map<string, StatementSync>();
+    private sql(text: string): StatementSync { let statement = this.statements.get(text); if (!statement) { statement = this.db.prepare(text); this.statements.set(text, statement); } return statement; }
     private ensureKeywordIndex() {
-        if (this.db.prepare('SELECT value FROM index_metadata WHERE key=?').get('keyword-version')?.value === KEYWORD_INDEX_VERSION) return;
+        if (this.sql('SELECT value FROM index_metadata WHERE key=?').get('keyword-version')?.value === KEYWORD_INDEX_VERSION) return;
         this.transaction(() => {
             const dead = this.deadIds(); this.db.exec('DELETE FROM memory_fts');
-            for (const row of this.db.prepare("SELECT id,body FROM records WHERE kind='memory' ORDER BY id").all()) {
+            for (const row of this.sql("SELECT id,body FROM records WHERE kind='memory' ORDER BY id").all()) {
                 const memory = JSON.parse(String(row.body));
                 if (typeof memory.text !== 'string') throw new Error('记忆正文损坏，无法重建关键词索引');
                 if (!dead.has(String(row.id)) && !dead.has(memory.sourceId)) this.index(String(row.id), memory.text);
             }
-            this.db.prepare('INSERT OR REPLACE INTO index_metadata VALUES(?,?)').run('keyword-version', KEYWORD_INDEX_VERSION);
+            this.sql('INSERT OR REPLACE INTO index_metadata VALUES(?,?)').run('keyword-version', KEYWORD_INDEX_VERSION);
         });
     }
-    put(kind: string, id: string, body: unknown) { this.db.prepare('INSERT OR REPLACE INTO records VALUES(?,?,?)').run(id, kind, JSON.stringify(body)); }
-    get<T>(id: string): T | undefined { const row = this.db.prepare('SELECT body FROM records WHERE id=?').get(id); return row ? JSON.parse(String(row.body)) : undefined; }
-    all<T>(kind: string): T[] { return this.db.prepare('SELECT body FROM records WHERE kind=? ORDER BY rowid').all(kind).map(row => JSON.parse(String(row.body))); }
-    remove(id: string) { this.db.prepare('DELETE FROM records WHERE id=?').run(id); this.db.prepare('DELETE FROM memory_fts WHERE id=?').run(id); this.db.prepare('DELETE FROM vectors WHERE id=?').run(id); }
-    tombstone(id: string) { this.db.prepare('INSERT OR IGNORE INTO tombstones VALUES(?)').run(id); }
-    dead(id: string): boolean { return !!this.db.prepare('SELECT id FROM tombstones WHERE id=?').get(id); }
-    deadIds(): Set<string> { return new Set(this.db.prepare('SELECT id FROM tombstones').all().map(row => String(row.id))); }
-    index(id: string, text: string) { this.db.prepare('DELETE FROM memory_fts WHERE id=?').run(id); this.db.prepare('INSERT INTO memory_fts VALUES(?,?)').run(id, grams(text).join(' ')); }
-    keyword(query: string, allowed?: Set<string>): string[] { const terms = grams(query).slice(0, 64); if (!terms.length)return [];const ids:string[]=[];for(const row of this.db.prepare('SELECT id FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank').iterate(terms.map(t=>'"'+t+'"').join(' OR '))){const id=String(row.id);if(allowed&&!allowed.has(id))continue;ids.push(id);if(ids.length>=24)break;}return ids; }
-    vector(id: string, values: number[]) { this.db.prepare('INSERT OR REPLACE INTO vectors VALUES(?,?)').run(id, JSON.stringify(values)); }
-    hasVectors(): boolean { return !!this.db.prepare('SELECT id FROM vectors LIMIT 1').get(); }
-    hasVector(id: string): boolean { return !!this.db.prepare('SELECT id FROM vectors WHERE id=?').get(id); }
-    kind(id: string): string | undefined { const row = this.db.prepare('SELECT kind FROM records WHERE id=?').get(id); return row ? String(row.kind) : undefined; }
-    *vectorEntries(): Generator<[string, Float32Array]> { for (const row of this.db.prepare('SELECT id,body FROM vectors').iterate()) yield [String(row.id), new Float32Array(JSON.parse(String(row.body)))]; }
+    put(kind: string, id: string, body: unknown) { this.sql('INSERT OR REPLACE INTO records VALUES(?,?,?)').run(id, kind, JSON.stringify(body)); }
+    get<T>(id: string): T | undefined { const row = this.sql('SELECT body FROM records WHERE id=?').get(id); return row ? JSON.parse(String(row.body)) : undefined; }
+    all<T>(kind: string): T[] { return this.sql('SELECT body FROM records WHERE kind=? ORDER BY rowid').all(kind).map(row => JSON.parse(String(row.body))); }
+    remove(id: string) { this.sql('DELETE FROM records WHERE id=?').run(id); this.sql('DELETE FROM memory_fts WHERE id=?').run(id); this.sql('DELETE FROM vectors WHERE id=?').run(id); }
+    tombstone(id: string) { this.sql('INSERT OR IGNORE INTO tombstones VALUES(?)').run(id); }
+    dead(id: string): boolean { return !!this.sql('SELECT id FROM tombstones WHERE id=?').get(id); }
+    deadIds(): Set<string> { return new Set(this.sql('SELECT id FROM tombstones').all().map(row => String(row.id))); }
+    index(id: string, text: string) { this.sql('DELETE FROM memory_fts WHERE id=?').run(id); this.sql('INSERT INTO memory_fts VALUES(?,?)').run(id, grams(text).join(' ')); }
+    keyword(query: string, allowed?: Set<string>): string[] { const terms = grams(query).slice(0, 64); if (!terms.length)return [];const ids:string[]=[];for(const row of this.sql('SELECT id FROM memory_fts WHERE memory_fts MATCH ? ORDER BY rank').iterate(terms.map(t=>'"'+t+'"').join(' OR '))){const id=String(row.id);if(allowed&&!allowed.has(id))continue;ids.push(id);if(ids.length>=24)break;}return ids; }
+    vector(id: string, values: number[]) { this.sql('INSERT OR REPLACE INTO vectors VALUES(?,?)').run(id, JSON.stringify(values)); }
+    hasVectors(): boolean { return !!this.sql('SELECT id FROM vectors LIMIT 1').get(); }
+    hasVector(id: string): boolean { return !!this.sql('SELECT id FROM vectors WHERE id=?').get(id); }
+    kind(id: string): string | undefined { const row = this.sql('SELECT kind FROM records WHERE id=?').get(id); return row ? String(row.kind) : undefined; }
+    *vectorEntries(): Generator<[string, Float32Array]> { for (const row of this.sql('SELECT id,body FROM vectors').iterate()) yield [String(row.id), new Float32Array(JSON.parse(String(row.body)))]; }
     vectors(): {
         id: string;
         values: number[];
-    }[] { return this.db.prepare('SELECT * FROM vectors').all().map(r => ({ id: String(r.id), values: JSON.parse(String(r.body)) })); }
+    }[] { return this.sql('SELECT * FROM vectors').all().map(r => ({ id: String(r.id), values: JSON.parse(String(r.body)) })); }
     transaction<T>(fn: () => T): T { this.db.exec('BEGIN IMMEDIATE'); try {
         const result = fn();
         this.db.exec('COMMIT');

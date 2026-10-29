@@ -48,7 +48,7 @@ test('pending work waits for configured credentials and explicit config completi
 test('failed extraction has persistent exponential backoff, stops after three attempts, and never polls every tick',async()=>{
     const time=clock(),dir=await mkdtemp(join(tmpdir(),'galagent-bounded-retry-'));let attempts=0,failing=true;
     const credentials={get:async()=> 'fixture-only-key',set:async(_key:string)=>{}};
-    const fetcher:typeof fetch=async(_url,init)=>{if(!isExtraction(init))return chat();attempts++;return failing?new Response('',{status:503}):response({facts:['我喜欢咖啡'],diary:''});};
+    const fetcher:typeof fetch=async(_url,init)=>{if(!isExtraction(init))return chat();attempts++;return failing?new Response('',{status:400}):response({facts:['我喜欢咖啡'],diary:''});};
     let core=new CompanionService({dataDir:dir,credentials,embeddings:localEmbedding(),fetch:fetcher});
     try{
         await core.init();await core.handle({type:'chat.send',text:'我喜欢咖啡'});await core.waitForBackground();assert.equal(attempts,1);assert.equal(rows(dir)[0].nextAttemptAt,time.now()+60000);

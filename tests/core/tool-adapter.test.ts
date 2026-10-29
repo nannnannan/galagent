@@ -8,7 +8,7 @@ import {spawn} from 'node:child_process';
 import sharp from 'sharp';
 import ffmpeg from 'ffmpeg-static';
 import {parseModelReply} from '../../runtime/core/tool-protocol';
-import {ToolHost,cronNext,type HostSession,type HostTask} from '../../runtime/core/tool-host';
+import {ToolHost,cronNext,isPrivateAddress,type HostSession,type HostTask} from '../../runtime/core/tool-host';
 import {OpenAIToolAgent} from '../../runtime/core/openai-agent';
 import {CompanionService} from '../../runtime/core/companion';
 
@@ -17,7 +17,7 @@ const call=(name:string,args:unknown,id='call-1')=>({id,type:'function' as const
 const reply=(message:unknown,reason='stop')=>new Response(JSON.stringify({choices:[{message,finish_reason:reason}],usage:{total_tokens:20}}),{headers:{'content-type':'application/json'}});
 const final=(content='已核验完成。')=>reply({role:'assistant',content});
 function stream(events:any[],complete=true){const bytes=new TextEncoder().encode(events.map(event=>'data: '+JSON.stringify(event)+'\r\n\r\n').join('')+(complete?'data: [DONE]\r\n\r\n':''));return new Response(new ReadableStream({start(controller){for(let i=0;i<bytes.length;i+=7)controller.enqueue(bytes.slice(i,i+7));controller.close();}}),{headers:{'content-type':'text/event-stream'}});}
-async function hostFixture(){const dir=await mkdtemp(path.join(tmpdir(),'galagent-tools-'));const saved=new Map<string,HostSession>(),taskSaved=new Map<string,HostTask>();let now=Date.parse('2026-10-09T02:00:00Z'),answers:Record<string,string>={};const host=new ToolHost({save:s=>saved.set(s.id,s),saveTask:t=>taskSaved.set(t.id,t),ask:async()=>answers,child:async(_s,prompt)=>'Child result: '+prompt},()=>now);const session=host.session(dir);return{dir,host,session,saved,taskSaved,setAnswers:(value:Record<string,string>)=>{answers=value;},setNow:(value:number)=>{now=value;},cleanup:async()=>{host.close();await rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}};}
+async function hostFixture(){const dir=await mkdtemp(path.join(tmpdir(),'galagent-tools-'));const saved=new Map<string,HostSession>(),taskSaved=new Map<string,HostTask>();let now=Date.parse('2026-10-09T02:00:00Z'),answers:Record<string,string>={};const host=new ToolHost({save:s=>saved.set(s.id,s),saveTask:t=>taskSaved.set(t.id,t),ask:async()=>answers,child:async(_s,prompt)=>'Child result: '+prompt,allowPrivateFetch:true},()=>now);const session=host.session(dir);return{dir,host,session,saved,taskSaved,setAnswers:(value:Record<string,string>)=>{answers=value;},setNow:(value:number)=>{now=value;},cleanup:async()=>{host.close();await rm(dir,{recursive:true,force:true,maxRetries:5,retryDelay:100});}};}
 
 test('SSE assembles multiple indexed tool calls, UTF8 and reasoning; usage-only chunk and opaque fields survive',async()=>{
  const result=await parseModelReply(stream([
@@ -166,7 +166,8 @@ test('forbiddenPaths enforces canonical path, relative traversal, junction and N
   for(const [toolName,args] of [
    ['Read',{path:secretFile}],
    ['Read',{path:'../secret-vault/credentials.txt'}],
-   ['Read',{path:secretFile.toUpperCase()}],
+   // Case-variant aliases only exist on case-insensitive file systems (Windows NTFS).
+   ...(process.platform==='win32'?[['Read',{path:secretFile.toUpperCase()}] as const]:[]),
    ['Read',{path:hardlinkPath}],
    ['Write',{path:path.join(secretDir,'hack.txt'),content:'no'}],
    ['Edit',{path:secretFile,old_string:'top',new_string:'low'}],
@@ -214,3 +215,20 @@ test('forbiddenPaths enforces canonical path, relative traversal, junction and N
  }
 });
 
+
+test('FetchURL blocks loopback/private targets by default and private address classification is strict',async()=>{
+ for(const address of ['127.0.0.1','10.1.2.3','172.16.0.1','192.168.1.1','169.254.169.254','100.64.0.1','0.0.0.0','::1','fd00::1','fe80::1','::ffff:127.0.0.1'])assert.equal(isPrivateAddress(address),true,address);
+ for(const address of ['8.8.8.8','1.1.1.1','172.32.0.1','2606:4700::1111'])assert.equal(isPrivateAddress(address),false,address);
+ const dir=await mkdtemp(path.join(tmpdir(),'galagent-ssrf-'));const host=new ToolHost({save:()=>{},ask:async()=>({}),child:async()=>''});
+ try{const session=host.session(dir);
+  for(const url of ['http://127.0.0.1:18890/v1/models','http://localhost:8787/','http://[::1]/','http://169.254.169.254/latest/meta-data'])assert.match((await host.execute(session,'FetchURL',{url},signal())).content,/private network/,url);
+ }finally{host.close();await rm(dir,{recursive:true,force:true});}
+});
+
+test('SSE parser accepts bare CR line endings, CR split across chunks, and choices without index',async()=>{
+ const text='data: '+JSON.stringify({choices:[{delta:{role:'assistant',content:'你好'},finish_reason:null}]})+'\r\r'+'data: '+JSON.stringify({choices:[{delta:{},finish_reason:'stop'}]})+'\r\n\r\ndata: [DONE]\r\n\r\n';
+ const bytes=new TextEncoder().encode(text),cut=new TextEncoder().encode(text.slice(0,text.indexOf('\r\n\r\n')+1)).length;
+ const response=new Response(new ReadableStream({start(controller){controller.enqueue(bytes.subarray(0,cut));controller.enqueue(bytes.subarray(cut));controller.close();}}),{headers:{'content-type':'text/event-stream'}});
+ const result=await parseModelReply(response);
+ assert.equal(result.message.content,'你好');
+});

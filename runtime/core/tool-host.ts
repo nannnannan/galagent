@@ -4,11 +4,18 @@ import {existsSync,realpathSync,statSync,readdirSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {homedir,tmpdir} from 'node:os';
+import {lookup} from 'node:dns/promises';
+import {isIP} from 'node:net';
+import {safeChildEnv} from './safe-env';
 import Ajv from 'ajv';
 import sharp from 'sharp';
 import ffmpeg from 'ffmpeg-static';
 import definitions from '../assets/protocol/kimi-code-tools-0.29.2.json';
 import type {ModelMessage} from './tool-protocol';
+import type {SandboxSettings} from '../shared/contracts';
+import {sensitivePath} from './privacy';
+import {cronNext} from './scheduler';
+export {cronNext};
 
 export type Question={question:string;options:{label:string;description?:string}[];header?:string;multi_select?:boolean};
 export type HostSession={id:string;cwd:string;parentId?:string;provider?:{baseUrl:string;model:string};profile:string;messages:ModelMessage[];notifications?:string[];reads:Record<string,string>;todos:any[];plan:boolean;planFile:string;goal?:any;crons:CronJob[];usage:number;turns:number;createdAt:number;};
@@ -16,7 +23,7 @@ type CronJob={id:string;cron:string;prompt:string;recurring:boolean;nextAt:numbe
 export type HostTask={id:string;owner:string;kind:'shell'|'agent'|'question';description:string;status:'queued'|'running'|'done'|'failed'|'cancelled'|'lost';output:string;createdAt:number;exitCode?:number;pid?:number;agentId?:string};
 export type VideoUpload={data:Buffer;mimeType:string;filename:string;session:HostSession};
 type ToolOutput={content:string;attachments?:unknown[];parts?:unknown[]};
-export type HostHooks={save:(session:HostSession)=>void;saveTask?:(task:HostTask)=>void;ask:(questions:Question[],signal:AbortSignal)=>Promise<Record<string,string>>;child:(session:HostSession,prompt:string,signal:AbortSignal)=>Promise<string>;onBackground?:(task:HostTask)=>void;uploadVideo?:(upload:VideoUpload,signal:AbortSignal)=>Promise<{id:string}|undefined>;forbiddenPaths?:()=>string[];policyVersion?:()=>number};
+export type HostHooks={save:(session:HostSession)=>void;saveTask?:(task:HostTask)=>void;ask:(questions:Question[],signal:AbortSignal)=>Promise<Record<string,string>>;child:(session:HostSession,prompt:string,signal:AbortSignal)=>Promise<string>;onBackground?:(task:HostTask)=>void;uploadVideo?:(upload:VideoUpload,signal:AbortSignal)=>Promise<{id:string}|undefined>;forbiddenPaths?:()=>string[];/** Paths no tool may write: GalAgent executes or trusts files there. */protectedWritePaths?:()=>string[];/** Tests only: permit FetchURL to loopback/private addresses. */allowPrivateFetch?:boolean;/** GalAgent sandbox: file scope, shell and network switches. */sandbox?:()=>Pick<SandboxSettings,'fileScope'|'shell'|'network'>;/** Outbound URL guard (allow-list, secrets in URL); throws to block. */checkUrl?:(url:URL)=>void;/** Extra read-only skill folders shipped with GalAgent. */skillRoots?:()=>string[];/** When set, Cron tools schedule wake-ups of the MAIN character instead of re-entering this executor session. */mainCron?:{create(job:{cron:string;prompt:string;recurring:boolean}):{id:string;nextAt:number};list():{id:string;cron?:string;prompt:string;nextAt:number;recurring:boolean}[];delete(id:string):boolean};policyVersion?:()=>number};
 const VIDEO_EXT_MIMES:Record<string,string>={'.mp4':'video/mp4','.mpeg':'video/mpeg','.mpg':'video/mpeg','.mov':'video/quicktime','.webm':'video/webm','.mkv':'video/x-matroska','.avi':'video/x-msvideo','.flv':'video/x-flv','.3gp':'video/3gpp'};
 export function detectVideoMime(file:string,header?:Buffer):string|undefined {
  if(header&&header.length>=12&&header.subarray(4,8).toString('ascii')==='ftyp'){const brand=header.subarray(8,12).toString('ascii');return brand==='qt  '?'video/quicktime':brand.startsWith('3gp')?'video/3gpp':'video/mp4';}
@@ -30,6 +37,22 @@ const hasVideoMagic=(header:Buffer)=>Boolean(detectVideoMime('',header));
 const digest=(text:string|Buffer)=>createHash('sha256').update(text).digest('hex');
 const bounded=(text:string,max=50000)=>text.length<=max?text:text.slice(0,max)+'\n[Output truncated]';
 const secret=(file:string)=>/^(\.env(?:\..*)?|id_rsa|id_ed25519|id_ecdsa|credentials\.json)$/i.test(path.basename(file));
+// FetchURL must not let a prompt-injected model reach loopback, LAN or link-local services (local proxies, router pages, metadata endpoints).
+export function isPrivateAddress(address:string):boolean{
+ const v=address.toLowerCase().replace(/^\[|\]$/g,'');
+ const mapped=v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);if(mapped)return isPrivateAddress(mapped[1]);
+ // URL parsing rewrites ::ffff:127.0.0.1 to the hex form ::ffff:7f00:1; decode it before classifying.
+ const hex=v.match(/^(?:0{0,4}:){0,5}:?ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);if(hex){const hi=parseInt(hex[1],16),lo=parseInt(hex[2],16);return isPrivateAddress(`${hi>>8}.${hi&255}.${lo>>8}.${lo&255}`);}
+ if(isIP(v)===4){const [a,b]=v.split('.').map(Number);return a===0||a===10||a===127||(a===100&&b>=64&&b<=127)||(a===169&&b===254)||(a===172&&b>=16&&b<=31)||(a===192&&b===168)||(a===198&&(b===18||b===19))||a>=224;}
+ if(isIP(v)===6)return v==='::'||v==='::1'||/^f[cd]/.test(v)||/^fe[89ab]/.test(v)||/^ff/.test(v);
+ return true;
+}
+async function assertPublicUrl(url:URL){
+ const host=url.hostname.replace(/^\[|\]$/g,'');
+ if(!host||/^localhost$/i.test(host)||/\.localhost$/i.test(host))throw new Error('FetchURL blocks local and private network addresses');
+ const addresses=isIP(host)?[{address:host}]:await lookup(host,{all:true});
+ if(!addresses.length||addresses.some(a=>isPrivateAddress(a.address)))throw new Error('FetchURL blocks local and private network addresses');
+}
 const active=(task:HostTask)=>['queued','running'].includes(task.status);
 const failure=(message:string)=>({content:'ToolError: '+message});
 export function canonicalizePath(target:string,cwd=process.cwd()):string {
@@ -75,14 +98,6 @@ export function isForbiddenPath(candidate:string,forbiddenPaths:readonly string[
  }
  return sharesForbiddenHardlink(candReal,canonicalRules);
 }
-export function cronNext(expression:string,after:number):number {
- const parts=expression.trim().split(/\s+/);if(parts.length!==5)throw new Error('cron须为5个字段');
- const ranges=[[0,59],[0,23],[1,31],[1,12],[0,7]];
- const sets=parts.map((part,index)=>{const [min,max]=ranges[index],values=new Set<number>();for(const item of part.split(',')){const [base,stepRaw,...extra]=item.split('/'),step=stepRaw===undefined?1:Number(stepRaw);if(extra.length||!Number.isInteger(step)||step<1)throw new Error('cron步长无效');let first=min,last=max;if(base!=='*'){const terms=base.split('-');if(terms.length>2||terms.some(t=>!/^\d+$/.test(t)))throw new Error('cron字段无效');first=Number(terms[0]);last=terms.length===2?Number(terms[1]):stepRaw===undefined?first:max;}if(first<min||last>max||last<first)throw new Error('cron范围无效');for(let n=first;n<=last;n+=step)values.add(index===4&&n===7?0:n);}return values;});
- // User's local zone is Asia/Shanghai; a cron job stores local minute fields.
- for(let time=Math.floor(after/60000)*60000+60000,end=time+5*366*86400000;time<end;time+=60000){const d=new Date(time+8*3600000),dom=sets[2].has(d.getUTCDate()),dow=sets[4].has(d.getUTCDay());const dateMatch=parts[2]==='*'?dow:parts[4]==='*'?dom:dom||dow;if(sets[0].has(d.getUTCMinutes())&&sets[1].has(d.getUTCHours())&&sets[3].has(d.getUTCMonth()+1)&&dateMatch)return time;}
- throw new Error('未来5年没有匹配时间');
-}
 
 export class ToolHost {
  readonly definitions=definitions;
@@ -107,6 +122,7 @@ export class ToolHost {
  private policyVersion(){return this.hooks.policyVersion?.()??0;}
  assertAllowed(target:string,cwd=process.cwd()){if(isForbiddenPath(target,this.forbiddenList(),cwd))throw new Error('Access to forbidden directory is blocked by user policy');}
  private assertCommandAllowed(command:string,cwd:string){
+  if(this.hooks.sandbox&&!this.hooks.sandbox().shell)throw new Error('Shell is disabled by the GalAgent sandbox. Use the checked file tools, or ask the user to allow Shell in the sandbox page.');
   if(this.forbiddenList().length)throw new Error('Bash is disabled under forbidden directory protection: scripts can access paths that command-text checks cannot enforce. Use the checked file tools.');
  }
  invalidatePolicy(){
@@ -114,7 +130,9 @@ export class ToolHost {
   for(const id of [...this.controllers.keys()])this.kill(id);
  }
  private file(session:HostSession,input:string){if(!input||input.includes('\0'))throw new Error('路径无效');if(process.platform==='win32'&&/^\/[a-z]\//i.test(input))input=input[1]+':'+input.slice(2);return path.resolve(session.cwd,input);}
- private safeFile(session:HostSession,input:string){this.assertAllowed(session.cwd,session.cwd);const file=this.file(session,input);if(secret(file))throw new Error('Sensitive file is blocked by the Kimi tool policy');this.assertAllowed(file,session.cwd);return file;}
+ private safeFile(session:HostSession,input:string){this.assertAllowed(session.cwd,session.cwd);const file=this.file(session,input);if(process.platform==='win32'&&file.slice(2).includes(':'))throw new Error('Alternate data stream paths are blocked');if(secret(file)||secret(canonicalizePath(file,session.cwd)))throw new Error('Sensitive file is blocked by the tool policy');if(sensitivePath(file)||sensitivePath(canonicalizePath(file,session.cwd)))throw new Error('Credential and key stores are never readable by tools');this.assertAllowed(file,session.cwd);this.assertScope(file,session,false);return file;}
+ /** Sandbox file scope: confines tools to the task workspace (read-only or read-write). */
+ private assertScope(file:string,session:HostSession,write:boolean){const scope=this.hooks.sandbox?.().fileScope||'anywhere';if(scope==='anywhere'||(write&&file===session.planFile))return;if(write&&scope==='workspace-read')throw new Error('The GalAgent sandbox is read-only: file writes are disabled');const root=canonicalizePath(session.cwd,session.cwd),real=canonicalizePath(file,session.cwd),rel=path.relative(root,real);if(rel.startsWith('..')||path.isAbsolute(rel))throw new Error('The GalAgent sandbox confines file tools to the task workspace');}
  private async locked<T>(file:string,fn:()=>Promise<T>){const prior=this.locks.get(file)||Promise.resolve();let unlock!:()=>void;const next=new Promise<void>(resolve=>{unlock=resolve;});this.locks.set(file,next);await prior.catch(()=>{});try{return await fn();}finally{unlock();if(this.locks.get(file)===next)this.locks.delete(file);}}
  private newTask(session:HostSession,kind:HostTask['kind'],description:string){const task:HostTask={id:randomUUID(),owner:session.id,kind,description,status:'queued',output:'',createdAt:this.clock()};this.tasks.set(task.id,task);this.hooks.saveTask?.(task);return task;}
  private update(task:HostTask){if(!this.stopped)this.hooks.saveTask?.(structuredClone(task));}
@@ -127,7 +145,7 @@ export class ToolHost {
  private spawnTask(session:HostSession,description:string,exe:string,args:string[],cwd:string,signal:AbortSignal,timeout:number):{task:HostTask;finished:Promise<HostTask>} {
   const startPolicy=this.policyVersion(),task=this.newTask(session,'shell',description),controller=new AbortController();this.controllers.set(task.id,controller);
   const onAbort=()=>{task.status='cancelled';this.kill(task.id);};signal.addEventListener('abort',onAbort,{once:true});
-  const child=spawn(exe,args,{cwd,windowsHide:true,shell:false,stdio:['ignore','pipe','pipe']});this.processes.set(task.id,child);task.pid=child.pid;task.status='running';this.update(task);
+  const child=spawn(exe,args,{cwd,env:safeChildEnv(),windowsHide:true,shell:false,stdio:['ignore','pipe','pipe']});this.processes.set(task.id,child);task.pid=child.pid;task.status='running';this.update(task);
   const ownAbort=()=>{task.status='cancelled';if(child.exitCode===null){if(process.platform==='win32'&&child.pid){const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});killer.on('error',()=>child.kill());}else child.kill('SIGTERM');}};controller.signal.addEventListener('abort',ownAbort,{once:true});
   let timer:ReturnType<typeof setTimeout>|undefined;if(timeout>0)timer=setTimeout(()=>{task.output=bounded(task.output+'\n[Task timeout]');this.kill(task.id);},timeout);
   const finished=new Promise<HostTask>(resolve=>{let ended=false;const end=(code:number|null,error?:Error)=>{if(ended)return;ended=true;if(timer)clearTimeout(timer);signal.removeEventListener('abort',onAbort);this.controllers.delete(task.id);this.processes.delete(task.id);task.exitCode=code??undefined;if(this.policyVersion()!==startPolicy)task.status='cancelled';else if(task.status!=='cancelled')task.status=error||code!==0?'failed':'done';if(error)task.output=bounded(task.output+'\n'+error.message);this.update(task);resolve(task);};
@@ -139,7 +157,9 @@ export class ToolHost {
   for(let i=start;i<Math.min(lines.length,start+count);i++){const line=`${i+1}\t${bounded(lines[i],2000)}\n`;if(rendered.length+line.length>100*1024)break;rendered+=line;readCount++;}
   return{content:rendered+`<system>${readCount} lines read from file starting from line ${start+1}. Total lines in file: ${lines.length}. ${start+readCount>=lines.length?'End of file reached.':'More content remains.'}</system>`};
  }
- private async mutate(session:HostSession,name:string,a:any){const file=this.safeFile(session,a.path);if(session.plan&&file!==session.planFile)throw new Error('Plan mode allows writes only to the plan file');return this.locked(file,async()=>{
+ private async mutate(session:HostSession,name:string,a:any){const file=this.safeFile(session,a.path);this.assertScope(file,session,true);
+  // Tool results reach the model with secrets masked; writing a mask back would destroy the real value in the user's file.
+  if([a.content,a.new_string].some(v=>typeof v==='string'&&v.includes('〔已隐藏·')))throw new Error('Content contains a privacy mask (〔已隐藏·…〕) that stands for a hidden secret; edit around it with Edit instead of rewriting that text');if(isForbiddenPath(file,this.hooks.protectedWritePaths?.()||[],session.cwd))throw new Error('Writes to GalAgent-managed directories are blocked');if(session.plan&&file!==session.planFile)throw new Error('Plan mode allows writes only to the plan file');return this.locked(file,async()=>{
   this.assertAllowed(file,session.cwd);
   const old=await readFile(file).catch((error:NodeJS.ErrnoException)=>{if(error.code==='ENOENT')return undefined;throw error;});if(old&&session.reads[file]!==digest(old))throw new Error('Read the current file before writing; file changed or has not been read');
   let output:string;if(name==='Write')output=a.mode==='append'?this.text(old||Buffer.alloc(0))+a.content:a.content;
@@ -151,7 +171,7 @@ export class ToolHost {
   const walk=async(target:string)=>{
    if(signal.aborted)throw new Error('Search cancelled');
    if(++visited>10000)throw new Error('Guarded search is limited to 10000 entries; choose a narrower folder.');
-   if(secret(target)||path.basename(target)==='.git'||isForbiddenPath(target,this.forbiddenList()))return;
+   if(secret(target)||sensitivePath(target)||path.basename(target)==='.git'||isForbiddenPath(target,this.forbiddenList()))return;
    const info=await stat(target);
    if(info.isFile()){files.push(target);return;}
    if(!info.isDirectory())return;
@@ -163,10 +183,10 @@ export class ToolHost {
   };
   await walk(root);return files;
  }
- private async search(session:HostSession,name:string,a:any,signal:AbortSignal){const root=this.safeFile(session,a.path||'.');if(path.basename(root)==='.git')throw new Error('VCS metadata is excluded');const args=['--hidden','--glob','!.git/**','--glob','!**/.git/**','--glob','!.env','--glob','!**/.env','--glob','!.env.*','--glob','!**/.env.*','--glob','!**/id_rsa','--glob','!**/id_ed25519'];if(a.include_ignored)args.push('--no-ignore');
+ private async search(session:HostSession,name:string,a:any,signal:AbortSignal){const root=this.safeFile(session,a.path||'.');if(path.basename(root)==='.git')throw new Error('VCS metadata is excluded');const args=['--hidden','--glob','!.git/**','--glob','!**/.git/**','--glob','!.env','--glob','!**/.env','--glob','!.env.*','--glob','!**/.env.*','--glob','!**/id_rsa','--glob','!**/id_ed25519',...['.env','.env.*','id_rsa','id_ed25519','id_ecdsa','credentials.json','.npmrc','.pypirc','.netrc','.git-credentials','*.pem','*.key','*.p12','*.pfx','*.kdbx','.ssh/**','.aws/**','.gnupg/**','.kube/**','.docker/**'].flatMap(g=>['--iglob','!**/'+g])];if(a.include_ignored)args.push('--no-ignore');
   const policy=this.policyVersion();
   if(name==='Glob')args.push('--files','--glob',a.pattern);
-  else{const mode=a.output_mode||'files_with_matches';args.push(mode==='content'?'--line-number':mode==='count_matches'?'--count':'--files-with-matches');if(a['-n']===false&&mode==='content')args.push('--no-line-number');if(a['-i'])args.push('--ignore-case');if(a.multiline)args.push('--multiline');for(const flag of ['-A','-B','-C'])if(a[flag]!==undefined)args.push(flag,String(a[flag]));if(a.glob)args.push('--glob',a.glob);if(a.type)args.push('--type',a.type);args.push('--regexp',a.pattern);}
+  else{const mode=a.output_mode||'files_with_matches';args.push(mode==='content'?'--line-number':mode==='count_matches'?'--count':'--files-with-matches');if(mode==='content')args.push('--null');if(a['-n']===false&&mode==='content')args.push('--no-line-number');if(a['-i'])args.push('--ignore-case');if(a.multiline)args.push('--multiline');for(const flag of ['-A','-B','-C'])if(a[flag]!==undefined)args.push(flag,String(a[flag]));if(a.glob)args.push('--glob',a.glob);if(a.type)args.push('--type',a.type);args.push('--regexp',a.pattern);}
   const targets=this.forbiddenList().length?await this.guardedSearchFiles(root,signal):[root];
   if(!targets.length)return{content:''};
   if(name==='Grep')args.push('--with-filename');
@@ -181,13 +201,14 @@ export class ToolHost {
    if(task.status==='cancelled')throw new Error('Search cancelled');if(task.exitCode!==0&&task.exitCode!==1)throw new Error(task.output||'ripgrep failed');
    output+=task.output+'\n';if(output.length>200000){output=bounded(output,200000);break;}
   }
-  const extractFile=(line:string)=>{if(name==='Glob')return line;const m=line.match(/^([A-Za-z]:[\\/][^:]+|[^:]+):/);return m?m[1]:line;};
-  let lines=output.split(/\r?\n/).filter(Boolean).filter(line=>{const f=extractFile(line);return !secret(f)&&!isForbiddenPath(f,this.forbiddenList(),root);});
+  // Content lines carry '--null' so the file name ends at NUL; context lines (path-12-text) would otherwise defeat the secret filter.
+  const extractFile=(line:string)=>{if(name==='Glob')return line;if(line.includes('\0'))return line.split('\0')[0];const m=line.match(/^([A-Za-z]:[\\/][^:]+|[^:]+):/);return m?m[1]:line;};
+  let lines=output.split(/\r?\n/).filter(Boolean).filter(line=>{const f=extractFile(line);return !secret(f)&&!sensitivePath(f)&&!isForbiddenPath(f,this.forbiddenList(),root);}).map(line=>line.replace('\0',':'));
   if(name==='Glob'){const dated=await Promise.all(lines.map(async file=>({file,time:await stat(file).then(s=>s.mtimeMs,()=>0)})));lines=dated.sort((a,b)=>b.time-a.time).map(x=>x.file);}
   const offset=a.offset||0,cap=name==='Glob'?100:a.head_limit===0?lines.length:a.head_limit||250;return{content:bounded(lines.slice(offset,offset+cap).join('\n')+(lines.length>offset+cap?'\n[More matches remain]':''))};
  }
  private async media(session:HostSession,a:any,signal:AbortSignal){const file=this.safeFile(session,a.path),info=await stat(file);if(!info.isFile()||info.size>100*1024*1024)throw new Error('Media must be a file at most 100 MB');if(/\.(mp4|mpeg|mpg|mov|mkv|avi|webm|flv|3gp)$/i.test(file))return this.video(session,file,a,signal);const head=await readFile(file).then(b=>b.subarray(0,64),()=>Buffer.alloc(0));if(hasVideoMagic(head))return this.video(session,file,a,signal);let image=sharp(file,{animated:false}),metadata=await image.metadata();if(!['png','jpeg','webp','gif'].includes(metadata.format||''))throw new Error('Unsupported media format; convert to PNG/JPEG/WebP/GIF first');if(a.region){if(a.region.x+a.region.width>(metadata.width||0)||a.region.y+a.region.height>(metadata.height||0))throw new Error('Crop exceeds image boundaries');image=image.extract({left:a.region.x,top:a.region.y,width:a.region.width,height:a.region.height});}else if(!a.full_resolution)image=image.resize({width:1536,height:1536,fit:'inside',withoutEnlargement:true});const bytes=await image.png().toBuffer();if(bytes.length>8*1024*1024)throw new Error('Image exceeds delivery limit; use region');const part={type:'image_url',image_url:{url:'data:image/png;base64,'+bytes.toString('base64')}},note=`<system>Read image file. Mime type: image/png. Size: ${bytes.length} bytes. Original dimensions: ${metadata.width}x${metadata.height}. If you generate or edit images or videos via commands or scripts, read the result back immediately before continuing.</system>`;return{content:`Image from ${file}; original ${metadata.width}x${metadata.height}.\n${note}`,attachments:[part],parts:[{type:'text',text:`<image path="${file}">`},part,{type:'text',text:'</image>'},{type:'text',text:note}]};}
- private async skill(session:HostSession,a:any){if(!/^[\p{L}\p{N}_.:-]+(?:\/[\p{L}\p{N}_.-]+)*$/u.test(a.skill)||a.skill.includes('..'))throw new Error('Skill name invalid');const roots=[path.join(session.cwd,'.agents','skills'),path.join(session.cwd,'.kimi','skills'),path.join(homedir(),'.agents','skills'),path.join(homedir(),'.kimi','skills'),path.join(homedir(),'.codex','skills'),path.join(homedir(),'.mirasim','skills')];for(const root of roots){const file=path.join(root,a.skill,'SKILL.md');if(isForbiddenPath(file,this.forbiddenList(),session.cwd))continue;try{const text=await readFile(file,'utf8');return{content:bounded(`Skill source: ${file}\nArguments: ${a.args||''}\n${text}`)};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}throw new Error('Skill not found: '+a.skill);}
+ private async skill(session:HostSession,a:any){if(!/^[\p{L}\p{N}_.:-]+(?:\/[\p{L}\p{N}_.-]+)*$/u.test(a.skill)||a.skill.includes('..'))throw new Error('Skill name invalid');const roots=[path.join(session.cwd,'.agents','skills'),path.join(session.cwd,'.kimi','skills'),path.join(homedir(),'.agents','skills'),path.join(homedir(),'.kimi','skills'),path.join(homedir(),'.codex','skills'),path.join(homedir(),'.mirasim','skills'),...(this.hooks.skillRoots?.()||[])];for(const root of roots){const file=path.join(root,a.skill,'SKILL.md');if(isForbiddenPath(file,this.forbiddenList(),session.cwd))continue;try{const text=await readFile(file,'utf8');return{content:bounded(`Skill source: ${file}\nArguments: ${a.args||''}\n${text}`)};}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}throw new Error('Skill not found: '+a.skill);}
  private async agent(session:HostSession,a:any,signal:AbortSignal){this.assertAllowed(session.cwd,session.cwd);let child:HostSession;if(a.resume){const prior=this.sessions.get(a.resume);if(!prior||prior.parentId!==session.id)throw new Error('Unknown subagent');child=prior;}else child=this.session(session.cwd,session.id,a.subagent_type||'coder');let depth=0,parent=child;while(parent.parentId){depth++;const next=this.sessions.get(parent.parentId);if(!next)break;parent=next;}if(depth>3)throw new Error('Subagent depth limit reached');
   const task=this.newTask(session,'agent',a.description||'Resume subagent');task.agentId=child.id;task.status='running';const controller=new AbortController();this.controllers.set(task.id,controller);const abort=()=>controller.abort();signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();this.update(task);
   const finished=this.hooks.child(child,a.prompt,controller.signal).then(output=>{task.output=bounded(output);task.status=controller.signal.aborted?'cancelled':'done';},error=>{task.output=String(error instanceof Error?error.message:error);task.status=controller.signal.aborted?'cancelled':'failed';}).finally(()=>{signal.removeEventListener('abort',abort);this.controllers.delete(task.id);this.update(task);if(a.run_in_background)this.hooks.onBackground?.(task);});
@@ -218,7 +239,7 @@ export class ToolHost {
     case 'Glob':case 'Grep':output=await this.search(session,name,a,signal);break;
     case 'ReadMediaFile':output=await this.media(session,a,signal);break;
     case 'Bash':{const rawCwd=this.file(session,a.cwd||'.');this.assertAllowed(rawCwd,session.cwd);const cwd=await realpath(rawCwd);this.assertCommandAllowed(a.command,cwd);if(a.run_in_background&&!a.description)throw new Error('Background Bash requires description');const seconds=a.timeout??(a.run_in_background?600:60);if(seconds>(a.run_in_background?86400:300))throw new Error('Bash timeout exceeds limit');const {task,finished}=this.spawnTask(session,a.description||a.command,this.shellPath(),['-lc',a.command],cwd,signal,a.run_in_background&&a.disable_timeout?0:seconds*1000);if(a.run_in_background){void finished.then(t=>this.hooks.onBackground?.(t));output={content:JSON.stringify({task_id:task.id,status:task.status,pid:task.pid})};}else{await finished;if(this.policyVersion()!==startPolicy)throw new Error('Directory permission policy changed during execution; task cancelled');output={content:bounded(task.output)+`\n<system>Task ${task.status}; exit code ${task.exitCode??'unknown'}.</system>`};}break;}
-    case 'FetchURL':{const url=new URL(a.url);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('URL must be HTTP(S) without credentials');const response=await fetch(url,{signal:AbortSignal.any([signal,AbortSignal.timeout(30000)])});if(!response.ok)throw new Error('HTTP '+response.status);const reader=response.body?.getReader();let text='',bytes=0;const decoder=new TextDecoder();if(reader)try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>2_000_000)throw new Error('Page exceeds size limit');text+=decoder.decode(part.value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();}if((response.headers.get('content-type')||'').includes('html'))text=text.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');output={content:bounded(text)};break;}
+    case 'FetchURL':{let url=new URL(a.url),response!:Response;const fetchSignal=AbortSignal.any([signal,AbortSignal.timeout(30000)]);for(let hop=0;;hop++){if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('URL must be HTTP(S) without credentials');this.hooks.checkUrl?.(url);if(!this.hooks.sandbox?.().network&&this.hooks.sandbox)throw new Error('Network tools are disabled by the GalAgent sandbox');if(!this.hooks.allowPrivateFetch)await assertPublicUrl(url);response=await fetch(url,{signal:fetchSignal,redirect:'manual'});const location=response.headers.get('location');if(response.status>=300&&response.status<400&&location){await response.body?.cancel().catch(()=>{});if(hop>=5)throw new Error('Too many redirects');url=new URL(location,url);continue;}break;}if(!response.ok)throw new Error('HTTP '+response.status);const reader=response.body?.getReader();let text='',bytes=0;const decoder=new TextDecoder();if(reader)try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>2_000_000)throw new Error('Page exceeds size limit');text+=decoder.decode(part.value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();}if((response.headers.get('content-type')||'').includes('html'))text=text.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi,'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');output={content:bounded(text)};break;}
     case 'Skill':output=await this.skill(session,a);break;
     case 'TodoList':if(a.todos!==undefined){if(a.todos.filter((t:any)=>t.status==='in_progress').length>1)throw new Error('Only one todo may be in_progress');session.todos=a.todos;}output={content:JSON.stringify({todos:session.todos})};break;
     case 'CreateGoal':if(session.goal&&session.goal.status!=='complete'&&!a.replace)throw new Error('An unfinished goal already exists');session.goal={objective:a.objective,completionCriterion:a.completionCriterion,status:'active',startedAt:this.clock(),turns:session.turns,tokens:session.usage};output={content:JSON.stringify(session.goal)};break;
@@ -233,9 +254,9 @@ export class ToolHost {
     case 'TaskList':output={content:JSON.stringify([...this.tasks.values()].filter(t=>t.owner===session.id&&(!a.active_only||active(t))).slice(-a.limit).map(({output,...meta})=>meta))};break;
     case 'TaskOutput':{const task=this.ownTask(session,a.task_id);if(a.block&&active(task)){const until=performance.now()+Math.min(a.timeout,3600)*1000;while(active(task)&&performance.now()<until){if(signal.aborted)throw new Error('Cancelled');await new Promise(resolve=>setTimeout(resolve,50));}}output={content:JSON.stringify(task)};break;}
     case 'TaskStop':{const task=this.ownTask(session,a.task_id);if(active(task)){this.kill(task.id);task.status='cancelled';task.output=bounded(task.output+'\n'+a.reason);this.update(task);}output={content:JSON.stringify(task)};break;}
-    case 'CronCreate':{if(session.crons.length>=50)throw new Error('50 cron jobs per session maximum');const now=this.clock(),nextAt=cronNext(a.cron,now),job:CronJob={id:randomUUID(),cron:a.cron,prompt:a.prompt,recurring:a.recurring??true,nextAt,createdAt:now,expiresAt:now+7*86400000};session.crons.push(job);output={content:JSON.stringify(job)};break;}
-    case 'CronList':output={content:JSON.stringify({jobs:session.crons})};break;
-    case 'CronDelete':{const index=session.crons.findIndex(j=>j.id===a.id);if(index<0)throw new Error('Unknown cron job');session.crons.splice(index,1);output={content:'Cron job deleted'};break;}
+    case 'CronCreate':{if(this.hooks.mainCron){const job=this.hooks.mainCron.create({cron:a.cron,prompt:a.prompt,recurring:a.recurring??true});output={content:JSON.stringify({id:job.id,cron:a.cron,recurring:a.recurring??true,nextFireAt:new Date(job.nextAt).toISOString(),wakes:'main-character',note:'到点时唤醒的是主角色（陪伴主代理），由它决定如何提醒用户或再委派任务；不会重新进入本执行会话。'})};break;}if(session.crons.length>=50)throw new Error('50 cron jobs per session maximum');const now=this.clock(),nextAt=cronNext(a.cron,now),job:CronJob={id:randomUUID(),cron:a.cron,prompt:a.prompt,recurring:a.recurring??true,nextAt,createdAt:now,expiresAt:now+7*86400000};session.crons.push(job);output={content:JSON.stringify(job)};break;}
+    case 'CronList':output={content:JSON.stringify({jobs:this.hooks.mainCron?this.hooks.mainCron.list():session.crons})};break;
+    case 'CronDelete':{if(this.hooks.mainCron){if(!this.hooks.mainCron.delete(a.id))throw new Error('Unknown cron job');output={content:'Cron job deleted'};break;}const index=session.crons.findIndex(j=>j.id===a.id);if(index<0)throw new Error('Unknown cron job');session.crons.splice(index,1);output={content:'Cron job deleted'};break;}
     default:throw new Error('No execution backend for '+name);
    }
    this.save(session);return output;

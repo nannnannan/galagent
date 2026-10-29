@@ -1,0 +1,122 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "my-bean",
+  "name": "小豆丁",
+  "description": "一颗软乎乎的豆子，头顶的小芽会轻轻摇摆。这是自定义小人的入门模板。",
+  "author": "你的名字",
+  "tags": [
+    "模板",
+    "豆子"
+  ],
+  "size": [20, 20],
+  "palette": {
+    "o": "#3b2a3a",
+    "f": "#ffd6a5",
+    "F": "#f0b07a",
+    "k": "#2d1b2e",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f",
+    "g": "#79c26a"
+  },
+  "base": [
+    "....................",
+    "....................",
+    "....................",
+    "......oooooooo......",
+    "....ooffffffffoo....",
+    "...offffffffffffo...",
+    "..offffffffffffffo..",
+    "..offffffffffffffo..",
+    ".offffffffffffffffo.",
+    ".offffffffffffffffo.",
+    ".offffffffffffffffo.",
+    ".offffffffffffffffo.",
+    ".offffffffffffffffo.",
+    ".oFffffffffffffffFo.",
+    "..oFffffffffffffFo..",
+    "..oFFffffffffffFFo..",
+    "...oFFFffffffFFFo...",
+    "....ooFFFFFFFFoo....",
+    "......oooooooo......",
+    "...................."
+  ],
+  "anchors": {
+    "eyes": [5, 9],
+    "mouth": [8, 13],
+    "blush": [3, 12],
+    "feet": [0, 18]
+  },
+  "eyes": {
+    "neutral": [
+      "kk......kk",
+      "kk......kk",
+      "kk......kk"
+    ],
+    "curious": [
+      "kw......wk",
+      "kk......kk",
+      "kk......kk"
+    ],
+    "flustered": [
+      "k........k",
+      ".k......k.",
+      "k........k"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ]
+  },
+  "blush": [
+    "pp..........pp"
+  ],
+  "legs": [
+    [
+      ".....offo..offo.....",
+      "......oo....oo......"
+    ],
+    [
+      ".....oooo..offo.....",
+      "............oo......"
+    ],
+    [
+      ".....offo..offo.....",
+      "......oo....oo......"
+    ],
+    [
+      ".....offo..oooo.....",
+      "......oo............"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "sprout",
+      "kind": "accessory",
+      "layer": "back",
+      "at": [8, 0],
+      "frames": [
+        [
+          "gg..",
+          ".o..",
+          ".o.."
+        ],
+        [
+          "..gg",
+          "..o.",
+          "..o."
+        ]
+      ]
+    }
+  ]
+}

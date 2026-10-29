@@ -35,7 +35,6 @@ const bridge: GalAgentBridge = {
     ipcRenderer.on('galagent:roam-state', handler);
     return () => ipcRenderer.removeListener('galagent:roam-state', handler);
   },
-  readLive2DAsset: (relPath: string) => ipcRenderer.invoke('galagent:live2d-asset', relPath),
   synthesizeSpeech: (text: string) => ipcRenderer.invoke('galagent:tts-speak', text),
   cancelSpeech: () => ipcRenderer.send('galagent:tts-cancel'),
   onSpeechStop(listener) {

@@ -1,5 +1,32 @@
 # GalAgent 当前续接
 
+## 最新交付 · AGENT-MEMORY-20261029 · 主代理工具 / 并发与重试 / 每日档案 / 彩蛋与成就
+
+1. **定时改为主代理工具调用**：`runtime/core/main-tools.ts`；`companion.ts` 的 `request()` 加入最多 3 轮工具循环（助手工具轮原样回放，含思考字段）；`scheduler.ts` 支持 cron；执行器 `CronCreate/List/Delete` 经 `mainCron` 钩子唤醒主角色。
+2. **并发 / 调用审查与优化**：`runtime/core/upstream.ts`（按尝试占槽、退避释放槽、Retry-After、网络错误重试）；`openai-agent.ts` 去掉池存在时的重复本地限流；`pool.ts` 为 chat/attention 保留 2 路。
+3. **记忆 v2**：`runtime/core/daily.ts` + `companion.ts`（`scheduleDailyArchives`、`writeDaily`、`verbatimFilter`、`recentArchives`、`archive.rebuild`），设计与参考见 [docs/记忆系统-v2.md](docs/记忆系统-v2.md)。旧的每 10 次互动日记停用。
+4. **前端**：`runtime/renderer/{effects,palette,markdown,bond}.ts` 等；成就定义 `runtime/shared/achievements.ts`；截图 `docs/evidence/ui/`（28 张，含深色）。
+- 验证：typecheck、build、全部单元/集成测试通过；新增 `tests/core/agent-framework.test.ts`、每日档案两项集成测试、前端 markdown/fun/palette 测试。
+- **停止点**：仍未在 Windows 打包实机验收；真实模型网关是否接受 `tools + json_object` 需实测（不接受会自动回退，不影响聊天）。
+
+## 最新交付 · UNIVERSAL-20261029 · 普适化升级（角色卡 / 像素小人 / 定时自唤醒 / 主动陪伴设置 / 沙箱防外泄 / 界面重写）
+
+按用户 2026-10-29 的七项部署完成开发：
+
+1. **角色卡**：`runtime/shared/personas.ts`（7 张内置 + 格式校验 + 提示词拼装）、`runtime/core/persona.ts`（存取 / 选择 / 复制修改 / 导入导出）；`persona.*` 命令；「角色」页含编辑器与 AI 起草。Kimi 人设、吃醋场景（E05 不再生成）、自取名已删除。
+2. **像素小人**：`runtime/shared/pixel-sprite.ts` 格式、`runtime/shared/pixel-pets/` 14 个内置、`runtime/renderer/pixel-pet.ts` 渲染器、`runtime/core/pets.ts` 自定义小人库（`<userData>/pets/*.json`，每次 tick 自动扫描）、`skills/galagent-pixel-pet/`、`scripts/pixel-pet/`。调研记录：[docs/像素小人方案调研.md](docs/像素小人方案调研.md)。
+3. **沙箱防外泄**：`runtime/core/privacy.ts`（三档预设、脱敏规则、URL 拦截、审计、凭据路径）；`tool-host.ts` 新增文件范围、Shell / 联网开关、`checkUrl`、`skillRoots` 钩子；模型 / 执行器 / TTS 出站统一脱敏。
+4. **定时自唤醒**：`runtime/core/scheduler.ts`；协议说明 `schedulePrompt` 注入角色系统提示；`deliverSchedules` 在 tick 中投递。
+5. **主动陪伴设置**：`numericSettings` 任意数值 + 安全范围；`proactiveGate` 让间隔与上限在注意力路径上生效；免打扰时段 `inQuietHours`。
+6. **界面**：`runtime/renderer/{main,ui,pet-view,notebook,fun,voice,pet-assets}.ts` 与新 `style.css`；截图 `docs/evidence/ui/`（`npm run preview:ui`）。
+7. **仓库清理**：删除 Live2D 运行时 / 管线 / Kimi 立绘与相关旧证据、旧人设文档和过时 e2e 脚本（均可从 git `871e94d` 找回）；上下文预算 6000 → 16000 tokens。
+
+- 验证：`npm run typecheck`、`npm run build`、`npm test`（**153/153**）通过；无头 Chrome 渲染截图检查桌宠窗口与 9 个页面。
+- **停止点**：代码完成，**尚未在 Windows 上打包与实机验收**（本机为 Linux，无法运行 Windows 版 Electron）。下一步：`npx electron-builder --win dir --x64 --config.directories.output=release/dual-core --config.electronDist=node_modules/electron/dist` 后运行 `node tests/e2e/dual-core.mjs`，并人工体验拖拽、漫步、TTS 口型与真实模型的定时自唤醒。
+- 旧存档兼容：旧 Kimi 存档导入后身份名改为当前角色卡名字；旧的私有协议记录（无 `personaId`）不再回放给新角色，可见历史保留并标注原说话者。`图片素材最初版/` 与根目录 Kimi 原图未删除，确认不需要后可自行移除。
+
+下方内容为历史交付，描述的是已移除的 Kimi 人设与 Live2D 形象。
+
 ## 最新交付 · COMPANION-QUALITY-20261023 · 语音取消、目录保护、陪伴模式与反馈
 
 已完成用户授权的三个增量：

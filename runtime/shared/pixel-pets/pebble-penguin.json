@@ -1,0 +1,196 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "pebble-penguin",
+  "name": "豆豆企鹅",
+  "description": "围着红围巾的小企鹅，走路摇摇摆摆，冷冷的天也想和你挤在一起取暖。",
+  "author": "GalAgent",
+  "tags": [
+    "企鹅",
+    "围巾",
+    "摇摆"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#1e2233",
+    "n": "#3b4a75",
+    "N": "#2a3556",
+    "w": "#ffffff",
+    "W": "#dfe6f2",
+    "y": "#ffb347",
+    "Y": "#e08a2a",
+    "r": "#ff5d6e",
+    "R": "#c93e50",
+    "k": "#1e2233",
+    "e": "#6b4fa8",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    ".............oooooo.............",
+    "...........oonnnnnnoo...........",
+    ".........oonnnnnnnnnnoo.........",
+    "........onnnnnnnnnnnnnno........",
+    ".......onnnNNNNnnNNNNnnno.......",
+    ".......onNNwwwwNNwwwwNNno.......",
+    "......onnwwwwwwwwwwwwwwnno......",
+    ".....onnNwwwwwwwwwwwwwwNnno.....",
+    ".....onnwwwwwwwwwwwwwwwwnno.....",
+    ".....onnwwwwwwwwwwwwwwwwnno.....",
+    ".....onnWwwwwwwwwwwwwwwWnno.....",
+    "....onnnnwwwwwwwwwwwwwwnnnno....",
+    "...onnnnnWwwwwwwwwwwwwWnnnnno...",
+    "..onnnnnnnwwwwwwwwwwwwnnnnnnno..",
+    "..onnnnnnNwwwwwwwwwwwwNnnnnnno..",
+    "..onnnnnrrrrrrrrrrrrrrrrnnnnno..",
+    "..onnnnnRRRRRRRRRRRRRRRRnnnnno..",
+    "..oNnnnnnWwwwwwwwwwwwwWnnnnnNo..",
+    "...oNNNNnWwwwwwwwwwwwwWnNNNNo...",
+    "....oooonnWwwwwwwwwwwWnnoooo....",
+    ".......oNnWwwwwwwwwwwWnNo.......",
+    "........oNNWWwwwwwwWWNNo........",
+    ".........ooNNWWWWWWNNoo.........",
+    "...........ooNNNNNNoo...........",
+    ".............oooooo.............",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 13],
+    "mouth": [14, 16],
+    "blush": [8, 16],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "............",
+      "kk........kk",
+      "kk........kk"
+    ],
+    "curious": [
+      "kk........kk",
+      "kw........wk",
+      "kk........kk"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k..........k"
+    ],
+    "flustered": [
+      "k..........k",
+      ".k........k.",
+      "k..........k"
+    ],
+    "annoyed": [
+      "k..........k",
+      ".k........k.",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kk........kk",
+      "kw........wk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "kk........kk"
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kk........kk"
+    ],
+    "dizzy": [
+      "kk........kk",
+      "kk........kk",
+      "............"
+    ],
+    "love": [
+      "p..........p",
+      "pp........pp",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      "yyyy",
+      ".YY."
+    ],
+    "open": [
+      "yyyy",
+      "ymmy",
+      ".YY."
+    ],
+    "smile": [
+      "yyyy",
+      ".YY."
+    ],
+    "pout": [
+      ".yy.",
+      ".YY."
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".........oyyyy....yyyyo.........",
+      "..........oooo....oooo..........",
+      "................................",
+      "................................"
+    ],
+    [
+      "..........ooo.....yyyyo.........",
+      "..................oooo..........",
+      "................................",
+      "................................"
+    ],
+    [
+      ".........oyyyy....yyyyo.........",
+      "..........oooo....oooo..........",
+      "................................",
+      "................................"
+    ],
+    [
+      ".........oyyyy.....ooo..........",
+      "..........oooo..................",
+      "................................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "scarf",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [17, 20],
+      "frames": [
+        [
+          "..oo..",
+          ".orro.",
+          ".orro.",
+          ".orro.",
+          "oRRRo.",
+          ".ooo..",
+          "......"
+        ],
+        [
+          "..oo..",
+          ".orro.",
+          ".orro.",
+          ".orro.",
+          ".orro.",
+          ".oRRRo",
+          "..ooo."
+        ]
+      ]
+    }
+  ]
+}

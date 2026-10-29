@@ -1,11 +1,21 @@
 import type { AppCommand } from '../shared/contracts';
-import { validMode } from '../shared/companionship';
+import { validMode, validTopic } from '../shared/companionship';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
-const settingsBounds: Record<string, [number, number]> = {
-  quietUntil: [0, 4_000_000_000_000], proactiveIntervalMinutes: [5, 1440], proactiveHourlyLimit: [0, 12], proactiveDailyLimit: [0, 48], petScale: [0.6, 1.5], ttsSpeed: [0.5, 2.0],
-};
-const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled']);
+// Numbers the user types are accepted as long as they are finite; the core clamps them into a sane range.
+const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed']);
+const strings = (value: unknown, count: number, width: number) => Array.isArray(value) && value.length <= count && value.every(item => bounded(item, width));
+const slug = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(value);
+const id = (value: unknown) => bounded(value, 100) && !!value.trim();
+const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions']);
+// Shared by tts.configure and settings.update so neither path can point TTS at a plaintext or credential-bearing URL.
+function checkTtsUrl(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return;
+  let u: URL;
+  try { u = new URL(value.trim()); } catch { throw new Error('TTS 地址无效。'); }
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname))) throw new Error('远程 TTS 接口需要 HTTPS。');
+  if (u.username || u.password) throw new Error('TTS 地址不能内嵌凭据。');
+}
 const settingStrings: Record<string, number> = { ttsBaseUrl: 400, ttsModel: 100, ttsVoice: 100 };
 export function validateCommand(value: unknown): AppCommand {
   if (!plain(value) || !bounded(value.type, 64)) throw new Error('无效操作。');
@@ -40,6 +50,10 @@ export function validateCommand(value: unknown): AppCommand {
       if (!bounded(command.messageId, 100) || !command.messageId || !['welcome', 'mute'].includes(String(command.value))) throw new Error('互动反馈无效。');
       break;
     case 'initiative.resetFeedback': break;
+    case 'initiative.topic':
+      if (!validTopic(command.topic) || typeof command.enabled !== 'boolean') throw new Error('话题设置无效。'); break;
+    case 'pet.emote':
+      if (!['idle', 'nod', 'sway', 'peek', 'sulk', 'celebrate', 'wave', 'sparkle', 'doodle', 'sleep', 'dizzy', 'love'].includes(String(command.action)) || (command.bubble !== undefined && !bounded(command.bubble, 80))) throw new Error('动作无效。'); break;
     case 'pet.roam':
       if (command.active !== undefined && typeof command.active !== 'boolean') throw new Error('漫步状态无效。');
       if (command.direction !== undefined && command.direction !== -1 && command.direction !== 1) throw new Error('漫步方向无效。');
@@ -49,11 +63,7 @@ export function validateCommand(value: unknown): AppCommand {
     case 'tts.configure': {
       if (command.ttsEnabled !== undefined && typeof command.ttsEnabled !== 'boolean') throw new Error('TTS 开关无效。');
       if (command.ttsBaseUrl !== undefined && !bounded(command.ttsBaseUrl, 400)) throw new Error('TTS 地址无效。');
-      if (typeof command.ttsBaseUrl === 'string' && command.ttsBaseUrl.trim()) {
-        const u = new URL(command.ttsBaseUrl.trim());
-        if (u.protocol !== 'https:' && !(u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname))) throw new Error('远程 TTS 接口需要 HTTPS。');
-        if (u.username || u.password) throw new Error('TTS 地址不能内嵌凭据。');
-      }
+      checkTtsUrl(command.ttsBaseUrl);
       if (command.ttsModel !== undefined && !bounded(command.ttsModel, 100)) throw new Error('TTS 模型无效。');
       if (command.ttsVoice !== undefined && !bounded(command.ttsVoice, 100)) throw new Error('TTS 音色无效。');
       if (command.ttsSpeed !== undefined && (typeof command.ttsSpeed !== 'number' || !Number.isFinite(command.ttsSpeed) || command.ttsSpeed < 0.5 || command.ttsSpeed > 2.0)) throw new Error('TTS 语速超出范围。');
@@ -72,13 +82,51 @@ export function validateCommand(value: unknown): AppCommand {
       for (const [key, val] of Object.entries(command.settings)) {
         if (key === 'companionMode') { if (!validMode(val)) throw new Error('陪伴模式无效。'); }
         else if (settingFlags.has(key)) { if (typeof val !== 'boolean') throw new Error('相处设置格式不正确。'); }
-        else if (settingStrings[key]) { if (!bounded(val, settingStrings[key])) throw new Error('相处设置格式不正确。'); }
+        else if (settingStrings[key]) { if (!bounded(val, settingStrings[key])) throw new Error('相处设置格式不正确。'); if (key === 'ttsBaseUrl') checkTtsUrl(val); }
         else if (key === 'captureBlocklist') { if (!Array.isArray(val) || val.length > 80 || val.some(item => !bounded(item, 80))) throw new Error('截屏黑名单格式不正确。'); }
         else if (key === 'forbiddenPaths') { if (!Array.isArray(val) || val.length > 200 || val.some(item => !bounded(item, 500) || item.includes('\0'))) throw new Error('禁止访问目录列表格式不正确。'); }
-        else if (settingsBounds[key]) { const [min, max] = settingsBounds[key]; if (typeof val !== 'number' || !Number.isFinite(val) || val < min || val > max) throw new Error('相处设置超出范围。'); }
+        else if (settingNumbers.has(key)) { if (typeof val !== 'number' || !Number.isFinite(val)) throw new Error('请输入有效的数字。'); }
+        else if (key === 'petId') { if (val !== '' && !slug(val)) throw new Error('小人形象无效。'); }
+        else if (key === 'quietHours') { if (!plain(val) || (val.enabled !== undefined && typeof val.enabled !== 'boolean') || (val.start !== undefined && !bounded(val.start, 5)) || (val.end !== undefined && !bounded(val.end, 5))) throw new Error('免打扰时段格式无效。'); }
+        else if (key === 'sandbox') {
+          if (!plain(val)) throw new Error('沙箱设置格式无效。');
+          for (const [k, v] of Object.entries(val)) {
+            if (k === 'level') { if (!['strict', 'standard', 'open'].includes(String(v))) throw new Error('沙箱级别无效。'); }
+            else if (k === 'fileScope') { if (!['workspace-read', 'workspace', 'anywhere'].includes(String(v))) throw new Error('文件范围无效。'); }
+            else if (['shell', 'network', 'redactSecrets', 'redactPersonal'].includes(k)) { if (typeof v !== 'boolean') throw new Error('沙箱开关无效。'); }
+            else if (k === 'allowedDomains') { if (!strings(v, 100, 200)) throw new Error('允许域名列表格式无效。'); }
+            else if (k === 'sensitiveWords') { if (!strings(v, 200, 100)) throw new Error('敏感词列表格式无效。'); }
+            else throw new Error('未知沙箱设置。');
+          }
+        }
         else throw new Error('未知相处设置。');
       }
       break;
+    case 'persona.select': case 'persona.delete': case 'persona.export':
+      if (!id(command.id)) throw new Error('角色卡标识无效。'); break;
+    case 'persona.save':
+      if (command.id !== undefined && !id(command.id)) throw new Error('角色卡标识无效。');
+      if (!plain(command.persona) || JSON.stringify(command.persona).length > 20000) throw new Error('角色卡格式无效。'); break;
+    case 'persona.import':
+      if (!bounded(command.text, 64000) || !command.text.trim()) throw new Error('角色卡文件为空或过大。'); break;
+    case 'persona.generate':
+      if (!bounded(command.brief, 1000) || !command.brief.trim()) throw new Error('请用一句话描述想要的角色。'); break;
+    case 'pet.select':
+      if (command.id !== '' && !slug(command.id)) throw new Error('小人形象无效。'); break;
+    case 'pet.get': case 'pet.delete':
+      if (!slug(command.id)) throw new Error('小人形象无效。'); break;
+    case 'pet.import':
+      if (!bounded(command.text, 262144) || !command.text.trim()) throw new Error('小人文件为空或过大。'); break;
+    case 'pet.openFolder': case 'privacy.clearAudit': case 'privacy.lockdown': break;
+    case 'schedule.add':
+      if (!bounded(command.note, 300) || !command.note.trim()) throw new Error('提醒内容为空或过长。');
+      if (command.inMinutes !== undefined && (typeof command.inMinutes !== 'number' || !Number.isFinite(command.inMinutes))) throw new Error('提醒时间无效。');
+      if (command.at !== undefined && !bounded(command.at, 40)) throw new Error('提醒时间无效。');
+      if (command.inMinutes === undefined && command.at === undefined) throw new Error('请填写提醒时间。');
+      if (command.repeatMinutes !== undefined && (typeof command.repeatMinutes !== 'number' || !Number.isFinite(command.repeatMinutes))) throw new Error('重复间隔无效。');
+      break;
+    case 'schedule.cancel':
+      if (!id(command.id)) throw new Error('提醒标识无效。'); break;
     case 'pet.interact':
       if (!['tap', 'drag'].includes(String(command.interaction))) throw new Error('未知互动。'); break;
     case 'shell.drag':

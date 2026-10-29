@@ -1,0 +1,272 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "fox-kit",
+  "name": "橘子",
+  "description": "机灵的小橘狐，大尾巴蓬松得像一团火，听到你的声音耳朵就会竖起来。",
+  "author": "GalAgent",
+  "tags": [
+    "狐狸",
+    "机灵",
+    "毛茸茸"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#4a2418",
+    "f": "#f5893a",
+    "F": "#d0662a",
+    "y": "#fff3e3",
+    "Y": "#ecd2bd",
+    "d": "#5a3326",
+    "i": "#ffd0b3",
+    "n": "#3a2018",
+    "b": "#5a3326",
+    "k": "#2d1b2e",
+    "e": "#8a4a20",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "......o..................o......",
+    ".....odo................odo.....",
+    ".....odio..............oido.....",
+    ".....ofifo....oooo....ofifo.....",
+    ".....ofiifooooffffoooofiifo.....",
+    ".....offiffffffffffffffiffo.....",
+    ".....oFFffffffffffffffffFFo.....",
+    "......ooffffffffffffffffoo......",
+    "......offffffffffffffffffo......",
+    ".....offffffffffffffffffffo.....",
+    ".....offffffffffffffffffffo.....",
+    "....offffffffffffffffffffffo....",
+    "....offffffffffffffffffffffo....",
+    "....offffffffffffffffffffffo....",
+    "....oFffffffffffffffffffffFo....",
+    ".....offyyyyyyyyyyyyyyyyffo.....",
+    ".....oFfyyyyyyyyyyyyyyyyfFo.....",
+    "......oYyyyyyyyyyyyyyyyyYo......",
+    ".......oYyyyyyyyyyyyyyyYo.......",
+    "........oYYyyyyyyyyyyYYo........",
+    ".........ooyyyyyyyyyyoo.........",
+    "..........offfyyyyfffo..........",
+    "..........offyyyyyyffo..........",
+    "..........offyyyyyyffo..........",
+    "..........offfyyyyfffo..........",
+    "..........offffffffffo..........",
+    "..........oFFFFFFFFFFo..........",
+    "...........oooooooooo...........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 13],
+    "mouth": [13, 18],
+    "blush": [8, 18],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      "..nn..",
+      ".k..k.",
+      "..kk.."
+    ],
+    "open": [
+      "..nn..",
+      ".kmmk.",
+      "..kk.."
+    ],
+    "smile": [
+      "..nn..",
+      "k....k",
+      ".kkkk."
+    ],
+    "pout": [
+      "..nn..",
+      "..kk..",
+      ".k..k."
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      "............ddd..ddd............",
+      "...........odddoodddo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............ddd..ddd............",
+      "............ooo.odddo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      "............ddd..ddd............",
+      "...........odddoodddo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............ddd..ddd............",
+      "...........odddo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "tail",
+      "kind": "tail",
+      "layer": "back",
+      "at": [20, 11],
+      "frames": [
+        [
+          ".....ooo....",
+          "....oyyyo...",
+          "...oyyyyyo..",
+          "...oyyyyyo..",
+          "..ofyyyyyo..",
+          ".offyyyyffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offfffffFo.",
+          ".offfffffo..",
+          "oFffffffFo..",
+          ".oFffffFo...",
+          "..oFFFFo....",
+          "...oooo....."
+        ],
+        [
+          "......oo....",
+          ".....oyyo...",
+          "....oyyyyo..",
+          "...ofyyyyyo.",
+          "..offyyyyyo.",
+          "..offyyyyfo.",
+          "..offffffffo",
+          "..offffffffo",
+          ".offfffffffo",
+          ".oFffffffffo",
+          "..offffffffo",
+          "..offfffffFo",
+          "..offfffffo.",
+          ".offfffffFo.",
+          "oFffffffFo..",
+          ".oFffffFo...",
+          "..oFFFFo....",
+          "...oooo....."
+        ],
+        [
+          ".....ooo....",
+          "....oyyyo...",
+          "...oyyyyyo..",
+          "...oyyyyyo..",
+          "..ofyyyyyo..",
+          ".offyyyyffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offffffffo.",
+          ".offfffffFo.",
+          ".offfffffo..",
+          "oFffffffFo..",
+          ".oFffffFo...",
+          "..oFFFFo....",
+          "...oooo....."
+        ],
+        [
+          "....ooo.....",
+          "...oyyyo....",
+          "..oyyyyyo...",
+          "..oyyyyyo...",
+          ".ofyyyyyfo..",
+          ".offyyyyfo..",
+          "offffffffo..",
+          "offffffffo..",
+          "offfffffffo.",
+          "offffffffFo.",
+          "offffffffo..",
+          "oFfffffffo..",
+          ".offfffffo..",
+          ".offfffffo..",
+          "oFffffffFo..",
+          ".oFffffFo...",
+          "..oFFFFo....",
+          "...oooo....."
+        ]
+      ]
+    }
+  ]
+}

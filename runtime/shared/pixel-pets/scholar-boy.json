@@ -1,0 +1,202 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "scholar-boy",
+  "name": "书生",
+  "description": "安静的少年，戴着圆框眼镜，怀里抱着一本书，偶尔捧杯热茶陪你慢慢想事情。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "沉稳",
+    "眼镜"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#2b2530",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#4a3b35",
+    "H": "#30262a",
+    "L": "#7b665a",
+    "c": "#4f7a6a",
+    "C": "#3a5a4f",
+    "d": "#f4f1ea",
+    "g": "#8a6ad0",
+    "y": "#c98b4b",
+    "Y": "#8f5c2f",
+    "b": "#3a3040",
+    "k": "#2d1b2e",
+    "e": "#6b4fa8",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "............oooooooo............",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhhHhhhhhhhhHhhhhhho....",
+    "....ohhhhHHSHhhHHhhHSHHhhhho....",
+    "....ohhhHSSsSHHSSHHSsSSHhhho....",
+    "....ohhHSssssSSssSSssssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....oHHhsssssssssssssssshHHo....",
+    ".....ooHssssssssssssssssHoo.....",
+    ".......oHssssssssssssssHo.......",
+    "........oHssssssssssssHo........",
+    ".........oossssssssssoo.........",
+    "........oo.oodssssdoo.oo........",
+    ".......occooccddddccoocco.......",
+    ".......oCCoCCCCddCCCCoCCo.......",
+    ".......oCCssYyyyyyyyssCCo.......",
+    ".......ossssYYYYYYYysssso.......",
+    "........ooCCYyyyyyyyCCoo........",
+    ".........oCCYyyyyyyyCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 13],
+    "mouth": [14, 19],
+    "blush": [8, 18],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..CC.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "glasses",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [9, 12],
+      "frames": [
+        [
+          ".ggg......ggg.",
+          "g...g....g...g",
+          "g...gggggg...g",
+          "g...g....g...g",
+          "g...g....g...g",
+          ".ggg......ggg."
+        ]
+      ]
+    }
+  ]
+}

@@ -4,6 +4,15 @@
 // the ceiling wait in a priority queue instead of failing.
 export type PoolPriority = 'chat' | 'attention' | 'execution' | 'background';
 export const POOL_LIMIT = 20;
+/** Sleep that rejects as soon as `signal` aborts, so retry backoff never pins a pool slot after cancellation. */
+export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+        if (signal?.aborted) { reject(new Error('已取消')); return; }
+        const onAbort = () => { clearTimeout(timer); reject(new Error('已取消')); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
 const rank: Record<PoolPriority, number> = { chat: 0, attention: 1, execution: 2, background: 3 };
 type Waiter = { priority: PoolPriority; seq: number; wake: () => void; abort: () => void };
 export type PoolStats = { limit: number; effectiveLimit: number; inflight: number; queued: number; peak: number; byPriority: Record<PoolPriority, number>; throttledUntil: number };
@@ -17,7 +26,10 @@ export class RequestPool {
     private penalty = 0;
     private throttledUntil = 0;
     private closed = false;
-    constructor(readonly limit = POOL_LIMIT, private clock: () => number = () => Date.now()) {
+    /** Slots execution/background work may never take, so the user's chat and the attention agent are not stuck behind a swarm of long streaming calls. */
+    readonly reserve: number;
+    constructor(readonly limit = POOL_LIMIT, private clock: () => number = () => Date.now(), reserve?: number) {
+        this.reserve = Math.max(0, Math.min(limit - 1, reserve ?? (limit >= 8 ? 2 : 0)));
         if (!Number.isInteger(limit) || limit < 1 || limit > POOL_LIMIT) throw new Error(`并发上限必须在 1 至 ${POOL_LIMIT} 之间`);
     }
     /** Upstream throttling halves the usable ceiling for a minute; never below one slot. */
@@ -29,12 +41,14 @@ export class RequestPool {
         this.penalty = Math.min(4, this.penalty + 1);
         this.throttledUntil = this.clock() + durationMs;
     }
+    /** Ceiling for one priority class: chat and attention may use every slot, bulk work leaves headroom. */
+    private ceiling(priority: PoolPriority, now = this.clock()) { const limit = this.effectiveLimit(now); return rank[priority] >= rank.execution ? Math.max(1, limit - this.reserve) : limit; }
     stats(): PoolStats { return { limit: this.limit, effectiveLimit: this.effectiveLimit(), inflight: this.inflight, queued: this.waiters.length, peak: this.peak, byPriority: { ...this.active }, throttledUntil: this.throttledUntil }; }
     async acquire(priority: PoolPriority, signal?: AbortSignal): Promise<() => void> {
         if (this.closed) throw new Error('并发池已关闭');
         if (signal?.aborted) throw new Error('已取消');
         // Even with free capacity, a higher-priority waiter goes first.
-        if (this.inflight >= this.effectiveLimit() || this.waiters.some(w => rank[w.priority] <= rank[priority])) {
+        if (this.inflight >= this.ceiling(priority) || this.waiters.some(w => rank[w.priority] <= rank[priority])) {
             await new Promise<void>((resolve, reject) => {
                 const waiter: Waiter = {
                     priority, seq: ++this.seq,
@@ -53,7 +67,8 @@ export class RequestPool {
     }
     private take(priority: PoolPriority) { this.inflight++; this.active[priority]++; this.peak = Math.max(this.peak, this.inflight); }
     private drain() {
-        while (this.waiters.length && this.inflight < this.effectiveLimit()) {
+        // Waiters are sorted by priority, so when the head cannot fit under its ceiling nobody behind it can either.
+        while (this.waiters.length && this.inflight < this.ceiling(this.waiters[0].priority)) {
             const next = this.waiters.shift()!;
             this.take(next.priority);
             next.wake();

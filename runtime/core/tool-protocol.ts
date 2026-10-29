@@ -21,7 +21,7 @@ export async function parseModelReply(response:Response,signal?:AbortSignal):Pro
   const data=event.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');if(!data)return;
   if(done)throw new Error('结束标记后仍有模型数据');if(data.trim()==='[DONE]'){done=true;return;}
   const chunk=JSON.parse(data);if(chunk.error)throw new Error('模型流返回错误');if(typeof chunk.usage?.total_tokens==='number')usage=chunk.usage.total_tokens;
-  for(const choice of chunk.choices||[]){if(choice.index!==0)continue;if(choice.finish_reason!==null&&choice.finish_reason!==undefined){if(finishReason!==undefined&&finishReason!==choice.finish_reason)throw new Error('模型结束标记冲突');finishReason=choice.finish_reason;}
+  for(const choice of chunk.choices||[]){if((choice.index??0)!==0)continue;if(choice.finish_reason!==null&&choice.finish_reason!==undefined){if(finishReason!==undefined&&finishReason!==choice.finish_reason)throw new Error('模型结束标记冲突');finishReason=choice.finish_reason;}
    const delta=choice.delta||{};if(delta.role!==undefined&&delta.role!==null&&delta.role!=='assistant')throw new Error('模型消息角色无效');
    for(const [key,value] of Object.entries(delta)){
     if(value===null||value===undefined||key==='role')continue;
@@ -38,7 +38,8 @@ export async function parseModelReply(response:Response,signal?:AbortSignal):Pro
   }
  };
  try{while(true){if(signal?.aborted)throw new Error('任务已取消');const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>limit)throw new Error('模型响应超过大小上限');buffer+=decoder.decode(part.value,{stream:true});
-   if(streaming){buffer=buffer.replace(/\r\n/g,'\n');let boundary;while((boundary=buffer.indexOf('\n\n'))>=0){apply(buffer.slice(0,boundary));buffer=buffer.slice(boundary+2);}}
+   // SSE allows CRLF, LF or bare CR line endings; hold back a trailing CR in case its LF arrives in the next chunk.
+   if(streaming){const tail=buffer.endsWith('\r')?'\r':'';buffer=buffer.slice(0,buffer.length-tail.length).replace(/\r\n?/g,'\n')+tail;let boundary;while((boundary=buffer.indexOf('\n\n'))>=0){apply(buffer.slice(0,boundary));buffer=buffer.slice(boundary+2);}}
   }if(signal?.aborted)throw new Error('任务已取消');buffer+=decoder.decode();
   if(!streaming){const body=JSON.parse(buffer);const choice=body.choices?.[0];return validateReply(choice?.message,choice?.finish_reason,body.usage?.total_tokens);}
   if(buffer.trim())apply(buffer);if(!done)throw new Error('模型流中断，工具参数未执行');if(calls.size)message.tool_calls=[...calls].sort(([a],[b])=>a-b).map(([,call])=>call);

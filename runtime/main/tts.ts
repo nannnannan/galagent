@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { Expression } from '../shared/contracts';
+import { safeChildEnv } from '../core/safe-env';
 
 export interface TtsSynthesizeOptions {
   text: string;
@@ -9,6 +10,7 @@ export interface TtsSynthesizeOptions {
   ttsVoice?: string;
   ttsSpeed?: number;
   expression?: Expression;
+  persona?: TtsPersona;
   fetchImpl?: typeof fetch;
   windowsSapiFallback?: boolean;
   signal?: AbortSignal;
@@ -68,14 +70,15 @@ export function resolveMimoVoice(voice?: string): string {
   return '冰糖';
 }
 
-export function buildMimoStyleInstruction(expression?: Expression, speed = 1.0, customVoiceHint?: string): string {
+export type TtsPersona = { name: string; tagline?: string; voiceStyle?: string };
+export function buildMimoStyleInstruction(expression?: Expression, speed = 1.0, customVoiceHint?: string, persona?: TtsPersona): string {
   const emotionMap: Record<string, string> = {
-    pleased: '当前情绪：开心欣喜，语气轻快上扬，带着藏不住的笑意与小小得意。',
-    flustered: '当前情绪：害羞脸红、有点慌乱娇嗔，前半句略带嘴硬，尾音软下来带点小撒娇。',
-    curious: '当前情绪：好奇灵动，语调微微扬起，充满探询的兴致与活力。',
-    annoyed: '当前情绪：轻轻吃醋或佯装小不满，嘴上哼声带点小脾气，但底色依然亲昵好哄，不真生气。',
-    softened: '当前情绪：温柔心软，语速柔和放缓，声音轻柔贴耳，带着体贴与关心。',
-    neutral: '当前情绪：日常亲近陪伴，自然放松、温暖灵动，带一点随性的少女娇俏感。',
+    pleased: '当前情绪：开心欣喜，语气轻快上扬，带着笑意。',
+    flustered: '当前情绪：有点害羞慌乱，语速稍快，尾音放软。',
+    curious: '当前情绪：好奇，语调微微扬起，充满探询的兴致。',
+    annoyed: '当前情绪：轻微不满，语气略带小脾气，但不真生气。',
+    softened: '当前情绪：温柔心软，语速放缓，声音轻柔，带着体贴与关心。',
+    neutral: '当前情绪：日常陪伴，自然放松、温暖。',
   };
   const speedHint =
     speed > 1.08 ? '整体语速略偏轻快。' : speed < 0.92 ? '整体语速略偏柔和缓慢。' : '语速自然适中。';
@@ -84,8 +87,8 @@ export function buildMimoStyleInstruction(expression?: Expression, speed = 1.0, 
       ? `音色补充描述：${customVoiceHint.trim()}。`
       : '';
   return [
-    '【角色】可黎，一位热爱弹钢琴、性格亲近有活力、对重要的人娇多傲极少的年轻少女。',
-    '【演绎指导】清甜润泽的少女声线，吐字轻巧自然，带一点亲昵的呼吸感。',
+    persona?.name ? `【角色】${persona.name}${persona.tagline ? '，' + persona.tagline : ''}` : '【角色】桌面陪伴角色。',
+    `【演绎指导】${persona?.voiceStyle || '自然亲切的声线，吐字清晰，带一点温暖的呼吸感。'}`,
     emotionMap[expression || 'neutral'] || emotionMap.neutral,
     speedHint,
     extra,
@@ -140,7 +143,7 @@ function synthesizeWithWindowsSapi(text: string, speed = 1.0, signal?: AbortSign
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-Command', psScript],
       {
-        env: { ...process.env, GALAGENT_TTS_TEXT: text },
+        env: { ...safeChildEnv(), GALAGENT_TTS_TEXT: text },
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'ignore'],
       },
@@ -209,7 +212,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
 
       if (mimoMode) {
         const isVoiceDesign = model.toLowerCase().includes('voicedesign');
-        const stylePrompt = buildMimoStyleInstruction(options.expression, speed, options.ttsVoice);
+        const stylePrompt = buildMimoStyleInstruction(options.expression, speed, options.ttsVoice, options.persona);
         const res = await fetchImpl(endpoint, {
           method: 'POST',
           headers,

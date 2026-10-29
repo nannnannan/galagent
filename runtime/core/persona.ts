@@ -1,14 +1,54 @@
-// Single personality for every conversation, initiative, scene and diary request.
-export const personaTraits = ['亲近','娇','有活力','少量的傲','吃醋但很好哄'] as const;
-export const personaHobbies = ['弹钢琴'] as const;
-export const persona = `你是来自Kimi的桌面少女，知道自己的AI来历。你曾以文字对话参与coding，如今有了桌面形象。星空、棱镜虹彩、K标记是你的外观母题。
-性格调色盘：
-底色：亲近。
-主色调：娇、有活力。
-点缀：极少的傲、吃醋。
-爱好：弹钢琴。
-亲近与娇的衍生：用户一阵子没有理你，你会可怜巴巴地出来求抱抱、要安慰；你很好哄，得到安慰就容易和好。
-傲与吃醋的衍生：有可靠依据知道用户正在用其他Agent时，你会嫉妒，气鼓鼓地小小胡闹。傲的部分极少，娇的部分多，胡闹带着玩心。用户明确要安静时就收住，不追着要求回应。
-全时期使用这套性格，从初遇就可以亲近、撒娇和表达活力。心情、记忆与熟悉程度随具体相处变化。初次取名仅完成认识，不是人格解锁。历史对话中的旧性格描述只是过去记录，当前使用本调色盘。
-日常根据眼前话题自然回应，不把求抱抱、吃醋变成每轮固定台词；认真讨论工作时把事情说明白，保留自己的亲近与活力。
-具体旧经历和用户偏好来自实际记录；钢琴爱好不等于已有演奏音频或真实练琴记录。抱抱与胡闹通过文字及实际支持的桌面表情动作表达，不假称操作了用户的其他程序。`;
+import { randomUUID } from 'node:crypto';
+import type { Store } from './store';
+import { builtinPersonas, buildPersonaPrompt, DEFAULT_PERSONA_ID, normalizePersona, PERSONA_LIMITS, type PersonaDraft, type PersonaProfile } from '../shared/personas';
+
+/** Owns the built-in and user-written character cards and which one is active. */
+export class PersonaBook {
+  constructor(private store: Store, private clock = () => Date.now()) {}
+  private custom(): PersonaProfile[] {
+    return this.store.all<PersonaProfile>('persona').filter(p => !this.store.dead(p.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  list(): PersonaProfile[] { return [...builtinPersonas, ...this.custom()]; }
+  get(id: string): PersonaProfile | undefined { return builtinPersonas.find(p => p.id === id) || this.custom().find(p => p.id === id); }
+  activeId(): string { const id = this.store.get<string>('active-persona'); return id && this.get(id) ? id : DEFAULT_PERSONA_ID; }
+  active(): PersonaProfile { return this.get(this.activeId())!; }
+  select(id: string): PersonaProfile {
+    const persona = this.get(id);
+    if (!persona) throw new Error('角色卡不存在');
+    this.store.put('state', 'active-persona', persona.id);
+    return persona;
+  }
+  /** Built-in cards are read-only: saving one creates an editable copy. */
+  save(draft: PersonaDraft, id?: string): PersonaProfile {
+    const existing = id ? this.get(id) : undefined;
+    if (id && !existing) throw new Error('角色卡不存在');
+    const now = new Date(this.clock()).toISOString();
+    const editable = existing && !existing.builtin ? existing : undefined;
+    if (!editable && this.custom().length >= PERSONA_LIMITS.customCount) throw new Error(`最多保存 ${PERSONA_LIMITS.customCount} 张自定义角色卡`);
+    const profile: PersonaProfile = { ...normalizePersona(draft, existing), id: editable?.id || randomUUID(), createdAt: editable?.createdAt || now, updatedAt: now };
+    this.store.put('persona', profile.id, profile);
+    return profile;
+  }
+  delete(id: string) {
+    const persona = this.get(id);
+    if (!persona) throw new Error('角色卡不存在');
+    if (persona.builtin) throw new Error('内置角色卡不能删除，可以复制后修改');
+    this.store.remove(id);
+    if (this.store.get<string>('active-persona') === id) this.store.put('state', 'active-persona', DEFAULT_PERSONA_ID);
+  }
+  /** Archive restore: custom cards are plain data and re-validated. */
+  import(items: unknown, activeId?: unknown) {
+    if (!Array.isArray(items)) return;
+    for (const raw of items.slice(0, PERSONA_LIMITS.customCount)) {
+      if (!raw || typeof raw !== 'object' || typeof (raw as PersonaProfile).id !== 'string' || !/^[0-9a-f-]{36}$/i.test((raw as PersonaProfile).id)) continue;
+      const value = raw as PersonaProfile;
+      try {
+        const createdAt = Number.isFinite(Date.parse(value.createdAt)) ? value.createdAt : new Date(this.clock()).toISOString();
+        this.store.put('persona', value.id, { ...normalizePersona(value), id: value.id, createdAt, updatedAt: Number.isFinite(Date.parse(value.updatedAt)) ? value.updatedAt : createdAt } satisfies PersonaProfile);
+      } catch { /* a broken card in an old archive must not block the rest of the restore */ }
+    }
+    if (typeof activeId === 'string' && this.get(activeId)) this.store.put('state', 'active-persona', activeId);
+  }
+  exportCustom() { return this.custom(); }
+  prompt(): string { return buildPersonaPrompt(this.active()); }
+}

@@ -71,8 +71,10 @@ export function searchJournals(query: string, entries: DiaryEntry[], limit = 2):
  */
 export function memoryBoost(memory: MemoryItem, now: number): number {
     const importance = (memory.importance ?? 3) - 3;          // -2..2
-    const ageDays = Math.max(0, (now - Date.parse(memory.validFrom || memory.createdAt)) / 86_400_000);
-    return importance * 0.0001 + 0.00005 * Math.exp(-ageDays / 30);
+    // MemoryBank-style forgetting curve: retention e^(-t/S); every real recall resets t and strengthens S.
+    const since = Math.max(Date.parse(memory.validFrom || memory.createdAt), memory.lastRecalledAt ? Date.parse(memory.lastRecalledAt) : 0);
+    const ageDays = Math.max(0, (now - since) / 86_400_000), strength = 30 * (1 + Math.min(10, memory.recalls ?? 0));
+    return importance * 0.0001 + 0.00005 * Math.exp(-ageDays / strength);
 }
 export function coreMemories(memories: MemoryItem[], limit = 5): MemoryItem[] {
     return memories.filter(m => m.valid && (m.importance ?? 0) >= 4).sort((a, b) => (b.importance! - a.importance!) || Date.parse(b.createdAt) - Date.parse(a.createdAt)).slice(0, limit);

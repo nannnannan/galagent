@@ -1,0 +1,181 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "jelly-slime",
+  "name": "果冻",
+  "description": "薄荷味的果冻史莱姆，Q 弹透亮，头顶的小叶子会跟着弹跳晃来晃去。",
+  "author": "GalAgent",
+  "tags": [
+    "史莱姆",
+    "Q弹",
+    "透明"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#1f5d4f",
+    "g": "#8fe8c4ee",
+    "G": "#5cc6a2f0",
+    "w": "#ffffff",
+    "W": "#d9fff0",
+    "l": "#69c25a",
+    "L": "#3f8f3a",
+    "k": "#1f3b36",
+    "e": "#6b4fa8",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    ".............oooooo.............",
+    "...........ooggggggoo...........",
+    "..........oggggggggggo..........",
+    ".........oggggggggggggo.........",
+    "........oggggggggggggggo........",
+    ".......oggggWgggggggggggo.......",
+    "......oogwwgggggggggggggoo......",
+    ".....ogggwggggggggggggggggo.....",
+    "....oggggggggggggggggggggggo....",
+    "....oggggggggggggggggggggggo....",
+    "...oggggggggggggggggggggggggo...",
+    "...oggggggggggggggggggggggggo...",
+    "..oggggggggggggggggggggggggggo..",
+    "..oGggggggggggggggggggggggggGo..",
+    "..oGggggggggggggggggggggggggGo..",
+    "...oGggggggggggggggggggggggGo...",
+    "...oGggggggggggggggggggggggGo...",
+    "....oGggggggggggggggggggggGo....",
+    "....oGGGggggggggggggggggGGGo....",
+    ".....oGGGggggggggggggggGGGo.....",
+    "......ooGGGGGGGGGGGGGGGGoo......",
+    "........oGGGGGGGGGGGGGGo........",
+    ".........oooooooooooooo.........",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 17],
+    "mouth": [14, 22],
+    "blush": [7, 21]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp..............pp"
+  ],
+  "extras": [
+    {
+      "id": "leaf",
+      "kind": "accessory",
+      "layer": "back",
+      "at": [12, 4],
+      "frames": [
+        [
+          ".oo....",
+          "ollo...",
+          "olllo..",
+          ".ooLo..",
+          "..oLo..",
+          "..oLo..",
+          "...o..."
+        ],
+        [
+          "....oo.",
+          "...ollo",
+          "..olllo",
+          "..oLoo.",
+          "..oLo..",
+          "..oLo..",
+          "...o..."
+        ]
+      ]
+    }
+  ],
+  "motion": {
+    "style": "hop"
+  }
+}

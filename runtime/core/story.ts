@@ -47,10 +47,6 @@ export class Story {
         const memories=this.store.all<MemoryItem>('memory').filter(m=>m.kind==='fact'&&m.valid&&!this.store.dead(m.id)&&!this.store.dead(m.sourceId)).slice(-2);
         return{type:'E04',key,sourceIds:[...new Set([prior.id,...memories.flatMap(m=>[m.id,m.sourceId])])],evidence:{hoursApart:(this.clock()-Date.parse(lastSeenAt))/3600000,reliableClues:memories.map(m=>({id:m.id,text:m.text.slice(0,180),sourceId:m.sourceId})),unknownWhenNoClue:!memories.length}};
     }
-    jealousy(trigger:'process-label'|'user-mention',sourceIds:string[],label:string):StoryScene|undefined{
-        const state=this.state(),today=day(this.clock());if(state.lastJealousDay===today)return;
-        state.lastJealousDay=today;this.save(state);return{type:'E05',key:today,sourceIds,evidence:{trigger,label:label.slice(0,80),doesNotProveExternalChat:true}};
-    }
     control(action:'quiet'|'correction'|'observation-disabled'|'initiative-disabled'|'mischief-disabled',sourceId?:string){const source=sourceId||this.source('control',{action});return this.complete({type:'E06',key:`${action}:${source}`,sourceIds:[source],evidence:{action,permissionImmediate:true,noRelationshipPenalty:true}});}
     affect(expression:Expression,strength=0.4,duration=120000){const state=this.state();state.mood={expression:expression==='blink'?'neutral':expression,initial:Math.max(0,Math.min(1,strength)),startedAt:this.clock(),expiresAt:this.clock()+Math.max(0,Math.min(600000,duration))};this.save(state);}
     tick():boolean{const state=this.state();if(state.mood.initial>0&&(this.clock()>=state.mood.expiresAt||this.clock()<state.mood.startedAt)){state.mood={expression:'neutral',initial:0,startedAt:this.clock(),expiresAt:0};this.save(state);return true;}return false;}

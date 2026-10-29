@@ -1,0 +1,229 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "tiny-dino",
+  "name": "小恐博士",
+  "description": "额头戴着护目镜、穿小白大褂的绿色小恐龙，正在研究为什么今天的你也这么努力。",
+  "author": "GalAgent",
+  "tags": [
+    "恐龙",
+    "科学家",
+    "好奇"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#233a24",
+    "g": "#79cc6a",
+    "G": "#4f9e4a",
+    "y": "#f4f0c6",
+    "Y": "#dcd59a",
+    "r": "#ff9a55",
+    "l": "#9ee6ff",
+    "L": "#e8fbff",
+    "z": "#5a5f73",
+    "d": "#ffffff",
+    "D": "#d5dde8",
+    "b": "#4f9e4a",
+    "k": "#2d1b2e",
+    "e": "#6b4fa8",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "...............oo...............",
+    "..........o...orro...o..........",
+    ".........oro.orrrro.oro.........",
+    "........orrrooggggoorrro........",
+    ".........ozzzggggggzzzo.........",
+    "........ozllLzggggzLllzo........",
+    ".......ozzlllzzzzzzlllzzo.......",
+    "......ogggzzzggggggzzzgggo......",
+    ".....oggggggggggggggggggggo.....",
+    ".....oggggggggggggggggggggo.....",
+    "....oggggggggggggggggggggggo....",
+    "....oggggggggggggggggggggggo....",
+    "....oggggggggggggggggggggggo....",
+    "....oggggggggggggggggggggggo....",
+    "....oGggggggggggggggggggggGo....",
+    ".....oggggGGGGGGGGGGGGggggo.....",
+    ".....oGggGyyyyyyyyyyyyGggGo.....",
+    "......oGgyyyyyyyyyyyyyygGo......",
+    ".......oGgyyyyyyyyyyyygGo.......",
+    "........oGGyyyyyyyyyyGGo........",
+    ".........ooGGyyyyyyGGoo.........",
+    "........o.odddDyyDdddo.o........",
+    ".......ogoddddyyyyddddogo.......",
+    ".......oGoDddDyyyyDddDoGo.......",
+    "........ooDddDyyyyDddDoo........",
+    ".........oDddDyyyyDddDo.........",
+    ".........oDDDDDDDDDDDDo.........",
+    "..........oGooooooooGo..........",
+    "...........G........G...........",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 12],
+    "mouth": [14, 18],
+    "blush": [7, 16],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp..............pp"
+  ],
+  "legs": [
+    [
+      "............ggg..ggg............",
+      "..........o.GGGooGGG.o..........",
+      "...........oooo..oooo...........",
+      "................................"
+    ],
+    [
+      "............GGG..ggg............",
+      "............ooo.oGGG.o..........",
+      ".................oooo...........",
+      "................................"
+    ],
+    [
+      "............ggg..ggg............",
+      "..........o.GGGooGGG.o..........",
+      "...........oooo..oooo...........",
+      "................................"
+    ],
+    [
+      "............ggg..GGG............",
+      "..........o.GGGo.ooo............",
+      "...........oooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "tail",
+      "kind": "tail",
+      "layer": "back",
+      "at": [21, 20],
+      "frames": [
+        [
+          "..........",
+          "......ooo.",
+          ".....oggGo",
+          "...ooggGo.",
+          ".oogggGo..",
+          "oGGGGGo...",
+          ".ooooo...."
+        ],
+        [
+          "..........",
+          "......ooo.",
+          ".....ogggo",
+          "...ooggGGo",
+          ".oogggGoo.",
+          "oGGGGGo...",
+          ".ooooo...."
+        ],
+        [
+          "..........",
+          "......ooo.",
+          ".....oggGo",
+          "...ooggGo.",
+          ".oogggGo..",
+          "oGGGGGo...",
+          ".ooooo...."
+        ],
+        [
+          "......ooo.",
+          ".....oGGGo",
+          ".....oooo.",
+          "...ooggGo.",
+          ".oogggGo..",
+          "oGGGGGo...",
+          ".ooooo...."
+        ]
+      ]
+    }
+  ]
+}

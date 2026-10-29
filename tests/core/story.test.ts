@@ -18,7 +18,7 @@ async function make(fetcher:typeof fetch,dir?:string){const path=dir||await mkdt
 function relationship(dir:string){const store=new Store(dir);const result=store.get<any>('relationship');store.close();return result;}
 const until=async(fn:()=>boolean)=>{for(let i=0;i<100;i++){if(fn())return;await new Promise(r=>setTimeout(r,2));}throw new Error('fixture wait timeout');};
 
-test('six scenes have real source ledgers and goals; quiet controls cannot be undone by a user-chat action suggestion',async()=>{
+test('scenes have real source ledgers and goals; quiet controls cannot be undone by a user-chat action suggestion',async()=>{
     const time=clock(),requests:any[]=[];let action='idle';
     const {core,dir}=await make(async(_url,init)=>{const context=dynamic(init);if(!context){const body=JSON.parse(String(init?.body));const user=JSON.parse(body.messages[1].content).user;return user==='我喜欢咖啡'?extraction(['我喜欢咖啡'],'有真实来源的札记'):extraction();}requests.push(context);return reply({action,stage:'S4',relationship:{trust:999}});});
     try{
@@ -26,8 +26,8 @@ test('six scenes have real source ledgers and goals; quiet controls cannot be un
         time.advance(28800000);await core.handle({type:'chat.send',text:'回来继续相处'});await core.waitForBackground();await core.handle({type:'chat.send',text:'我听说Codex这个工具'});await core.waitForBackground();
         const before=relationship(dir);await core.handle({type:'settings.update',settings:{quietUntil:Date.now()+3600000}});const after=relationship(dir);
         assert.deepEqual(['trust','familiarity','self_awareness','exposure'].map(k=>after[k]),['trust','familiarity','self_awareness','exposure'].map(k=>before[k]));
-        const snapshot=core.getSnapshot();assert.deepEqual(new Set(snapshot.story!.recentEpisodes.map(e=>e.type)),new Set(['E01','E02','E03','E04','E05','E06']));assert.equal(snapshot.story!.goals.position.placements,1);assert.equal(snapshot.story!.goals.notebook.entries,1);assert.equal(snapshot.identity.stage,'S0');assert.equal(snapshot.variables!.expression.stage,'unified');
-        const mention=requests.find(r=>r.sceneCandidates.some((s:any)=>s.type==='E05'));assert.equal(mention.sceneCandidates.find((s:any)=>s.type==='E05').evidence.doesNotProveExternalChat,true);
+        const snapshot=core.getSnapshot();assert.deepEqual(new Set(snapshot.story!.recentEpisodes.map(e=>e.type)),new Set(['E01','E02','E03','E04','E06']));assert.equal(snapshot.story!.goals.position.placements,1);assert.equal(snapshot.story!.goals.notebook.entries,1);assert.equal(snapshot.identity.stage,'S0');assert.equal(snapshot.variables!.expression.stage,'unified');
+        assert.equal(requests.some(r=>r.sceneCandidates.some((s:any)=>s.type==='E05')),false);
         action='doodle';assert.equal((await core.handle({type:'chat.send',text:'我主动问你一个问题'})).ok,true);await core.waitForBackground();assert.equal(core.getSnapshot().visual.action,'idle');assert.equal(requests.at(-1).interactionPolicy.quiet,true);
         const store=new Store(dir);for(const episode of store.all<any>('episode'))assert.ok(episode.sourceIds.every((id:string)=>!!store.kind(id)));assert.equal(store.all<any>('episode').filter(e=>e.type==='E01').length,1);store.close();
     }finally{await core.close();time.restore();await rm(dir,{recursive:true,force:true});}
@@ -35,7 +35,7 @@ test('six scenes have real source ledgers and goals; quiet controls cannot be un
 
 test('drag generation has a persistent twenty-minute attempt cooldown even when the model fails or is cancelled',async()=>{
     const time=clock();let calls=0,fail=true,hold=false,finish:((r:Response)=>void)|undefined;
-    const fetcher:typeof fetch=async(_url,init)=>{const context=dynamic(init);if(!context)return extraction();if(context.scene==='scene'){calls++;if(hold)return await new Promise<Response>(r=>finish=r);if(fail)return new Response('',{status:503});}return reply();};
+    const fetcher:typeof fetch=async(_url,init)=>{const context=dynamic(init);if(!context)return extraction();if(context.scene==='scene'){calls++;if(hold)return await new Promise<Response>(r=>finish=r);if(fail)return new Response('',{status:400});}return reply();};
     let {core,dir}=await make(fetcher);
     try{
         await core.handle({type:'chat.send',text:'你好'});await core.waitForBackground();assert.equal((await core.handle({type:'pet.interact',interaction:'drag'})).ok,false);await core.handle({type:'pet.interact',interaction:'drag'});assert.equal(calls,1);
@@ -56,16 +56,6 @@ test('eight-hour reunion uses the last completed chat, survives a preceding drag
     }finally{await core.close();time.restore();await rm(dir,{recursive:true,force:true});}
 });
 
-test('Codex process labels qualify once per local day while browser titles never prove another AI conversation',async()=>{
-    const time=clock(),contexts:any[]=[];
-    const {core,dir}=await make(async(_url,init)=>{const context=dynamic(init);if(!context)return extraction();contexts.push(context);return reply({sourceIds:context.sceneCandidates.flatMap((s:any)=>s.sourceIds)});});
-    try{
-        await core.handle({type:'chat.send',text:'你好'});await core.waitForBackground();await core.handle({type:'settings.update',settings:{observationEnabled:true}});
-        core.setObservation({available:true,observedAt:new Date(Date.now()).toISOString(),idleSeconds:600,appName:'chrome',title:'Codex 聊天'});await core.tick();assert.equal(contexts.at(-1).sceneCandidates.some((s:any)=>s.type==='E05'),false);
-        time.advance(1200000);core.setObservation({available:true,observedAt:new Date(Date.now()).toISOString(),idleSeconds:600,appName:'Codex'});await core.tick();const episode=core.getSnapshot().story!.recentEpisodes.find(e=>e.type==='E05')!;assert.equal(episode.evidence.trigger,'process-label');assert.equal(episode.evidence.doesNotProveExternalChat,true);
-        time.advance(3600000);core.setObservation({available:true,observedAt:new Date(Date.now()).toISOString(),idleSeconds:600,appName:'Codex'});await core.tick();assert.equal(contexts.at(-1).sceneCandidates.some((s:any)=>s.type==='E05'),false);
-    }finally{await core.close();time.restore();await rm(dir,{recursive:true,force:true});}
-});
 
 test('mood decays independently from capped source-deduplicated four-axis relationship; taps and refusals do not farm points',async()=>{
     const time=clock(),dir=await mkdtemp(join(tmpdir(),'galagent-story-reducer-')),store=new Store(dir),story=new Story(store);
@@ -115,7 +105,7 @@ test('private transport dependencies cover old summaries, historical retrieval, 
         const episodeFact:MemoryItem={id:randomUUID(),kind:'fact',text:'我喜欢音乐',sourceId:episodeUser,createdAt:oldDate,valid:true};store.put('memory',episodeFact.id,episodeFact);store.index(episodeFact.id,episodeFact.text);store.vector(episodeFact.id,[0,1]);story.fact(episodeFact);
         const gesture=story.source('drag',{actualUserGesture:true});story.drag(gesture,false);
         for(let i=0;i<123;i++){const id=randomUUID();store.put('message',id,{id,role:i%2?'assistant':'user',text:'recent fixture record',source:'chat',createdAt:new Date(Date.now()-3600000+i).toISOString()});}
-        store.put('summary','rollup',{text:'fixture old summary',sourceIds:[summaryUser]});store.put('transport','transport:'+rawAssistant,{assistantId:rawAssistant,userId:rawUser,sourceIds:[ancestorUser],provider:core.getSnapshot().provider,userMessage:{role:'user',content:'bounded raw pair'},assistantMessage:{role:'assistant',content:'{"text":"fixture"}',reasoning_content:'opaque short reasoning'}});store.close();
+        store.put('summary','rollup',{text:'fixture old summary',sourceIds:[summaryUser]});store.put('transport','transport:'+rawAssistant,{assistantId:rawAssistant,userId:rawUser,sourceIds:[ancestorUser],personaId:core.getSnapshot().persona!.active.id,provider:core.getSnapshot().provider,userMessage:{role:'user',content:'bounded raw pair'},assistantMessage:{role:'assistant',content:'{"text":"fixture"}',reasoning_content:'opaque short reasoning'}});store.close();
         await core.handle({type:'settings.update',settings:{reducedMotion:true}});assert.equal(core.getSnapshot().messages.some(m=>m.id===historicalUser||m.id===summaryUser||m.id===ancestorUser),false);
         await core.handle({type:'chat.send',text:'以前的咖啡偏好是什么'});await core.waitForBackground();const currentAssistant=core.getSnapshot().messages.at(-1)!.id;let inspected=new Store(dir);const transport=inspected.get<any>('transport:'+currentAssistant);for(const source of [historicalUser,historicalFact.id,summaryUser,episodeUser,episodeFact.id,gesture,ancestorUser])assert.ok(transport.sourceIds.includes(source),source);inspected.close();
         await core.handle({type:'memory.delete',id:historicalFact.id});inspected=new Store(dir);assert.equal(inspected.get('transport:'+currentAssistant),undefined);inspected.close();

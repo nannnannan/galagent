@@ -1,0 +1,248 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "puff-bunny",
+  "name": "团子兔",
+  "description": "雪白的团子兔，长耳朵会随着心情一抖一抖，走路总是一蹦一跳的。",
+  "author": "GalAgent",
+  "tags": [
+    "兔子",
+    "软萌",
+    "蹦跳"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#4d3a4a",
+    "f": "#ffffff",
+    "F": "#e9dcef",
+    "i": "#ffbfd0",
+    "n": "#ff8fa3",
+    "b": "#e9dcef",
+    "k": "#2d1b2e",
+    "e": "#6b4fa8",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "...........oooooooooo...........",
+    ".........ooffffffffffoo.........",
+    "........offffffffffffffo........",
+    ".......offffffffffffffffo.......",
+    "......offffffffffffffffffo......",
+    "......offffffffffffffffffo......",
+    ".....offffffffffffffffffffo.....",
+    ".....offffffffffffffffffffo.....",
+    ".....offffffffffffffffffffo.....",
+    ".....offffffffffffffffffffo.....",
+    ".....oFffffffffffffffffffFo.....",
+    "......offffffffffffffffffo......",
+    "......oFffffffffffffffffFo......",
+    ".......oFffffffffffffffFo.......",
+    "........oFffffffffffffFo........",
+    ".........oFffffffffffFo.........",
+    "........oFffffffffffffFo........",
+    "........oFffffffffffffFo........",
+    ".........oFffffffffffFo.........",
+    ".........oFFffffffffFFo.........",
+    "..........ooFFFFFFFFoo..........",
+    "............oooooooo............",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 15],
+    "mouth": [13, 19],
+    "blush": [8, 19],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      "..nn..",
+      ".k..k.",
+      "..kk.."
+    ],
+    "open": [
+      "..nn..",
+      ".kmmk.",
+      "..kk.."
+    ],
+    "smile": [
+      "..nn..",
+      "k....k",
+      ".kkkk."
+    ],
+    "pout": [
+      "..nn..",
+      "..kk..",
+      ".k..k."
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".........oFfff....fffFo.........",
+      ".........oFFFF....FFFFo.........",
+      "..........oooo....oooo..........",
+      "................................"
+    ],
+    [
+      ".........oFF......fffFo.........",
+      "..........oo......FFFFo.........",
+      "..................oooo..........",
+      "................................"
+    ],
+    [
+      ".........oFfff....fffFo.........",
+      ".........oFFFF....FFFFo.........",
+      "..........oooo....oooo..........",
+      "................................"
+    ],
+    [
+      ".........oFfff......FFo.........",
+      ".........oFFFF......oo..........",
+      "..........oooo..................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "ears",
+      "kind": "ears",
+      "layer": "back",
+      "at": [8, 0],
+      "frames": [
+        [
+          "..ofo......ofo..",
+          ".offfo....offfo.",
+          ".ofifo....ofifo.",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          ".ofifo....ofifo.",
+          ".offfo....offfo.",
+          "..ooo......ooo.."
+        ],
+        [
+          "..offo.....offo.",
+          ".offffo...offffo",
+          ".offffo...offffo",
+          ".ofiifo...ofiifo",
+          ".ofiifo...ofiifo",
+          ".ofiifo...ofiifo",
+          ".ofiifo...ofiifo",
+          ".ofiifo...ofiifo",
+          ".ofiifo...ofiifo",
+          ".offffo...offffo",
+          "..offo.....offo.",
+          "...oo.......oo.."
+        ],
+        [
+          "..ofo......ofo..",
+          ".offfo....offfo.",
+          ".ofifo....ofifo.",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          "offiffo..offiffo",
+          ".ofifo....ofifo.",
+          ".offfo....offfo.",
+          "..ooo......ooo.."
+        ],
+        [
+          ".offo.....offo..",
+          "offffo...offffo.",
+          "offffo...offffo.",
+          "ofiifo...ofiifo.",
+          "ofiifo...ofiifo.",
+          "ofiifo...ofiifo.",
+          "ofiifo...ofiifo.",
+          "ofiifo...ofiifo.",
+          "ofiifo...ofiifo.",
+          "offffo...offffo.",
+          ".offo.....offo..",
+          "..oo.......oo..."
+        ]
+      ]
+    }
+  ],
+  "motion": {
+    "style": "hop"
+  }
+}

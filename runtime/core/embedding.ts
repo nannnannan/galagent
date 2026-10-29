@@ -2,7 +2,7 @@ import { Worker } from 'node:worker_threads';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 export type EmbeddingState = 'idle' | 'loading' | 'ready' | 'fallback';
-export type EmbeddingOptions = { idleMs?: number; threads?: number; onState?: (state: EmbeddingState) => void };
+export type EmbeddingOptions = { idleMs?: number; threads?: number; onState?: (state: EmbeddingState) => void; failureCooldownMs?: number };
 export class Embeddings {
     worker?: Worker;
     pending = new Map<string, { resolve: (v: number[]) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
@@ -10,6 +10,9 @@ export class Embeddings {
     private closed = false;
     private retiring = new Set<Promise<void>>();
     state: EmbeddingState = 'idle';
+    // Circuit breaker: after repeated worker failures (e.g. offline with no local model) do not relaunch a worker on every retrieval.
+    private consecutiveFailures = 0;
+    private failedAt = 0;
     constructor(private cacheDir: string, private modelPath?: string, private workerPath = join(process.cwd(), 'runtime/workers/embedding.mjs'), private options: EmbeddingOptions = {}) {}
     private transition(state: EmbeddingState) { this.state = state; this.options.onState?.(state); }
     private clearIdle() { if (this.idleTimer) clearTimeout(this.idleTimer); this.idleTimer = undefined; }
@@ -18,6 +21,7 @@ export class Embeddings {
         this.clearIdle(); this.worker = undefined;
         for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(error || new Error('Embedding worker disposed')); }
         this.pending.clear(); this.transition(error ? 'fallback' : 'idle');
+        if (error) { this.consecutiveFailures++; this.failedAt = Date.now(); }
         if (worker.threadId === -1) return;
         const disposal = new Promise<void>(resolve => {
             let done = false;
@@ -38,6 +42,7 @@ export class Embeddings {
     async encode(text: string, query = false): Promise<number[]> {
         if (this.closed) throw new Error('Embedding service closed');
         this.clearIdle();
+        if (!this.worker && this.consecutiveFailures >= 2 && Date.now() - this.failedAt < (this.options.failureCooldownMs ?? 60_000)) throw new Error('Embedding temporarily unavailable');
         if (!this.worker) {
             this.transition('loading');
             const worker = new Worker(this.workerPath, { workerData: { cacheDir: this.cacheDir, modelPath: this.modelPath, threads: Math.min(4, Math.max(1, this.options.threads ?? 2)) } });
@@ -48,7 +53,7 @@ export class Embeddings {
                 clearTimeout(pending.timer); this.pending.delete(data.id);
                 if (data.error) { pending.reject(new Error(data.error)); this.retire(worker, new Error(data.error)); }
                 else if (!Array.isArray(data.values) || !data.values.length || data.values.some((v: unknown) => typeof v !== 'number' || !Number.isFinite(v))) { pending.reject(new Error('Invalid embedding')); this.retire(worker, new Error('Invalid embedding')); }
-                else { this.transition('ready'); pending.resolve(data.values); this.scheduleIdle(); }
+                else { this.consecutiveFailures = 0; this.transition('ready'); pending.resolve(data.values); this.scheduleIdle(); }
             });
             worker.on('error', error => this.retire(worker, error));
             worker.on('exit', code => { if (this.worker === worker) this.retire(worker, new Error(`Embedding worker exited (${code})`)); });

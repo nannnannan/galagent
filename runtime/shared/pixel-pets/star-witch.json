@@ -1,0 +1,190 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "star-witch",
+  "name": "小魔女",
+  "description": "戴着星月尖帽的小魔女，紫色长发在夜风里轻轻摆动，会悄悄为你点亮几颗星星。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "魔法",
+    "长发"
+  ],
+  "size": [32, 39],
+  "palette": {
+    "o": "#2a1f3d",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#8b6fd6",
+    "H": "#5e47a8",
+    "L": "#c3b0ff",
+    "c": "#3c3f8f",
+    "C": "#2a2c66",
+    "d": "#ffd75e",
+    "t": "#33306b",
+    "T": "#211f4a",
+    "b": "#2a2440",
+    "k": "#2d1b2e",
+    "e": "#6b4fa8",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "..................otto..........",
+    ".................ottto..........",
+    "................otttto..........",
+    "...............ottttto..........",
+    ".............oodttttto..........",
+    "............otdddtttto..........",
+    "...........otttdttttto..........",
+    "..........ottttttttttto.........",
+    "......ooootddddddddddtoooo......",
+    ".....otttttttttttttttttttto.....",
+    "....oTTTTTTTTTTTTTTTTTTTTTTo....",
+    ".....ooohhLLLhhhhhhLLLhhooo.....",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhHhhhHHHHhhhHhhhhho....",
+    "....ohhhhHSHhHSSSSHhHSHhhhho....",
+    "....ohhhHSsSHSssssSHSsSHhhho....",
+    "....ohhHSsssSssssssSsssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhhsssssssssssssshhhho....",
+    "....oHHhhhsssssssssssshhhHHo....",
+    ".....oohhhhsssssssssshhhhoo.....",
+    "......oHHHhhHcsssscHhhHHHo......",
+    ".......occhHccccccccHhcco.......",
+    ".......oCCHCcccCCcccCHCCo.......",
+    ".......oCCoCccCddCccCoCCo.......",
+    ".......ossoCccccccccCosso.......",
+    "........ooCccccccccccCoo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 20],
+    "mouth": [14, 26],
+    "blush": [8, 25],
+    "feet": [0, 35]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..ss.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ]
+}

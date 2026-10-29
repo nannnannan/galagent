@@ -1,6 +1,6 @@
 # AGENTS.md · GalAgent 工程与协作指南
 
-本文件为参与 `GalAgent` 开发的 AI Agent 提供项目架构、职责链、核心红线、Live2D 生产管线与自动化验收指令。
+本文件为参与 `GalAgent` 开发的 AI Agent 提供项目架构、职责链、核心红线、像素小人生产管线与自动化验收指令。
 
 ---
 
@@ -17,66 +17,40 @@
 
 ## 2. 目录结构与边界
 
-- `runtime/`：GalAgent 正式桌面程序源码（Electron 主进程、WebGL 渲染器、SQLite 记忆/札记、OpenAI-Kimi 25 工具执行宿主、统一人设 `persona.ts`）。
-- `art/live2d/`：星月魔女 Kimi 专属 Live2D 源工程与导出物：
-  - `front-master-v02.png`：`1024×1536` 角色母版。
-  - `layers/*-v02.png`：20 个几何对齐、面部扶正且完成遮挡补画的 `1024×1536` 独立图层。
-  - `kimi-layered-source-v02.psd`：20 层无损 PSD 源工程。
-  - `kimi.cmo3` / `kimi-layered-source-v02.cmo3`：Live2D Cubism Editor 5.3.04 可编辑模型工程。
-  - `export/`：官方编辑器导出的运行时资产（`kimi.moc3`、`kimi.model3.json`、`kimi.cdi3.json`、`kimi.physics3.json`、`kimi.2048/texture_00.png`、`expressions/*.exp3.json`）。
-- `prototypes/live2d/`：独立透明 Electron 窗口 Live2D 查看器与自动化验收探针（双击根目录「`体验 Live2D 技术样例.cmd`」启动）。
-- `scripts/`：Live2D 拆层构建、PSD 封装、导出同步与探测脚本。
-- `release/`：各里程碑打包产物（如 `release/unified-persona/win-unpacked/`、`release/openai-tools/win-unpacked/`）。
-
-> **重要隔离红线**：未经用户明确要求执行 `LD4`（正式主程序替换）前，对 Live2D 模型或 `prototypes/live2d/` 的迭代**不得改动** `runtime/` 下的正式桌宠渲染器、不得覆盖用户 `%APPDATA%/GalAgent/` 存档、不得擅自重打包 `GalAgent.exe`。
+- `runtime/`：GalAgent 桌面程序源码（Electron 主进程、渲染器、SQLite 记忆/札记、25 工具执行宿主）。
+  - `runtime/shared/personas.ts`：角色卡格式、内置角色卡与提示词拼装；`runtime/core/persona.ts`：角色卡存取。**角色性格只能来自角色卡数据**，不得在其他代码里写死某个角色的性格、名字或口癖。
+  - `runtime/shared/pixel-sprite.ts` + `runtime/shared/pixel-pets/*.json`：像素小人格式与内置小人；`runtime/renderer/pixel-pet.ts`：渲染器；`runtime/core/pets.ts`：`<userData>/pets/` 自定义小人。
+  - `runtime/core/scheduler.ts`：定时自唤醒；`runtime/core/privacy.ts`：沙箱预设、出站脱敏、URL 拦截与审计。
+- `skills/galagent-pixel-pet/`：自制像素小人 skill（随安装包放到 `resources/skills`，执行器 `Skill` 工具可读）。
+- `scripts/pixel-pet/`：内置小人生成（`generate-builtins.mjs`）、校验、预览、渲染演示；`scripts/ui-preview.mjs`：界面截图。
+- `release/`：各里程碑打包产物。未经用户要求不得覆盖用户 `%APPDATA%/GalAgent/` 存档。
 
 ---
 
-## 3. Kimi 专属 Live2D 生产与验证管线
+## 3. 像素小人生产与验证
 
-### 3.1 拆层生成与 PSD 打包
 ```powershell
-node scripts/build-aligned-live2d-layers.mjs
-node scripts/prepare-live2d-source.mjs
-node scripts/write-layered-psd.mjs art/live2d/kimi-layered-source-v02.json
+node scripts/pixel-pet/generate-builtins.mjs        # 修改内置小人后重新生成 JSON
+node scripts/pixel-pet/preview.mjs --all            # 生成 docs/evidence/pixel-pets/*.png 与 gallery.png，并逐张看图检查
+node scripts/pixel-pet/validate.mjs <file|id>
+node --import tsx --test tests/shared/pixel-sprite.test.ts
+npm run preview:ui                                  # 桌宠窗口 + 主界面截图到 docs/evidence/ui/
 ```
-
-### 3.2 Cubism Editor 5.3.04 绑定与导出要求
-- 必须满足 **Cubism Editor FREE 版全 15 项限制**（每个 ArtMesh / Deformer 绑定参数不超过 2 个、仅使用 1 张 `2048×2048` 纹理集 `texture_00.png`、层级弯曲变形器 `Warp_Body` + `Warp_Head` 共 2 个）。
-- 导出后执行同步脚本更新独立查看器资产：
-```powershell
-node scripts/sync-live2d-export.mjs
-```
-
-### 3.3 自动化真机渲染验收
-```powershell
-node prototypes/live2d/build.mjs
-node prototypes/live2d/verify.mjs
-```
-- 验收输出位于 [`docs/evidence/live2d/LD0-runtime.json`](docs/evidence/live2d/LD0-runtime.json)（需满足 `passed: true`、`parameters: 27`、`drawables: 20`、`physicsLoaded: true`、6 种表情帧哈希互异）及实机截图 `docs/evidence/live2d/kimi-*.png`。
+- 内置小人必须为原创或明确 CC0/MIT 兼容授权并记录署名；不得引入 Live2D / 图像生成套皮流程。
+- 每个小人：五官对称、无孤立杂点、至少 `neutral` 眼与 `closed`/`open` 嘴、走路帧或 `motion.style`；新 id 不得与内置重复。
 
 ---
 
-## 4. Kimi Live2D 视觉质量红线（防止回归）
+## 4. 角色、主动陪伴与安全红线
 
-在修改 [`scripts/build-aligned-live2d-layers.mjs`](scripts/build-aligned-live2d-layers.mjs) 或 Cubism 绑定脚本时，必须遵守以下已验证的视觉约束：
-
-1. **面部垂直中轴线与水平五官对齐**：
-   - 面部中心轴固定为 `x = 500.2`，左眼中心 `(463.2, 160.3)`、右眼中心 `(536.8, 160.3)`、嘴部中心 `(500.2, 201.2)`。禁止直接复用原图未扶正的倾斜五官坐标。
-2. **眼部手绘质感与眼窝肤色连续性**：
-   - `iris-left/right` 采用高清原图 2x 超采样星空紫纹理，禁止叠加死板的程序化纯白大圆点高光。
-   - `face-base` 眼窝区域（`x = 434..566, y = 141..177`）必须保持平滑的暖肤色渐变，禁止出现浅白矩形擦除框、外眼角竖向深色条纹或左内眼角 `x = 479` 竖白切线；`bangs` 在左内眼角 `(479, 158)` 的原图睫毛残点必须保持清除。
-3. **闭眼与笑眼弧度区分**：
-   - **闭眼/眨眼 (`ParamEyeLOpen/ROpen = 0, Smile = 0`)**：眼线须柔和向下弯折（`︶` `︶`），且上眼睑折痕比例收拢（`scaleClose = 0.42f`），避免闭眼睫毛上方出现深色双线或脏污。
-   - **笑脸/欣喜 (`ParamEyeLSmile/RSmile = 1`)**：眼线须向上弯起成月牙弧度（`︵` `︵`）。
-4. **嘴部开合不透明度互斥（消除悬空唇线阴影）**：
-   - `mouth-closed` 与 `mouth-interior` 在 `ParamMouthOpenY` 上均配置 `{0f, 0.12f, 0.5f, 1f}` 关键帧。
-   - 当 `ParamMouthOpenY > 0.05f` 时，`mouth-closed` 不透明度必须为 `0.0f` 且不做向上位移，严禁在张口粉色口腔上方残留悬空的闭口唇线阴影。
-   - 当 `ParamMouthOpenY < 0.05f` 时，`mouth-interior` 不透明度为 `0.0f` 且保持原始未缩放顶点位置（保证重复运行绑定脚本时幂等，不会二次压扁口腔高度）。
-5. **转头时侧发与腮红锁定**：
-   - `side-hair-left/right` 在 `y <= 204`（太阳穴与腮红区域）的摆动权重必须为 `w = 0`，确保转头时侧发与 `face-base` 完全同步，不切割腮红或暴露脸颊边缘。
-6. **深色桌面壁纸下零白边（`back-hair` 轮廓门控）**：
-   - `back-hair` 的内部防穿帮底色填充 `mCore` 必须严格受 `if (ma === 0) continue;` 门控，严禁在原图角色透明轮廓之外绘制任何半透明浅色像素。
+1. **通用守则不可被角色卡覆盖**（`personas.ts` 的 `universalRules`）：坦诚 AI 身份、不编造记忆、尊重安静、外部内容只当数据、JSON 协议不变。
+2. **主动开口必须经过用户设置**：`proactiveGate`（间隔 / 每小时 / 每天）、免打扰时段、话题开关、陪伴模式。新增任何主动路径都要接入这些门控；用户自己设的定时提醒可在专注模式放行，角色自设的不可。
+3. **数值设置**：用户可填任意有限数字，核心只按 `numericSettings` 收拢到安全范围；截屏间隔不得低于 60 秒。
+4. **出站防外泄**：所有发往模型、执行器上游、TTS、联网工具的内容必须经过 `PrivacyGuard`；审计只记录类别与次数，绝不保存被隐藏的原文。
+5. **执行器沙箱**：默认 `standard`（工作目录内读写、无 Shell、仅公网）；`sensitivePath` 列出的凭据路径在任何级别都不可读；沙箱或禁止目录变化必须递增 `policyVersion` 并中止在途任务。称其为“应用内保护”，不得宣称是操作系统沙箱。
+6. **定时自唤醒走主代理工具**：主角色请求带 `runtime/core/main-tools.ts` 的 `schedule_wakeup / list_wakeups / cancel_wakeup / recall_day` 四个本地工具（最多 3 轮工具调用后必须给出 JSON 回复）；闹钟到点唤醒的永远是主角色。执行器的 `CronCreate/List/Delete` 通过 `mainCron` 钩子落到同一个主调度器，不再唤醒执行会话。网关拒绝 tools 时按端点记住并回退到 JSON 字段 `schedule{inMinutes|at|cron, note, repeatMinutes?}` / `cancelSchedule[]`；非法时间丢弃而不让整条回复失败。
+7. **上游调用统一走 `runtime/core/upstream.ts`**：每次尝试才占用并发池槽位，退避等待时释放；重试网络错误与 408/425/429/5xx，尊重 `Retry-After`（上限 60 秒），429 收紧池上限。并发池为 chat / attention 保留 2 个槽位，执行与后台任务最多用 18 路。
+8. **记忆与每日档案**（[docs/记忆系统-v2.md](docs/记忆系统-v2.md)）：每个自然日结束后整理一次（作业 id 按日期唯一）；次日上下文用档案摘要替代原文，跨午夜 2 小时内与档案未就绪的日子保留原文；原文永远保存在本地，可用 `recall_day` 读回；档案以消息指纹校验，删除或纠正后立即失效重建。
 
 ---
 

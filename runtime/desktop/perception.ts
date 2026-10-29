@@ -12,6 +12,8 @@ export type ScreenShot = { id: string; at: number; dataUrl: string; signature: n
 export type CaptureContext = {
     enabled: boolean; paused: boolean; locked?: boolean; suspended?: boolean; fullscreen?: boolean;
     idleSeconds?: number; appName?: string; title?: string; blocklist: string[];
+    /** User-chosen gap; the sampler never goes below its own minimum. */
+    minIntervalMs?: number;
 };
 export type ScreenDecision = { shot?: ScreenShot; skipped?: 'disabled' | 'paused' | 'locked' | 'fullscreen' | 'idle' | 'blocked' | 'unchanged' | 'rate' | 'error' };
 /** Grayscale thumbnail grid in [0,255]; mean absolute difference in [0,1]. */
@@ -39,7 +41,7 @@ export class ScreenSampler {
         if (context.fullscreen) return { skipped: 'fullscreen' };
         if ((context.idleSeconds ?? 0) >= (this.options.idleLimitSeconds ?? 300)) return { skipped: 'idle' };
         if (blockedBy(context)) return { skipped: 'blocked' };
-        if (this.lastSent && now - this.lastSent.at < (this.options.minIntervalMs ?? 60000)) return { skipped: 'rate' };
+        if (this.lastSent && now - this.lastSent.at < Math.max(this.options.minIntervalMs ?? 60000, context.minIntervalMs ?? 0)) return { skipped: 'rate' };
         let raw: Awaited<ReturnType<Capturer>>;
         try { raw = await this.capture(); } catch { return { skipped: 'error' }; }
         if (!raw || !raw.dataUrl.startsWith('data:image/')) return { skipped: 'error' };

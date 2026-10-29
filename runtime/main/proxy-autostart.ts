@@ -64,7 +64,9 @@ function defaultSpawnStartScript(scriptPath: string, cwd: string): Promise<void>
     );
     const timer = setTimeout(() => {
       try {
-        child.kill();
+        // Kill the whole tree: start.ps1 launches the proxy as a child that would otherwise outlive the timeout.
+        if (process.platform === 'win32' && child.pid) spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' }).on('error', () => child.kill());
+        else child.kill();
       } catch {
         /* ignore */
       }
@@ -82,11 +84,19 @@ function defaultSpawnStartScript(scriptPath: string, cwd: string): Promise<void>
   });
 }
 
-export async function ensureLocalProxyRunning(options: ProxyAutostartOptions): Promise<ProxyAutostartResult> {
+// Single-flight per proxy directory: startup, config.save and the offline timer can overlap and would otherwise spawn several start.ps1 copies.
+const inflight = new Map<string, Promise<ProxyAutostartResult>>();
+export function ensureLocalProxyRunning(options: ProxyAutostartOptions): Promise<ProxyAutostartResult> {
   const target = resolveLocalProxyDir(options.baseUrl, options.desktopDir);
-  if (!target) {
-    return { ok: true, status: 'not-local-proxy' };
+  if (!target) return Promise.resolve({ ok: true, status: 'not-local-proxy' });
+  let running = inflight.get(target.dir);
+  if (!running) {
+    running = runEnsureLocalProxy(options, target).finally(() => inflight.delete(target.dir));
+    inflight.set(target.dir, running);
   }
+  return running;
+}
+async function runEnsureLocalProxy(options: ProxyAutostartOptions, target: NonNullable<ReturnType<typeof resolveLocalProxyDir>>): Promise<ProxyAutostartResult> {
   const fetchImpl = options.fetchImpl || fetch;
   const keyFile = path.join(target.dir, '.local-api-key');
   let apiKey: string | undefined;

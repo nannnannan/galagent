@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, Tray } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell, Tray } from 'electron';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -15,8 +15,10 @@ import type { ClipboardRead } from '../desktop/perception';
 app.setName('GalAgent');
 const override = process.env.GALAGENT_DATA_DIR;
 if (override) app.setPath('userData', path.resolve(override));
-if (process.env.GALAGENT_DEBUG_PORT) app.commandLine.appendSwitch('remote-debugging-port', process.env.GALAGENT_DEBUG_PORT);
+if (process.env.GALAGENT_DEBUG_PORT && !app.isPackaged) app.commandLine.appendSwitch('remote-debugging-port', process.env.GALAGENT_DEBUG_PORT);
 const rootDir = path.resolve(__dirname, '..');
+/** Pet window at scale 1: room for the sprite, the status caption and a speech bubble above it. */
+const PET_SIZE = { width: 320, height: 440 } as const;
 let companion: CompanionService;
 let observer: DesktopObserver;
 let pet: BrowserWindow | undefined;
@@ -34,6 +36,8 @@ let pendingHit=0;
 let nativeInteractive=false;
 let inputOpen=false;
 let roamDirection: -1 | 1 = -1;
+/** Sub-pixel remainder so slow roaming speeds still move smoothly. */
+let roamCarry = 0;
 let roamManualUntil = 0;
 let roamAutoPhaseUntil = 0;
 let roamAutoActive = false;
@@ -76,7 +80,8 @@ const positionFile = path.join(dataDir, 'window-state.json');
 async function atomicWrite(file: string, data: string | Uint8Array) { await mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.new`; await writeFile(temporary, data); await rename(temporary, file); }
 const credentials = {
   async get() {
-    if (process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY) return process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY;
+    const fromEnv = process.env.GALAGENT_API_KEY || process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY;
+    if (fromEnv) return fromEnv;
     try { const encrypted = await readFile(path.join(dataDir, 'provider-key.bin')); if (safeStorage.isEncryptionAvailable()){const key=safeStorage.decryptString(encrypted);if(key)return key;} } catch { /* no saved application key */ }
     const provider=companion?.getSnapshot().provider;
     if(!override&&provider?.mode!=='native-api'&&provider?.baseUrl==='http://127.0.0.1:18890/v1')try{return (await readFile(path.join(app.getPath('desktop'),'mira反代','kimi-api','.local-api-key'),'utf8')).trim()||undefined;}catch{/* existing proxy has no key file */}
@@ -94,7 +99,10 @@ const ttsCredentials = {
         if (key) return key;
       }
     } catch { /* no separate tts key */ }
-    return await credentials.get();
+    // Only reuse the provider key for a TTS endpoint on the same origin; never send it to a third-party TTS host.
+    const snap = companion?.getSnapshot();
+    try { if (snap?.settings.ttsBaseUrl && new URL(snap.settings.ttsBaseUrl.trim()).origin === new URL(snap.provider.baseUrl).origin) return await credentials.get(); } catch { /* invalid URL */ }
+    return undefined;
   },
   async set(key: string) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存 TTS 密钥。');
@@ -110,11 +118,11 @@ function publishRoamState(active: boolean, direction: -1 | 0 | 1) {
 }
 function stepDesktopRoam() {
   if (!pet || pet.isDestroyed() || !pet.isVisible() || !companion) return;
-  const snap = companion.getSnapshot();
+  const snap = companion.roamView();
   const now = Date.now();
-  const quiet = snap.settings.quietUntil > now || (snap.settings.companionMode || 'daily') !== 'daily';
+  const quiet = snap.settings.quietUntil > now || (snap.settings.companionMode || 'daily') !== 'daily' || snap.sleeping || snap.busy;
   const reduced = snap.settings.reducedMotion;
-  const forcedRun = now < roamManualUntil || snap.visual.action === 'run';
+  const forcedRun = now < roamManualUntil || snap.action === 'run';
   const autoAllowed = !process.env.GALAGENT_DEBUG_PORT && snap.settings.roamingEnabled !== false;
   if (now >= roamAutoPhaseUntil) {
     roamAutoActive = !roamAutoActive;
@@ -130,8 +138,10 @@ function stepDesktopRoam() {
   const area = screen.getDisplayMatching(bounds).workArea;
   const minX = area.x + 12;
   const maxX = Math.max(minX, area.x + area.width - bounds.width - 12);
-  const stepPx = Math.max(3, Math.round(4.5 * (snap.settings.petScale || 1)));
-  let nextX = bounds.x + roamDirection * stepPx;
+  const stepPx = Math.max(1, 3.2 * (snap.settings.petScale || 1) * (snap.settings.roamSpeed || 1));
+  roamCarry += roamDirection * stepPx;
+  const whole = Math.trunc(roamCarry); roamCarry -= whole;
+  let nextX = bounds.x + whole;
   if (nextX <= minX) {
     nextX = minX;
     roamDirection = 1;
@@ -160,7 +170,7 @@ function sendSnapshot(snapshot: AppSnapshot) {
   for (const win of [pet, chat]) if (win && !win.isDestroyed() && !win.webContents.isLoading()) win.webContents.send('galagent:snapshot', snapshot);
   const key = JSON.stringify([snapshot.settings.observationEnabled, snapshot.settings.windowTitlesEnabled, snapshot.settings.clipboardEnabled, snapshot.settings.companionMode]);
   if (key !== previousSettings) { previousSettings = key; observer?.setOptions({ enabled: snapshot.settings.observationEnabled && snapshot.settings.companionMode !== 'rest', includeTitles: snapshot.settings.windowTitlesEnabled, includeClipboard: snapshot.settings.observationEnabled && snapshot.settings.clipboardEnabled }); }
-  if (pet && !pet.isDestroyed()) { pet.setTitle(snapshot.identity.name || 'GalAgent'); const scale = snapshot.settings.petScale; const width = Math.round(360 * scale), height = Math.round(620 * scale); const bounds = pet.getBounds(); if (bounds.width !== width || bounds.height !== height) pet.setBounds(clamp({ ...bounds, width, height })); }
+  if (pet && !pet.isDestroyed()) { pet.setTitle(snapshot.identity.name || 'GalAgent'); const scale = snapshot.settings.petScale; const width = Math.round(PET_SIZE.width * scale), height = Math.round(PET_SIZE.height * scale); const bounds = pet.getBounds(); if (bounds.width !== width || bounds.height !== height) pet.setBounds(clamp({ ...bounds, width, height })); }
 }
 function clamp(bounds: Electron.Rectangle): Electron.Rectangle {
   const area = screen.getDisplayMatching(bounds).workArea;
@@ -171,6 +181,9 @@ function safeWindow(win: BrowserWindow) {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  win.webContents.session.setPermissionCheckHandler(() => false);
+  win.webContents.on('will-redirect', event => event.preventDefault());
+  win.webContents.on('will-attach-webview', event => event.preventDefault());
 }
 async function loadView(win: BrowserWindow, view: string) { await win.loadFile(path.join(rootDir, 'renderer/index.html'), { query: { view } }); }
 function openChat(open = true) {
@@ -181,17 +194,19 @@ function resetPet() { if (!pet || pet.isDestroyed()) return; const area = screen
 function menu() {
   const snapshot = companion.getSnapshot();
   return Menu.buildFromTemplate([
-    { label: snapshot.identity.name ? `与 ${snapshot.identity.name} 说话` : '和她说话', click: () => openChat() },
+    { label: snapshot.identity.name ? `和 ${snapshot.identity.name} 说话` : '打开聊天', click: () => openChat() },
     { label: '陪伴模式', submenu: companionModes.map(mode => ({ label: mode.label, type: 'radio' as const, checked: (snapshot.settings.companionMode || 'daily') === mode.value, click: () => { void companion.handle({ type: 'settings.update', settings: { companionMode: mode.value } }); } })) },
     { type: 'separator' },
-    { label: '让她在桌面跑一圈', click: () => { roamManualUntil = Date.now() + 20000; void companion.handle({ type: 'pet.roam', active: true }); stepDesktopRoam(); } },
-    { label: '允许桌面自在小跑', type: 'checkbox', checked: snapshot.settings.roamingEnabled !== false, click: item => { void companion.handle({ type: 'settings.update', settings: { roamingEnabled: item.checked } }); } },
+    { label: '切换角色', submenu: (snapshot.persona?.list || []).map(persona => ({ label: persona.name + (persona.builtin ? '' : '（自定义）'), type: 'radio' as const, checked: snapshot.persona?.active.id === persona.id, click: () => { void companion.handle({ type: 'persona.select', id: persona.id }); } })) },
+    { label: '出去溜达一圈', click: () => { roamManualUntil = Date.now() + 20000; void companion.handle({ type: 'pet.roam', active: true }); stepDesktopRoam(); } },
+    { label: '允许桌面自在漫步', type: 'checkbox', checked: snapshot.settings.roamingEnabled !== false, click: item => { void companion.handle({ type: 'settings.update', settings: { roamingEnabled: item.checked } }); } },
     { label: '语音合成朗读 (TTS)', type: 'checkbox', checked: Boolean(snapshot.settings.ttsEnabled), click: item => { void companion.handle({ type: 'settings.update', settings: { ttsEnabled: item.checked } }); } },
     { label: '停止当前朗读', click: () => stopSpeech() },
     { type: 'separator' },
     { label: snapshot.settings.quietUntil > Date.now() ? '恢复主动互动' : '安静一小时', click: () => { void companion.handle({ type: 'settings.update', settings: { quietUntil: snapshot.settings.quietUntil > Date.now() ? 0 : Date.now() + 3600000 } }); } },
     { label: '回到屏幕角落', click: resetPet },
     { label: snapshot.settings.observationEnabled ? '暂停观察（立即停止截屏与剪贴板）' : '恢复桌面观察', click: () => { void companion.handle({ type: 'settings.update', settings: { observationEnabled: !snapshot.settings.observationEnabled } }); } },
+    { label: '一键隐私锁定', click: () => { void companion.handle({ type: 'privacy.lockdown' }); } },
     { label: '截屏观察', type: 'checkbox', enabled: snapshot.settings.observationEnabled, checked: snapshot.settings.screenCaptureEnabled, click: item => { void companion.handle({ type: 'settings.update', settings: { screenCaptureEnabled: item.checked } }); } },
     { label: '剪贴板观察（最近50条）', type: 'checkbox', enabled: snapshot.settings.observationEnabled, checked: snapshot.settings.clipboardEnabled, click: item => { void companion.handle({ type: 'settings.update', settings: { clipboardEnabled: item.checked } }); } },
     { type: 'separator' },
@@ -200,12 +215,12 @@ function menu() {
 }
 async function makeWindows() {
   const area = screen.getPrimaryDisplay().workArea;
-  let position: Electron.Rectangle = { x: area.x + area.width - 396, y: area.y + area.height - 644, width: 360, height: 620 };
+  let position: Electron.Rectangle = { x: area.x + area.width - PET_SIZE.width - 36, y: area.y + area.height - PET_SIZE.height - 24, width: PET_SIZE.width, height: PET_SIZE.height };
   try { const saved = JSON.parse(await readFile(positionFile, 'utf8')); if (['x','y','width','height'].every(key => typeof saved[key] === 'number' && Number.isFinite(saved[key]))) position = clamp(saved); } catch { /* first launch */ }
   const common = { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true };
   pet = new BrowserWindow({ ...position, transparent: true, frame: false, resizable: false, hasShadow: false, focusable: false, skipTaskbar: true, show: false, alwaysOnTop: true, backgroundColor: '#00000000', webPreferences: common });
   pet.setIgnoreMouseEvents(true, { forward: true });
-  chat = new BrowserWindow({ width: 1100, height: 800, minWidth: 860, minHeight: 600, show: false, backgroundColor: '#101b2b', title: 'GalAgent · 星图札记', autoHideMenuBar: true, titleBarStyle: 'hidden', titleBarOverlay: { color: '#101b2b', symbolColor: '#b5c8db', height: 42 }, webPreferences: common });
+  chat = new BrowserWindow({ width: 1100, height: 800, minWidth: 860, minHeight: 600, show: false, backgroundColor: '#101b2b', title: 'GalAgent', autoHideMenuBar: true, titleBarStyle: 'hidden', titleBarOverlay: { color: '#101b2b', symbolColor: '#b5c8db', height: 42 }, webPreferences: common });
   safeWindow(pet); safeWindow(chat);
   wireWindowVisibility(pet);wireWindowVisibility(chat);
   chat.on('close', event => { if (!quitting) { event.preventDefault(); chat?.hide(); } });
@@ -223,8 +238,11 @@ async function runTts(text: string, senderId: number) {
   try {
   const snap = companion.getSnapshot();
   const ttsApiKey = await ttsCredentials.get();
+  const persona = snap.persona?.active;
   return await synthesizeTtsSpeech({
-    text,
+    // TTS providers are third parties too: the same redaction as model requests applies.
+    text: companion.redactOutbound(text, 'tts'),
+    persona: persona ? { name: persona.name, tagline: persona.tagline, voiceStyle: persona.voiceStyle } : undefined,
     ttsBaseUrl: snap.settings.ttsBaseUrl,
     ttsApiKey,
     ttsModel: snap.settings.ttsModel,
@@ -281,15 +299,24 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         return { ok: res.ok, error: res.error, data: res };
       }
       case 'tts.stop': stopSpeech(); return { ok: true };
+      case 'pet.openFolder': await mkdir(companion.pets.folder, { recursive: true }); await shell.openPath(companion.pets.folder); return { ok: true };
+      case 'persona.export': {
+        const result = await companion.handle(command);
+        const data = result.data as { name: string; text: string } | undefined;
+        if (!result.ok || !data) return result;
+        const target = await dialog.showSaveDialog(chat!, { title: '导出角色卡', defaultPath: `${data.name.replace(/[\\/:*?"<>|]/g, '_')}.persona.json`, filters: [{ name: 'GalAgent 角色卡', extensions: ['json'] }] });
+        if (!target.canceled && target.filePath) await atomicWrite(target.filePath, data.text);
+        return { ok: true, data: { canceled: target.canceled } };
+      }
       case 'shell.menu': menu().popup({ window: pet }); return { ok: true };
       case 'shell.resetPosition': resetPet(); return { ok: true };
       case 'app.export': {
-        const result = await dialog.showSaveDialog(chat!, { title: '导出星图存档', defaultPath: `GalAgent-${new Date().toISOString().slice(0,10)}.json`, filters: [{ name: 'GalAgent 存档', extensions: ['json'] }] });
+        const result = await dialog.showSaveDialog(chat!, { title: '导出相处存档', defaultPath: `GalAgent-${new Date().toISOString().slice(0,10)}.json`, filters: [{ name: 'GalAgent 存档', extensions: ['json'] }] });
         if (!result.canceled && result.filePath) await atomicWrite(result.filePath, companion.exportArchive()); return { ok: true, data: { canceled: result.canceled } };
       }
       case 'app.import': {
-        const result = await dialog.showOpenDialog(chat!, { title: '选择星图存档', properties: ['openFile'], filters: [{ name: 'GalAgent 存档', extensions: ['json'] }] });
-        if (!result.canceled && result.filePaths[0]) { const answer = await dialog.showMessageBox(chat!, { type: 'question', title: '恢复星图存档', message: '恢复这份相处记录？', detail: '当前设备的删除记录仍会生效。历史存档可能包含旧记忆，请确认来源。', buttons: ['取消', '恢复'], defaultId: 0, cancelId: 0 }); if (answer.response === 1) await companion.importArchive(await readFile(result.filePaths[0], 'utf8')); }
+        const result = await dialog.showOpenDialog(chat!, { title: '选择相处存档', properties: ['openFile'], filters: [{ name: 'GalAgent 存档', extensions: ['json'] }] });
+        if (!result.canceled && result.filePaths[0]) { const answer = await dialog.showMessageBox(chat!, { type: 'question', title: '恢复相处存档', message: '恢复这份相处记录？', detail: '当前设备的删除记录仍会生效。历史存档可能包含旧记忆，请确认来源。', buttons: ['取消', '恢复'], defaultId: 0, cancelId: 0 }); if (answer.response === 1) await companion.importArchive(await readFile(result.filePaths[0], 'utf8')); }
         return { ok: true };
       }
       case 'app.quit': app.quit(); return { ok: true };
@@ -310,7 +337,8 @@ else {
     }
     const packagedModel = path.join(process.resourcesPath, 'models');
     const developmentModel = path.resolve(__dirname, '../../.cache/models/Xenova/multilingual-e5-small');
-    companion = new CompanionService({ dataDir, credentials, features: { attention: true, journal: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
+    const skillRoot = app.isPackaged ? path.join(process.resourcesPath, 'skills') : path.resolve(__dirname, '../../skills');
+    companion = new CompanionService({ dataDir, credentials, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
     await companion.init();
     if (!override) {
       const configuredBaseUrl = companion.getSnapshot().provider.baseUrl;
@@ -329,17 +357,6 @@ else {
       return await runTts(text, event.sender.id);
     });
     ipcMain.on('galagent:tts-cancel', event => { if (allowedSender(event.sender.id)) stopSpeech(event.sender.id, false); });
-    ipcMain.handle('galagent:live2d-asset', async (event, relPath: unknown) => {
-      if (!allowedSender(event.sender.id)) throw new Error('未知窗口');
-      if (typeof relPath !== 'string' || !relPath || relPath.length > 200 || relPath.includes('\0') || relPath.includes('..')) {
-        throw new Error('非法资源路径');
-      }
-      const live2dRoot = path.resolve(rootDir, 'renderer/assets/live2d');
-      const resolved = path.resolve(live2dRoot, relPath);
-      const rel = path.relative(live2dRoot, resolved);
-      if (rel.startsWith('..') || path.isAbsolute(rel)) throw new Error('越界资源路径');
-      return await readFile(resolved);
-    });
     ipcMain.on('galagent:hit-result',(event,result)=>{
       if(pet?.webContents.id!==event.sender.id||!result||result.id!==pendingHit||typeof result.interactive!=='boolean')return;
       setNativeInteractive(result.interactive);
@@ -362,7 +379,7 @@ else {
     tray = new Tray(icon.resize({ width: 20, height: 20 })); tray.setToolTip('GalAgent · 桌面相处'); tray.on('click', () => { if (pet && !pet.isDestroyed()) pet.showInactive(); }); tray.on('right-click', () => menu().popup());
     observer.start(); void pollBrowserBridge(); sendSnapshot(companion.getSnapshot());
     roamAutoPhaseUntil = Date.now() + 8000;
-    roamTimer = setInterval(stepDesktopRoam, 40);
+    roamTimer = setInterval(stepDesktopRoam, 30);
     cursorTimer=setInterval(()=>{
       if(!pet||pet.isDestroyed()||!pet.isVisible()||pet.webContents.isLoading())return;
       const point=screen.getCursorScreenPoint(),bounds=pet.getBounds();

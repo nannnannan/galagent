@@ -1,0 +1,194 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "robo-unit",
+  "name": "小铆",
+  "description": "认真负责的小机器人秘书，屏幕脸上的像素眼会眨，系着小领结帮你记日程。",
+  "author": "GalAgent",
+  "tags": [
+    "机器人",
+    "秘书",
+    "认真"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#2a3247",
+    "g": "#eef3fa",
+    "G": "#b8c4d8",
+    "q": "#1f2a44",
+    "Q": "#2e3d61",
+    "a": "#7fe0c9",
+    "A": "#4fb39d",
+    "e": "#7ff4ff",
+    "r": "#ff6b81",
+    "p": "#ff9eb0",
+    "w": "#ffffff",
+    "b": "#8793ab"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "................................",
+    "........oooooooooooooooo........",
+    ".......oggggggggggggggggo.......",
+    "......oggggggggggggggggggo......",
+    ".....oggggggggggggggggggggo.....",
+    ".....ogggqqqqqqqqqqqqqqgggo.....",
+    ".....oggqQQqqqqqqqqqqqqqggo.....",
+    "....ooggqQqqqqqqqqqqqqqqggoo....",
+    "...oAaggqqqqqqqqqqqqqqqqggaAo...",
+    "...oAaggqqqqqqqqqqqqqqqqggaAo...",
+    "...oAaggqqqqqqqqqqqqqqqqggaAo...",
+    "...oAaggqqqqqqqqqqqqqqqqggaAo...",
+    "....ooggqqqqqqqqqqqqqqqqggoo....",
+    ".....ogggqqqqqqqqqqqqqqgggo.....",
+    ".....oggggggggggggggggggggo.....",
+    ".....oGggggggggggggggggggGo.....",
+    "......oGggggggggggggggggGo......",
+    ".......oGGGGGGGGGGGGGGGGo.......",
+    "........ooooorroorrooooo........",
+    "........o.oGgrrrrrrgGo.o........",
+    ".......oGoGggrrggrrggGoGo.......",
+    ".......oGoGggaaaaaaggGoGo.......",
+    ".......oGoGggaarraaggGoGo.......",
+    "........ooGggaaaaaaggGoo........",
+    "..........oGGGGGGGGGGo..........",
+    "...........oooooooooo...........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [11, 11],
+    "mouth": [14, 15],
+    "blush": [9, 15],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "ee......ee",
+      "ee......ee",
+      "ee......ee"
+    ],
+    "curious": [
+      "ee......ee",
+      "ee......ee",
+      "e........e"
+    ],
+    "pleased": [
+      "..........",
+      ".e......e.",
+      "e........e"
+    ],
+    "flustered": [
+      "e........e",
+      ".e......e.",
+      "e........e"
+    ],
+    "annoyed": [
+      "..........",
+      "ee......ee",
+      "ee......ee"
+    ],
+    "softened": [
+      "..........",
+      "ee......ee",
+      ".........."
+    ],
+    "blink": [
+      "..........",
+      "..........",
+      "ee......ee"
+    ],
+    "sleep": [
+      "..........",
+      "..........",
+      "ee......ee"
+    ],
+    "dizzy": [
+      "ee......ee",
+      "e........e",
+      "ee......ee"
+    ],
+    "love": [
+      "r........r",
+      "rr......rr",
+      ".........."
+    ]
+  },
+  "mouth": {
+    "closed": [
+      "eeee",
+      "...."
+    ],
+    "open": [
+      "eeee",
+      "e..e"
+    ],
+    "smile": [
+      "e..e",
+      ".ee."
+    ],
+    "pout": [
+      ".ee.",
+      "e..e"
+    ]
+  },
+  "blush": [
+    "pp..........pp"
+  ],
+  "legs": [
+    [
+      "............bbb..bbb............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..bbb............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..bbb............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "antenna",
+      "kind": "accessory",
+      "layer": "back",
+      "at": [13, 0],
+      "frames": [
+        [
+          "orrro.",
+          "orrro.",
+          "orrro.",
+          ".oGGo.",
+          ".oGGo.",
+          "..oo.."
+        ],
+        [
+          ".oaaao",
+          ".oaaao",
+          ".oaaao",
+          ".oGGo.",
+          ".oGGo.",
+          "..oo.."
+        ]
+      ]
+    }
+  ],
+  "lineColor": "e",
+  "faceColor": "q"
+}

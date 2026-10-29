@@ -1,0 +1,27 @@
+// Small collectible badges. `client` ones are reported by the renderer (pet gestures,
+// easter eggs); the rest are awarded by the core from real records only.
+export type AchievementDef = { id: string; icon: string; title: string; description: string; client?: boolean; hidden?: boolean };
+export const achievements: AchievementDef[] = [
+  { id: 'first-chat', icon: '💬', title: '初次见面', description: '和 TA 说了第一句话' },
+  { id: 'chat-100', icon: '💯', title: '话匣子', description: '累计相处 100 次' },
+  { id: 'streak-3', icon: '🔥', title: '三天打卡', description: '连续 3 天来找 TA' },
+  { id: 'streak-7', icon: '🌈', title: '一周不落', description: '连续 7 天来找 TA' },
+  { id: 'streak-30', icon: '👑', title: '老朋友', description: '连续 30 天来找 TA' },
+  { id: 'night-owl', icon: '🦉', title: '夜猫子', description: '凌晨 0 点到 4 点之间聊过天' },
+  { id: 'early-bird', icon: '🐦', title: '早起鸟', description: '早上 5 点到 7 点之间聊过天' },
+  { id: 'first-schedule', icon: '⏰', title: '有约在先', description: '定下了第一个提醒' },
+  { id: 'first-persona', icon: '🎭', title: '造物主', description: '写下第一张自己的角色卡' },
+  { id: 'first-pet', icon: '🎨', title: '像素画家', description: '导入了第一个自制小人' },
+  { id: 'archivist', icon: '📚', title: '档案管理员', description: '收到第一份每日档案' },
+  { id: 'guardian', icon: '🛡️', title: '守口如瓶', description: '沙箱第一次替你挡下敏感内容' },
+  { id: 'dizzy', icon: '😵', title: '天旋地转', description: '把小人晃晕了', client: true },
+  { id: 'poke', icon: '👉', title: '戳戳怪', description: '连续戳了小人好几下', client: true },
+  { id: 'pat', icon: '🤲', title: '摸摸头', description: '轻轻摸了小人的头', client: true },
+  { id: 'fling', icon: '🪁', title: '飞起来了', description: '把小人甩了出去', client: true },
+  { id: 'charge', icon: '⚡', title: '蓄力跳', description: '按住小人蓄满力再松手', client: true },
+  { id: 'midnight', icon: '🌙', title: '零点见', description: '在零点整和小人互动', client: true, hidden: true },
+  { id: 'konami', icon: '🕹️', title: '老玩家', description: '输入了那串神秘按键', client: true, hidden: true },
+  { id: 'collector', icon: '🧸', title: '收藏家', description: '换过 5 个不同的小人', client: true },
+  { id: 'secret-word', icon: '🔮', title: '咒语', description: '对 TA 说出了隐藏咒语', hidden: true },
+];
+export const clientAchievement = (id: unknown): id is string => typeof id === 'string' && achievements.some(a => a.id === id && a.client);

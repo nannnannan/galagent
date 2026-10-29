@@ -1,7 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {AppSnapshot, Expression, Message, PersonaFace, PersonaStage, PersonaVariables, PetAction, StorySnapshot} from '../shared/contracts';
 import {Store} from './store';
-import {personaTraits,personaHobbies} from './persona';
 
 type Identity = AppSnapshot['identity'];
 type PracticeKind = 'conversation' | 'expression' | 'repair' | 'play' | 'placement';
@@ -35,7 +34,7 @@ export function classifyInteraction(text:string): {face:PersonaFace; kind?:Pract
 }
 
 export class CharacterVariables {
-  constructor(private store:Store,private clock=()=>Date.now()){}
+  constructor(private store:Store,private clock=()=>Date.now(),private persona:()=>PersonaVariables['core']=()=>({name:'',tagline:'',likes:''})){}
   private key(identity:Identity) {return 'persona-variables:'+identity.id;}
   initialize(identity:Identity,legacy:boolean) {
     const saved=this.store.get<VariableArchive>(this.key(identity));
@@ -96,13 +95,15 @@ export class CharacterVariables {
   clearPresentation(identity:Identity) {const state=this.state(identity);state.transient={face:'daily',expression:'neutral',action:'idle',intensity:0.2,startedAt:0,expiresAt:0};this.save(identity,state);}
   snapshot(identity:Identity,mood:StorySnapshot['mood']):PersonaVariables {
     const state=this.state(identity),{credits:_credits,...progress}=this.progress(state),now=this.clock(),active=now>=state.transient.startedAt&&now<state.transient.expiresAt;
-    const last=this.store.all<Message>('message').filter(m=>m.role==='assistant'&&m.source==='chat'&&!this.store.dead(m.id)).at(-1)?.createdAt;
+    // Runs on every snapshot: scan from the newest message and stop at the first live chat reply instead of a tombstone query per row.
+    const dead=this.store.deadIds(),messages=this.store.all<Message>('message');
+    let last:string|undefined;for(let i=messages.length-1;i>=0;i--){const m=messages[i];if(m.role==='assistant'&&m.source==='chat'&&!dead.has(m.id)){last=m.createdAt;break;}}
     const face=active?state.transient.face:'daily';
-    return {version:1,core:{traits:personaTraits,hobbies:personaHobbies,motifs:['星空','棱镜虹彩','K标记']},expression:{...progress,stage:'unified',migrated:state.baseline.migrated},relationship:this.relationship(),emotion:mood,scene:{face,expiresAt:active?state.transient.expiresAt:0},presentation:{expression:active?state.transient.expression:'neutral',action:active?state.transient.action:'idle',intensity:active?state.transient.intensity:0.2,expiresAt:active?state.transient.expiresAt:0},time:{now:new Date(now).toISOString(),lastInteractionAt:last,elapsedSeconds:last?Math.max(0,(now-Date.parse(last))/1000):0,rate:1}};
+    return {version:1,core:this.persona(),expression:{...progress,stage:'unified',migrated:state.baseline.migrated},relationship:this.relationship(),emotion:mood,scene:{face,expiresAt:active?state.transient.expiresAt:0},presentation:{expression:active?state.transient.expression:'neutral',action:active?state.transient.action:'idle',intensity:active?state.transient.intensity:0.2,expiresAt:active?state.transient.expiresAt:0},time:{now:new Date(now).toISOString(),lastInteractionAt:last,elapsedSeconds:last?Math.max(0,(now-Date.parse(last))/1000):0,rate:1}};
   }
   context(identity:Identity,mood:StorySnapshot['mood'],face:PersonaFace) {
     const v=this.snapshot(identity,mood);
-    return {core:v.core,personality:'unified',relationship:v.relationship.familiarity<5?'初识':v.relationship.familiarity<15?'逐渐熟悉':'熟悉相处',emotion:v.emotion,face,time:v.time,numericUpdatesAllowed:false};
+    return {relationship:v.relationship.familiarity<5?'初识':v.relationship.familiarity<15?'逐渐熟悉':'熟悉相处',emotion:v.emotion,face,time:v.time,numericUpdatesAllowed:false};
   }
 
   reconcile(identity:Identity) {

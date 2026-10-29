@@ -1,0 +1,218 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "sunny-girl",
+  "name": "小晴",
+  "description": "元气满满的短发女孩，橘色波波头上翘着一根呆毛，最喜欢晒太阳和给你打气。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "元气",
+    "短发"
+  ],
+  "size": [32, 34],
+  "palette": {
+    "o": "#4a2a2a",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#f08a3c",
+    "H": "#c45f28",
+    "L": "#ffc178",
+    "c": "#ffd34d",
+    "C": "#e9a92a",
+    "d": "#ffffff",
+    "r": "#ff5d6e",
+    "b": "#a0523a",
+    "k": "#2d1b2e",
+    "e": "#6b4fa8",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "............oooooooo............",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhrhhho.....",
+    ".....ohhhhhhhhhhhhhhhrrrhho.....",
+    "....ohhhhhHhhhHHHHhhhHrhhhho....",
+    "....ohhhhHSHhHSSSSHhHSHhhhho....",
+    "....ohhhHSsSHSssssSHSsSHhhho....",
+    "....ohhHSsssSssssssSsssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhHssssssssssssssHhhho....",
+    "....oHHHoHssssssssssssHoHHHo....",
+    ".....ooo.oossssssssssoo.ooo.....",
+    "........oo.oodssssdoo.oo........",
+    ".......occooccddddccoocco.......",
+    ".......oCCoCccCrrCccCoCCo.......",
+    ".......oCCoCccccccccCoCCo.......",
+    ".......ossoCccccccccCosso.......",
+    "........ooCccccccccccCoo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 15],
+    "mouth": [14, 21],
+    "blush": [8, 20],
+    "feet": [0, 30]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..ss.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "ahoge",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [13, 0],
+      "frames": [
+        [
+          "....oo.",
+          "...ohho",
+          "..ohoo.",
+          "..oho.."
+        ],
+        [
+          "...oho.",
+          "..oho..",
+          "..oho..",
+          "..oho.."
+        ],
+        [
+          "....oo.",
+          "...ohho",
+          "..ohoo.",
+          "..oho.."
+        ],
+        [
+          ".oo....",
+          "ohho...",
+          ".ooho..",
+          "..oho.."
+        ]
+      ]
+    }
+  ]
+}

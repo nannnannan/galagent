@@ -11,6 +11,13 @@ test('desktop IPC enforces message, memory and interaction boundaries', () => {
   assert.throws(()=>validateCommand({type:'chat.send',text:'x'.repeat(12001)}));
   assert.throws(()=>validateCommand({type:'memory.correct',id:'x',text:''}));
   assert.throws(()=>validateCommand({type:'pet.interact',interaction:'keyboard'}));
-  assert.throws(()=>validateCommand({type:'settings.update',settings:{petScale:10}}));
+  assert.throws(()=>validateCommand({type:'settings.update',settings:{petScale:'big'}}));
+  assert.throws(()=>validateCommand({type:'settings.update',settings:{proactiveIntervalMinutes:Number.NaN}}));
+  assert.equal(validateCommand({type:'settings.update',settings:{proactiveIntervalMinutes:3,proactiveDailyLimit:500,heartbeatSeconds:15,quietHours:{enabled:true,start:'22:30',end:'07:00'},sandbox:{level:'strict',sensitiveWords:['机密']}}}).type,'settings.update');
+  assert.throws(()=>validateCommand({type:'settings.update',settings:{sandbox:{level:'root'}}}));
+  assert.throws(()=>validateCommand({type:'schedule.add',note:'喝水'}));
+  assert.equal(validateCommand({type:'schedule.add',note:'喝水',inMinutes:30}).type,'schedule.add');
+  assert.throws(()=>validateCommand({type:'pet.select',id:'../evil'}));
+  assert.throws(()=>validateCommand({type:'persona.save',persona:'x'}));
   assert.equal(validateCommand({type:'chat.send',text:'你好'}).type,'chat.send');
 });

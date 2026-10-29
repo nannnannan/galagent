@@ -1,14 +1,16 @@
+import type { PersonaDraft, PersonaProfile } from './personas';
+export type { PersonaDraft, PersonaProfile } from './personas';
 export type Expression = 'neutral' | 'curious' | 'pleased' | 'flustered' | 'annoyed' | 'softened' | 'blink';
-export type PetAction = 'idle' | 'nod' | 'sway' | 'peek' | 'sulk' | 'celebrate' | 'wave' | 'sparkle' | 'doodle' | 'run';
+export type PetAction = 'idle' | 'nod' | 'sway' | 'peek' | 'sulk' | 'celebrate' | 'wave' | 'sparkle' | 'doodle' | 'run' | 'sleep' | 'think' | 'dizzy' | 'love';
 export type PersonaStage = 'adapting' | 'awkward' | 'tsundere' | 'settled';
 export type PersonaFace = 'daily' | 'work' | 'disagreement';
 export type CompanionMode = 'daily' | 'focus' | 'rest';
-export type InitiativeTopic = 'window' | 'clipboard' | 'browser' | 'task' | 'watch' | 'reunion' | 'unanswered' | 'system' | 'screen';
+export type InitiativeTopic = 'window' | 'clipboard' | 'browser' | 'task' | 'watch' | 'reunion' | 'unanswered' | 'system' | 'screen' | 'schedule';
 export type InitiativeFeedback = 'welcome' | 'mute';
 export type CompanionPreferences = { version: 1; topics: Partial<Record<InitiativeTopic, InitiativeFeedback>>; ratings: Record<string, InitiativeFeedback> };
 export type PersonaVariables = {
   version: 1;
-  core: { traits: readonly string[]; hobbies: readonly string[]; motifs: readonly string[] };
+  core: { name: string; tagline: string; likes: string };
   expression: { proficiency: number; stage: 'unified'; practiceDays: number; eventKinds: string[]; migrated: boolean };
   relationship: { trust: number; familiarity: number; self_awareness: number; exposure: number };
   emotion: { expression: Expression; strength: number; expiresAt: number };
@@ -54,9 +56,56 @@ export type Settings = {
   ttsModel?: string;
   ttsVoice?: string;
   ttsSpeed?: number;
+  /** Pixel pet worn on the desktop; empty means the active persona's own avatar. */
+  petId?: string;
+  /** Attention heartbeat; events still wake it at once. */
+  heartbeatSeconds?: number;
+  /** Nudge when her last line went unanswered this long while the user is active. */
+  unansweredMinutes?: number;
+  /** Greet again after this long apart. */
+  reunionHours?: number;
+  /** Minimum gap between screenshots (never below 60 s). */
+  screenIntervalSeconds?: number;
+  /** Pet dozes off after the user has been idle this long; 0 disables. */
+  idleSleepMinutes?: number;
+  /** How long a speech bubble stays, in seconds. */
+  bubbleSeconds?: number;
+  /** Desktop roaming speed multiplier. */
+  roamSpeed?: number;
+  /** Daily do-not-disturb window in local time, e.g. 23:00 → 08:00. */
+  quietHours?: { enabled: boolean; start: string; end: string };
+  /** Shows small status captions and easter eggs above the pet. */
+  funCaptions?: boolean;
+  sandbox?: SandboxSettings;
 };
-export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[] };
-export type MemoryItem = { id: string; kind: 'fact' | 'episode' | 'reflection'; text: string; sourceId: string; createdAt: string; valid: boolean; validFrom?: string; validTo?: string; supersedes?: string; importance?: number };
+/** Nested groups may be patched partially; the core merges and validates them. */
+export type SettingsPatch = Partial<Omit<Settings, 'sandbox' | 'quietHours'>> & { sandbox?: Partial<SandboxSettings>; quietHours?: Partial<NonNullable<Settings['quietHours']>> };
+export type SandboxLevel = 'strict' | 'standard' | 'open';
+export type SandboxSettings = {
+  level: SandboxLevel;
+  /** File tools: read/write confinement. */
+  fileScope: 'workspace-read' | 'workspace' | 'anywhere';
+  shell: boolean;
+  network: boolean;
+  /** Optional FetchURL allow-list; empty means any public host. */
+  allowedDomains: string[];
+  /** Redact API keys, tokens, private keys and passwords before anything leaves the machine. */
+  redactSecrets: boolean;
+  /** Also redact ID-card, bank-card, phone numbers and e-mail addresses. */
+  redactPersonal: boolean;
+  /** User-defined words that must never leave the machine. */
+  sensitiveWords: string[];
+};
+export type PrivacyEvent = { at: string; channel: string; action: 'redacted' | 'blocked'; kinds: string[]; count: number };
+export type PrivacyView = { redactedToday: number; blockedToday: number; recent: PrivacyEvent[] };
+export type ScheduleView = { id: string; note: string; dueAt: string; repeatMinutes?: number; cron?: string; createdBy: 'character' | 'user'; createdAt: string; lateBy?: number };
+/** One natural day folded into an archive at local midnight; the raw messages stay on disk. */
+export type DailyArchiveView = { day: string; title: string; summary: string; diary: string; mood: string; topics: string[]; highlights: string[]; openThreads: string[]; messageCount: number; createdAt: string };
+export type ArchiveStatus = { lastDay?: string; pendingDays: string[]; failedDays: string[]; nextRunAt: string };
+export type BondView = { firstMetAt?: string; daysTogether: number; streakDays: number; activeDays: number; todayChats: number; achievements: { id: string; icon: string; title: string; description: string; unlockedAt?: string; hidden?: boolean }[] };
+export type PetCatalogEntry = { id: string; name: string; description: string; builtin: boolean };
+export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[]; personaId?: string; speaker?: string };
+export type MemoryItem = { id: string; kind: 'fact' | 'episode' | 'reflection'; text: string; sourceId: string; createdAt: string; valid: boolean; validFrom?: string; validTo?: string; supersedes?: string; importance?: number; /** Ebbinghaus-style reinforcement: times the character actually cited it. */ recalls?: number; lastRecalledAt?: string };
 export type DiaryEntry = { id: string; text: string; createdAt: string; sourceIds: string[]; kind?: 'note' | 'journal'; title?: string };
 export type StoryScene = { type: 'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06'; key: string; sourceIds: string[]; evidence: Record<string, unknown> };
 export type StoryEpisode = StoryScene & { id: string; createdAt: string; historical?: boolean };
@@ -80,6 +129,12 @@ export type BrowserView = {
 };
 export type ProviderMode = 'mira-proxy' | 'native-api';
 export type AppSnapshot = {
+  persona?: { active: PersonaProfile; list: PersonaProfile[]; greeted: boolean };
+  pets?: { catalog: PetCatalogEntry[]; revision: number; folder?: string };
+  schedules?: ScheduleView[];
+  archives?: DailyArchiveView[];
+  bond?: BondView;
+  privacy?: PrivacyView;
   companionship?: CompanionPreferences;
   agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string}};
   variables?: PersonaVariables;
@@ -87,17 +142,36 @@ export type AppSnapshot = {
   watches?: WatchView[];
   browser?: BrowserView;
   identity: { id: string; name: string; onboarding: 'intro' | 'naming' | 'ready'; stage: 'S0' | 'S2' | 'S3' | 'S4' };
+  /** Short caption of what the pet is doing right now (computed by the core). */
+  activity?: { kind: 'idle' | 'thinking' | 'working' | 'speaking' | 'quiet' | 'sleeping' | 'offline' | 'resting' | 'focus'; label: string };
   visual: { expression: Expression; action: PetAction; bubble: string; revision: number; intensity?: number };
   messages: Message[];
   memories: MemoryItem[];
   diary: DiaryEntry[];
   settings: Settings;
   provider: { configured: boolean; baseUrl: string; model: string; mode?: ProviderMode; toolCount?: number };
-  status: { busy: boolean; error?: string; online: boolean; embedding: 'loading' | 'ready' | 'fallback' | 'idle'; contextTokens: number; contextBudget: number; tasks: BackgroundTask[]; pool?: PoolView; attention?: AttentionView; perception?: { clipboardEntries: number; lastScreenAt?: string; browserConnected?: boolean; activeUrl?: string }; journal?: { counter: number; every: number } };
+  status: { busy: boolean; error?: string; online: boolean; embedding: 'loading' | 'ready' | 'fallback' | 'idle'; contextTokens: number; contextBudget: number; tasks: BackgroundTask[]; pool?: PoolView; attention?: AttentionView; perception?: { clipboardEntries: number; lastScreenAt?: string; browserConnected?: boolean; activeUrl?: string }; journal?: ArchiveStatus };
   observation: Observation;
   stats: { conversations: number; memories: number; proactiveToday: number; tokensToday: number; lastSeenAt?: string };
 };
 export type AppCommand =
+  | { type: 'persona.select'; id: string }
+  | { type: 'persona.save'; id?: string; persona: PersonaDraft }
+  | { type: 'persona.delete'; id: string }
+  | { type: 'persona.import'; text: string }
+  | { type: 'persona.export'; id: string }
+  | { type: 'persona.generate'; brief: string }
+  | { type: 'pet.select'; id: string }
+  | { type: 'pet.import'; text: string }
+  | { type: 'pet.delete'; id: string }
+  | { type: 'pet.get'; id: string }
+  | { type: 'pet.openFolder' }
+  | { type: 'schedule.add'; note: string; inMinutes?: number; at?: string; repeatMinutes?: number }
+  | { type: 'schedule.cancel'; id: string }
+  | { type: 'privacy.clearAudit' }
+  | { type: 'archive.rebuild'; day: string }
+  | { type: 'achievement.unlock'; id: string }
+  | { type: 'privacy.lockdown' }
   | { type: 'agent.run'; task: string }
   | { type: 'agent.cancel' }
   | { type: 'agent.configure'; cwd: string }
@@ -109,7 +183,7 @@ export type AppCommand =
   | { type: 'tts.speak'; text: string }
   | { type: 'tts.stop' }
   | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string }
-  | { type: 'settings.update'; settings: Partial<Settings> }
+  | { type: 'settings.update'; settings: SettingsPatch }
   | { type: 'config.save'; apiKey?: string; baseUrl: string; model: string; mode?: ProviderMode }
   | { type: 'memory.delete'; id: string }
   | { type: 'memory.correct'; id: string; text: string }
@@ -121,6 +195,8 @@ export type AppCommand =
   | { type: 'initiative.check' }
   | { type: 'initiative.feedback'; messageId: string; value: InitiativeFeedback }
   | { type: 'initiative.resetFeedback' }
+  | { type: 'initiative.topic'; topic: InitiativeTopic; enabled: boolean }
+  | { type: 'pet.emote'; action: PetAction; bubble?: string }
   | { type: 'shell.chat'; open?: boolean }
   | { type: 'shell.input'; open: boolean }
   | { type: 'shell.drag'; dx: number; dy: number }
@@ -139,7 +215,6 @@ export type GalAgentBridge = {
   onSnapshot(listener: (snapshot: AppSnapshot) => void): () => void;
   onHitTest?(listener: (point: {x:number;y:number}) => boolean): () => void;
   onRoamState?(listener: (state: { active: boolean; direction: -1 | 0 | 1 }) => void): () => void;
-  readLive2DAsset?(relPath: string): Promise<Uint8Array | ArrayBuffer>;
   synthesizeSpeech?(text: string): Promise<{ ok: boolean; provider?: string; audioBase64?: string; mimeType?: string; fallbackText?: string; voice?: string; speed?: number; error?: string }>;
   cancelSpeech?(): void;
   onSpeechStop?(listener: () => void): () => void;
