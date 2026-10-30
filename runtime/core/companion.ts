@@ -27,6 +27,7 @@ import { BrowserPerception, type BrowserReport, type BrowserHistoryItem, type Br
 import { parseExtraction, extractionPrompt, journalPrompt, parseJournal, searchJournals, memoryBoost, coreMemories, JOURNAL_EVERY, type MemoryOp } from './memory-plus';
 import { validMode, validTopic, readPreferences } from '../shared/companionship';
 import type { CompanionPreferences, InitiativeTopic } from '../shared/contracts';
+import { isKimiK3Model, MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
 export type CompanionOptions = {
     agentRunner?: AgentRunner;
     workingDir?: string;
@@ -52,7 +53,7 @@ export type CompanionOptions = {
         close(): Promise<void>;
     };
 };
-const defaults: Settings = { observationEnabled: false, windowTitlesEnabled: false, initiativeEnabled: true, mischiefEnabled: true, quietUntil: 0, proactiveIntervalMinutes: 20, proactiveHourlyLimit: 2, proactiveDailyLimit: 8, petScale: 1, reducedMotion: false, screenCaptureEnabled: true, clipboardEnabled: true, captureBlocklist: [...DEFAULT_CAPTURE_BLOCKLIST], forbiddenPaths: [], roamingEnabled: true, ttsEnabled: false, ttsBaseUrl: 'https://api.xiaomimimo.com/v1', ttsModel: 'mimo-v2.5-tts', ttsVoice: '冰糖', ttsSpeed: 1, petId: '', heartbeatSeconds: 60, unansweredMinutes: 20, reunionHours: 6, screenIntervalSeconds: 60, idleSleepMinutes: 10, bubbleSeconds: 12, roamSpeed: 1, quietHours: { enabled: false, start: '23:00', end: '08:00' }, funCaptions: true, sandbox: { ...DEFAULT_SANDBOX } };
+const defaults: Settings = { observationEnabled: false, windowTitlesEnabled: false, initiativeEnabled: true, mischiefEnabled: true, quietUntil: 0, proactiveIntervalMinutes: 5, proactiveHourlyLimit: 2, proactiveDailyLimit: 8, petScale: 1, reducedMotion: false, screenCaptureEnabled: true, clipboardEnabled: true, captureBlocklist: [...DEFAULT_CAPTURE_BLOCKLIST], forbiddenPaths: [], roamingEnabled: true, ttsEnabled: false, ttsBaseUrl: 'https://api.xiaomimimo.com/v1', ttsModel: 'mimo-v2.5-tts', ttsVoice: '冰糖', ttsSpeed: 1, petId: '', heartbeatSeconds: 60, unansweredMinutes: 20, reunionHours: 6, screenIntervalSeconds: 60, idleSleepMinutes: 10, bubbleSeconds: 12, roamSpeed: 1, quietHours: { enabled: false, start: '23:00', end: '08:00' }, funCaptions: true, sandbox: { ...DEFAULT_SANDBOX } };
 export const CONTEXT_BUDGET = 16000;
 const MINUTE = 60_000;
 /** Tool rounds the main character may take before it must give its JSON reply. */
@@ -167,7 +168,7 @@ export class CompanionService extends EventEmitter {
         this.pool=options.pool||new RequestPool();if(options.capture)this.sampler=new ScreenSampler(options.capture);
         this.agent=options.agentRunner||new OpenAIToolAgent({pool:this.pool,provider:()=>this.state.provider,credentials:options.credentials,fetch:options.fetch,forbiddenPaths:()=>this.state?.settings?.forbiddenPaths||[],protectedWritePaths:()=>[options.dataDir,...(options.protectedWritePaths||[])],policyVersion:()=>this.policyVersion,sandbox:()=>this.state?.settings?.sandbox||DEFAULT_SANDBOX,checkUrl:url=>this.guard.assertUrl(url,'executor-fetch'),outbound:messages=>this.guard.messages(messages,'executor'),skillRoots:()=>options.skillRoots||[],mainCron:{create:job=>{const item=this.schedules.add({note:job.prompt.slice(0,300),cron:job.recurring?job.cron:undefined,at:job.recurring?undefined:new Date(cronNext(job.cron,Date.now())).toISOString()},'user');this.emitSnapshot();return{id:item.id,nextAt:item.dueAt};},list:()=>this.schedules.list().map(i=>({id:i.id,cron:i.cron,prompt:i.note,nextAt:i.dueAt,recurring:!!(i.cron||i.repeatMinutes)})),delete:id=>{const ok=this.schedules.cancel(id);if(ok)this.emitSnapshot();return ok;}},storage:{sessions:()=>this.store.all<HostSession>('agent-session'),tasks:()=>this.store.all<HostTask>('agent-task'),save:session=>this.store.put('agent-session',session.id,session),saveTask:task=>this.store.put('agent-task',task.id,task)},ask:(questions,signal)=>this.askAgent(questions,signal),onUsage:tokens=>{if(!this.closed){this.rollover();this.state.stats.tokensToday+=tokens;this.persist();}},onResult:result=>{if(!this.closed)this.recordAgentResult(result.summary,result.stopReason,result.tools.length);}});
         this.embeddings = options.embeddings || new Embeddings(join(options.dataDir, 'models'), options.embeddingModelPath, options.embeddingWorkerPath, { onState: state => { if (this.state) { this.state.status.embedding = state; this.emitSnapshot(); } } });
-        this.state = { identity: { id: randomUUID(), name: '', onboarding: 'intro', stage: 'S0' }, visual: { expression: 'neutral', action: 'idle', bubble: '', revision: 0 }, messages: [], memories: [], diary: [], settings: { ...defaults }, provider: { configured: false, baseUrl: 'http://127.0.0.1:18890/v1', model: 'kimi-code/k3', mode: 'mira-proxy', toolCount: 25 }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: CONTEXT_BUDGET, tasks: [] }, observation: { available: false, observedAt: new Date(Date.now()).toISOString() }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 } };
+        this.state = { identity: { id: randomUUID(), name: '', onboarding: 'intro', stage: 'S0' }, visual: { expression: 'neutral', action: 'idle', bubble: '', revision: 0 }, messages: [], memories: [], diary: [], settings: { ...defaults }, provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL, mode: 'mira-proxy', toolCount: 25 }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: CONTEXT_BUDGET, tasks: [] }, observation: { available: false, observedAt: new Date(Date.now()).toISOString() }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 } };
     }
     async init() {
         const existingIdentity=this.store.get<AppSnapshot['identity']>('identity');
@@ -188,7 +189,7 @@ export class CompanionService extends EventEmitter {
         this.state.agent={backend:'openai-kimi-tools',mode:forbidden.length?'directory-guarded':'full-access',cwd:this.store.get<string>('agent-cwd')||this.options.workingDir||process.cwd(),busy:false,forbiddenPaths:[...forbidden],policyVersion:this.policyVersion,lastResult:this.store.get('agent-last-result')};
         this.state.provider = { ...this.state.provider, ...this.store.get<AppSnapshot['provider']>('provider'), configured: false, toolCount: 25 };
         if (this.state.provider.mode !== 'mira-proxy' && this.state.provider.mode !== 'native-api') {
-            this.state.provider.mode = /^(kimi-code\/k3|kimi-k3|k3)(?:$|[-_])/i.test(this.state.provider.model) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(this.state.provider.baseUrl) ? 'mira-proxy' : 'native-api';
+            this.state.provider.mode = isKimiK3Model(this.state.provider.model) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(this.state.provider.baseUrl) ? 'mira-proxy' : 'native-api';
         }
         this.state.provider.configured=!!(await this.options.credentials.get());
         if(!this.state.provider.configured&&this.state.provider.baseUrl==='https://api.moonshot.cn/v1'&&this.state.provider.model==='kimi-k3'){this.state.provider={baseUrl:'http://127.0.0.1:18890/v1',model:'kimi-code/k3',mode:'mira-proxy',toolCount:25,configured:false};this.state.provider.configured=!!(await this.options.credentials.get());}
@@ -336,7 +337,7 @@ export class CompanionService extends EventEmitter {
                     const cleanModel = command.model.trim();
                     const mode = command.mode === 'mira-proxy' || command.mode === 'native-api'
                         ? command.mode
-                        : (/^(kimi-code\/k3|kimi-k3|k3)(?:$|[-_])/i.test(cleanModel) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(cleanUrl) ? 'mira-proxy' : 'native-api');
+                        : (isKimiK3Model(cleanModel) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(cleanUrl) ? 'mira-proxy' : 'native-api');
                     this.state.provider = { baseUrl: cleanUrl, model: cleanModel, mode, toolCount: 25, configured: false };
                     this.state.provider.configured=!!(await this.options.credentials.get());
                     this.cancel();
@@ -783,7 +784,7 @@ export class CompanionService extends EventEmitter {
     private toolless = new Set<string>();
     private async request(messages:TransportMessage[],signal:AbortSignal,account:'chat'|'initiative'|'background'='background',capture?:(message:TransportMessage)=>void,priorityOverride?:PoolPriority,tools=false):Promise<unknown> {
         const key=await this.options.credentials.get();if(!key)throw new Error('尚未配置模型 API Key，请先打开「连接」设置');
-        const k3=this.state.provider.mode!=='native-api'&&/^(kimi-code\/k3|kimi-k3|k3)(?:$|[-_])/i.test(this.state.provider.model);
+        const k3=this.state.provider.mode!=='native-api'&&isKimiK3Model(this.state.provider.model);
         const tuning=k3?{reasoning_effort:'low',max_completion_tokens:4096}:{max_tokens:900};
         const priority:PoolPriority=priorityOverride||(account==='chat'?'chat':account==='initiative'?'attention':'background');
         const endpoint=this.state.provider.baseUrl+'|'+this.state.provider.model;
@@ -1188,6 +1189,7 @@ export class CompanionService extends EventEmitter {
         if (!this.options.features?.attention || this.attention) return;
         this.attention = new AttentionLoop({
             store: this.store,
+            minWakeIntervalMs: () => this.state.settings.proactiveIntervalMinutes * 60_000,
             evaluate: (input, signal) => this.attentionRequest(input, signal),
             eligible: () => this.attentionBlocked(),
             canWake: () => !this.closed && !this.state.status.busy && !this.proactiveGate(),

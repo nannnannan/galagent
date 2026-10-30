@@ -32,6 +32,17 @@ test('incomplete SSE, truncated completion, repeated IDs and conflicting finish 
  await assert.rejects(parseModelReply(reply({role:'assistant',tool_calls:[call('Read',{path:'x'}),call('Read',{path:'y'})]},'tool_calls')));
  await assert.rejects(parseModelReply(stream([{choices:[{index:0,delta:{content:'ok'},finish_reason:'stop'}]},{choices:[{index:0,delta:{},finish_reason:'tool_calls'}]}])));
 });
+
+test('K3.1 empty intermediate finish markers remain pending until a real terminal marker and DONE',async()=>{
+ const pending={choices:[{index:0,delta:{role:'assistant',content:'',reasoning_content:'fixture',tool_calls:[{index:0,id:'k31-read',type:'function',function:{name:'Read',arguments:'{"path":"probe.txt"}'}}]},finish_reason:''}]};
+ const terminal={choices:[{index:0,delta:{content:'',reasoning_content:''},finish_reason:'tool_calls'}],usage:{total_tokens:18}};
+ const result=await parseModelReply(stream([pending,terminal]));
+ assert.equal(result.finishReason,'tool_calls');assert.equal(result.usage,18);assert.equal(result.message.tool_calls![0].function.name,'Read');
+ await assert.rejects(parseModelReply(stream([pending])),/未完整结束/);
+ await assert.rejects(parseModelReply(stream([pending,terminal],false)),/模型流中断/);
+ await assert.rejects(parseModelReply(stream([pending,{choices:[{index:0,delta:{},finish_reason:'length'}]}])),/未完整结束/);
+ await assert.rejects(parseModelReply(stream([pending,terminal,{choices:[{index:0,delta:{},finish_reason:'stop'}]}])),/结束标记冲突/);
+});
 test('Read/Write/Edit preserve CRLF view, reject stale writes and ambiguous matches, and validate original path schema',async()=>{
  const f=await hostFixture();try{const file=path.join(f.dir,'source.txt');await writeFile(file,'甲\r\n重复\r\n重复\r\n');const view=await f.host.execute(f.session,'Read',{path:'source.txt',line_offset:1,n_lines:2},signal());assert.match(view.content,/1\t甲\n2\t重复/);
   assert.match((await f.host.execute(f.session,'Edit',{path:'source.txt',old_string:'重复',new_string:'乙'},signal())).content,/ToolError/);assert.equal((await f.host.execute(f.session,'Edit',{path:'source.txt',old_string:'重复',new_string:'乙',replace_all:true},signal())).content.startsWith('ToolError:'),false);assert.equal(await readFile(file,'utf8'),'甲\r\n乙\r\n乙\r\n');

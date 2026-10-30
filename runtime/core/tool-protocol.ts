@@ -21,7 +21,7 @@ export async function parseModelReply(response:Response,signal?:AbortSignal):Pro
   const data=event.split('\n').filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trimStart()).join('\n');if(!data)return;
   if(done)throw new Error('结束标记后仍有模型数据');if(data.trim()==='[DONE]'){done=true;return;}
   const chunk=JSON.parse(data);if(chunk.error)throw new Error('模型流返回错误');if(typeof chunk.usage?.total_tokens==='number')usage=chunk.usage.total_tokens;
-  for(const choice of chunk.choices||[]){if((choice.index??0)!==0)continue;if(choice.finish_reason!==null&&choice.finish_reason!==undefined){if(finishReason!==undefined&&finishReason!==choice.finish_reason)throw new Error('模型结束标记冲突');finishReason=choice.finish_reason;}
+  for(const choice of chunk.choices||[]){if((choice.index??0)!==0)continue;if(choice.finish_reason!==null&&choice.finish_reason!==undefined&&choice.finish_reason!==''){if(finishReason!==undefined&&finishReason!==choice.finish_reason)throw new Error('模型结束标记冲突');finishReason=choice.finish_reason;}
    const delta=choice.delta||{};if(delta.role!==undefined&&delta.role!==null&&delta.role!=='assistant')throw new Error('模型消息角色无效');
    for(const [key,value] of Object.entries(delta)){
     if(value===null||value===undefined||key==='role')continue;

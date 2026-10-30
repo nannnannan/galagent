@@ -1,3 +1,11 @@
+## Windows 安装版
+
+在 GitHub Releases 下载 `GalAgent-Setup-0.2.0-x64.exe`，运行安装向导。升级沿用 `%APPDATA%/GalAgent` 存档，卸载默认保留数据。建议升级前备份存档。安装包未做可信发布者证书签名。
+
+Mira K3.1 Pro 需要用户自行安装并登录 Mira、运行兼容本地反代；安装包不含账号、密钥或个人存档。也可在设置中连接自己的 OpenAI 兼容接口。
+
+从源码制作安装程序：`npm ci` 后运行 `npm run package:installer`（需准备构建配置中的本地嵌入模型资源）。
+
 # GalAgent
 
 一个放在 Windows 桌面上的像素小人陪伴 Agent：选一位角色或自己写一张角色卡，挑一个像素小人，TA 会陪你聊天、记住你的事、按你定的节奏主动来找你，也能在沙箱里替你在本机干活。

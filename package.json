@@ -1,6 +1,6 @@
 {
   "name": "galagent",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A customizable desktop companion: pick or write a character, choose a pixel pet, and let it keep you company.",
   "main": "dist/main/index.cjs",
@@ -13,7 +13,8 @@
     "package": "npm run build && electron-builder --win dir --x64",
     "preview:ui": "node scripts/ui-preview.mjs",
     "pet:validate": "node scripts/pixel-pet/validate.mjs",
-    "pet:preview": "node scripts/pixel-pet/preview.mjs"
+    "pet:preview": "node scripts/pixel-pet/preview.mjs",
+    "package:installer": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -77,6 +78,16 @@
       "target": "dir",
       "icon": "runtime/assets/icon.ico",
       "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "GalAgent-Setup-${version}-${arch}.${ext}"
     }
-  }
+  },
+  "author": "nannnannan"
 }

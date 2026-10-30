@@ -52,7 +52,7 @@ test('the skill template and the inline SKILL.md example are valid pets', () => 
   const result = validatePixelPet(template);
   assert.ok(result.ok, result.ok ? '' : result.errors.join('; '));
   const skill = readFileSync(join(root, 'skills/galagent-pixel-pet/SKILL.md'), 'utf8');
-  const example = skill.match(/```json\n([\s\S]*?)\n```/)?.[1];
+  const example = skill.match(/```json\r?\n([\s\S]*?)\r?\n```/)?.[1];
   assert.ok(example, 'SKILL.md should contain a json example');
   const parsed = parsePixelPet(example);
   assert.ok(parsed.ok, parsed.ok ? '' : parsed.errors.join('; '));

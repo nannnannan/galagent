@@ -18,6 +18,7 @@ export type AttentionDeps = {
     clock?: () => number;
     /** Fixed or user-configured heartbeat; read on every tick. */
     heartbeatMs?: number | (() => number);
+    minWakeIntervalMs?(): number;
     evaluate(input: AttentionInput, signal: AbortSignal): Promise<unknown>;
     eligible(): string | undefined;          // undefined = may evaluate; otherwise reason
     canWake(): boolean;                      // main character free to speak
@@ -69,6 +70,7 @@ export class AttentionLoop {
     private controller?: AbortController;
     private immediate?: ReturnType<typeof setTimeout>;
     private lastHeartbeat = 0;
+    private lastWakeAt = 0;
     private nextCheckAt = 0;
     private pendingWake?: WakeRequest;
     private failures = 0;
@@ -79,6 +81,7 @@ export class AttentionLoop {
     private clock: () => number;
     constructor(private deps: AttentionDeps) {
         this.clock = deps.clock || (() => Date.now());
+        this.lastWakeAt = deps.store.get<number>('attention-last-wake') || 0;
         const now = this.clock();
         this.handled = deps.store.get<string[]>('attention-handled') || [];
         // Only task results survive restarts; ambient events are stale after a restart.
@@ -261,9 +264,10 @@ export class AttentionLoop {
         const request = this.pendingWake;
         if (!request || this.closed) return;
         if (request.expiresAt <= now) { this.pendingWake = undefined; return; }
+        if (this.lastWakeAt && now - this.lastWakeAt < (this.deps.minWakeIntervalMs?.() || 0)) return;
         if (this.deps.eligible() || !this.deps.canWake()) return;
         this.pendingWake = undefined;
-        try { if (await this.deps.wake(request)) { this.status.wakes++; this.publish(); } }
+        try { if (await this.deps.wake(request)) { this.lastWakeAt = this.clock(); this.deps.store.put('state', 'attention-last-wake', this.lastWakeAt); this.status.wakes++; this.publish(); } }
         catch { /* wake failure is surfaced by the main character status */ }
     }
     private markHandled(ids: string[]) {

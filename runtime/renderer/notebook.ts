@@ -1,3 +1,4 @@
+import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
 import type { AppSnapshot, Expression, Message, PersonaDraft, PersonaProfile, PetAction, SandboxSettings, SettingsPatch } from '../shared/contracts';
 import { companionModes, topicLabels, validTopic } from '../shared/companionship';
 import { achievements as achievementDefs } from '../shared/achievements';
@@ -698,7 +699,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.placeholder = s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key';
   form.append(field('接入方式', mode), field('API 地址', url), field('模型', name), field('API Key', key));
   const presets = el('div', 'row wrap wide');
-  for (const [label, m, u, n] of [['Mira 本地反代', 'mira-proxy', 'http://127.0.0.1:18890/v1', 'kimi-code/k3'], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
+  for (const [label, m, u, n] of [['Mira K3.1 Pro', 'mira-proxy', MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
     presets.append(button(label, () => { mode.value = m; url.value = u; name.value = n; }, 'chip'));
   const save = el('button', 'btn primary', '保存连接'); save.type = 'submit';
   form.append(presets, save);

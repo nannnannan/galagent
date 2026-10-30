@@ -146,6 +146,26 @@ async function attentionFixture(over: Partial<AttentionDeps> = {}) {
     return { dir, store, loop, calls, wakes, deps, advance: (ms: number) => { now += ms; }, now: () => now, setReply: (r: unknown) => { reply = r; }, setScreen: (s: any) => { screen = s; }, cleanup: async () => { loop.close(); store.close(); await rm(dir, { recursive: true, force: true }); } };
 }
 const taskEvent = (id: string, now: number): AttentionEvent => ({ id, kind: 'task', at: now, important: true, summary: '后台任务已结束', expiresAt: now + 3600_000 });
+
+test('attention: five-minute wake interval is enforced and survives restart', async () => {
+    const f = await attentionFixture({ minWakeIntervalMs: () => 5 * 60_000 });
+    let restarted: AttentionLoop | undefined;
+    try {
+        f.setReply((input: any) => ({ decision: 'wake', reason: '任务结束', evidence: [input.events[0].id], nextCheck: null, wakeHint: '汇报' }));
+        f.loop.push(taskEvent('interval:first', f.now())); await f.loop.evaluate('event');
+        assert.equal(f.wakes.length, 1);
+        f.advance(1000);
+        f.loop.push(taskEvent('interval:second', f.now())); await f.loop.evaluate('event');
+        assert.equal(f.wakes.length, 1);
+        f.loop.close();
+        restarted = new AttentionLoop(f.deps);
+        restarted.push(taskEvent('interval:after-restart', f.now())); await restarted.evaluate('event');
+        f.advance(298999); await restarted.tick();
+        assert.equal(f.wakes.length, 1, 'no wake at 4 minutes 59.999 seconds');
+        f.advance(1); await restarted.tick();
+        assert.equal(f.wakes.length, 2, 'wake permitted at exactly five minutes');
+    } finally { restarted?.close(); await f.cleanup(); }
+});
 test('attention: a heartbeat with no new events, no changed screen and nothing due makes no model call', async () => {
     const f = await attentionFixture();
     await f.loop.tick(); f.advance(60_000); await f.loop.tick(); f.advance(10_000); await f.loop.tick();

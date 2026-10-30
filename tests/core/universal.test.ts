@@ -9,7 +9,7 @@ import { SelfWakeScheduler, readScheduleField, resolveAt } from '../../runtime/c
 import { PrivacyGuard, redactText, normalizeSandbox, sensitivePath, DEFAULT_SANDBOX } from '../../runtime/core/privacy';
 import { builtinPersonas, buildPersonaPrompt, parsePersonaFile, personaFile, normalizePersona } from '../../runtime/shared/personas';
 
-async function store() { const dir = await mkdtemp(join(tmpdir(), 'galagent-universal-')); return { store: new Store(dir), cleanup: () => rm(dir, { recursive: true, force: true }) }; }
+async function store() { const dir = await mkdtemp(join(tmpdir(), 'galagent-universal-')); const db = new Store(dir); return { store: db, cleanup: () => { db.close(); return rm(dir, { recursive: true, force: true }); } }; }
 
 test('built-in character cards are generic, valid and free of the old hard-coded persona', () => {
   assert.ok(builtinPersonas.length >= 6);

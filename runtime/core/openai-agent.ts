@@ -1,3 +1,4 @@
+import { isKimiK3Model } from '../shared/provider';
 import {realpath,stat} from 'node:fs/promises';
 import {parseModelReply,type ModelMessage,type ToolCall} from './tool-protocol';
 import {ToolHost,type HostSession,type HostTask,type Question,type VideoUpload} from './tool-host';
@@ -64,7 +65,7 @@ export class OpenAIToolAgent implements AgentRunner {
   let release:(()=>void)|undefined;
   try{
    if(signal.aborted||this.closed)throw new Error('执行已取消');const provider=this.options.provider();if(session.provider&&(session.provider.baseUrl!==provider.baseUrl||session.provider.model!==provider.model))throw new Error('执行期间API配置已更换；未向新服务发送旧私有协议');const key=await this.options.credentials.get();if(!key)throw new Error('尚未配置OpenAI兼容API密钥');const url=new URL(provider.baseUrl);if(url.username||url.password||url.search||url.hash||!(url.protocol==='https:'||url.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(url.hostname)))throw new Error('API地址无效');session.provider={baseUrl:provider.baseUrl,model:provider.model};this.host.save(session);
-   const messages=this.options.outbound?this.options.outbound(this.context(session)):this.context(session),k3=provider.mode==='mira-proxy'||(provider.mode!=='native-api'&&/^(kimi-code\/k3|kimi-k3|k3)(?:$|[-_])/i.test(provider.model));
+   const messages=this.options.outbound?this.options.outbound(this.context(session)):this.context(session),k3=provider.mode==='mira-proxy'||(provider.mode!=='native-api'&&isKimiK3Model(provider.model));
    const body=JSON.stringify({model:provider.model,messages,tools:this.host.definitions,stream:true,stream_options:{include_usage:true},...(k3?{max_completion_tokens:4096,thinking:{type:'enabled',keep:'all'}}:{max_tokens:4096})});
    // Model output carries no side effects until tools run after parsing, so failed or throttled calls are safe to retry.
    const call=await callUpstream({fetch:this.options.fetch||fetch,url:provider.baseUrl.replace(/\/$/,'')+'/chat/completions',init:{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body},pool:this.options.pool,priority:'execution',signal,timeoutMs:300000,before:()=>{const selected=this.options.provider();if(selected.baseUrl!==provider.baseUrl||selected.model!==provider.model)throw new Error('API配置已更换，未发送请求');}});
