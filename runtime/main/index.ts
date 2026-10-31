@@ -338,7 +338,7 @@ else {
     const packagedModel = path.join(process.resourcesPath, 'models');
     const developmentModel = path.resolve(__dirname, '../../.cache/models/Xenova/multilingual-e5-small');
     const skillRoot = app.isPackaged ? path.join(process.resourcesPath, 'skills') : path.resolve(__dirname, '../../skills');
-    companion = new CompanionService({ dataDir, credentials, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
+    companion = new CompanionService({ dataDir, credentials, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
     await companion.init();
     if (!override) {
       const configuredBaseUrl = companion.getSnapshot().provider.baseUrl;

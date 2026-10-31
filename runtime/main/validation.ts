@@ -3,11 +3,11 @@ import { validMode, validTopic } from '../shared/companionship';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
 // Numbers the user types are accepted as long as they are finite; the core clamps them into a sane range.
-const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed']);
+const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed', 'shareDailyLimit', 'recallEveryDays']);
 const strings = (value: unknown, count: number, width: number) => Array.isArray(value) && value.length <= count && value.every(item => bounded(item, width));
 const slug = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(value);
 const id = (value: unknown) => bounded(value, 100) && !!value.trim();
-const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions']);
+const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled']);
 // Shared by tts.configure and settings.update so neither path can point TTS at a plaintext or credential-bearing URL.
 function checkTtsUrl(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return;
@@ -16,7 +16,7 @@ function checkTtsUrl(value: unknown) {
   if (u.protocol !== 'https:' && !(u.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(u.hostname))) throw new Error('远程 TTS 接口需要 HTTPS。');
   if (u.username || u.password) throw new Error('TTS 地址不能内嵌凭据。');
 }
-const settingStrings: Record<string, number> = { ttsBaseUrl: 400, ttsModel: 100, ttsVoice: 100 };
+const settingStrings: Record<string, number> = { ttsBaseUrl: 400, ttsModel: 100, ttsVoice: 100, goodnightAt: 5 };
 export function validateCommand(value: unknown): AppCommand {
   if (!plain(value) || !bounded(value.type, 64)) throw new Error('无效操作。');
   const command = value as Record<string, unknown>;
@@ -92,8 +92,8 @@ export function validateCommand(value: unknown): AppCommand {
           if (!plain(val)) throw new Error('沙箱设置格式无效。');
           for (const [k, v] of Object.entries(val)) {
             if (k === 'level') { if (!['strict', 'standard', 'open'].includes(String(v))) throw new Error('沙箱级别无效。'); }
-            else if (k === 'fileScope') { if (!['workspace-read', 'workspace', 'anywhere'].includes(String(v))) throw new Error('文件范围无效。'); }
-            else if (['shell', 'network', 'redactSecrets', 'redactPersonal'].includes(k)) { if (typeof v !== 'boolean') throw new Error('沙箱开关无效。'); }
+            else if (k === 'fileScope') { if (!['workspace-read', 'workspace', 'read-anywhere', 'anywhere'].includes(String(v))) throw new Error('文件范围无效。'); }
+            else if (['shell', 'shellConfirm', 'network', 'redactSecrets', 'redactPersonal'].includes(k)) { if (typeof v !== 'boolean') throw new Error('沙箱开关无效。'); }
             else if (k === 'allowedDomains') { if (!strings(v, 100, 200)) throw new Error('允许域名列表格式无效。'); }
             else if (k === 'sensitiveWords') { if (!strings(v, 200, 100)) throw new Error('敏感词列表格式无效。'); }
             else throw new Error('未知沙箱设置。');
@@ -128,7 +128,7 @@ export function validateCommand(value: unknown): AppCommand {
     case 'schedule.cancel':
       if (!id(command.id)) throw new Error('提醒标识无效。'); break;
     case 'pet.interact':
-      if (!['tap', 'drag'].includes(String(command.interaction))) throw new Error('未知互动。'); break;
+      if (!['tap', 'drag', 'pat'].includes(String(command.interaction))) throw new Error('未知互动。'); break;
     case 'shell.drag':
       if (![command.dx, command.dy].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1000)) throw new Error('无效移动。'); break;
     case 'shell.pointer':

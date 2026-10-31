@@ -5,6 +5,13 @@ import scholarBoy from './scholar-boy.json';
 import peachTwintail from './peach-twintail.json';
 import starWitch from './star-witch.json';
 import kimiStar from './kimi-star.json';
+import coderHoodie from './coder-hoodie.json';
+import astroKid from './astro-kid.json';
+import chefSpoon from './chef-spoon.json';
+import sleuthGirl from './sleuth-girl.json';
+import hanfuGirl from './hanfu-girl.json';
+import grandpaFu from './grandpa-fu.json';
+import sportyKid from './sporty-kid.json';
 import mochiCat from './mochi-cat.json';
 import foxKit from './fox-kit.json';
 import puffBunny from './puff-bunny.json';
@@ -22,6 +29,13 @@ const raw: unknown[] = [
   peachTwintail,
   starWitch,
   kimiStar,
+  coderHoodie,
+  astroKid,
+  chefSpoon,
+  sleuthGirl,
+  hanfuGirl,
+  grandpaFu,
+  sportyKid,
   mochiCat,
   foxKit,
   puffBunny,

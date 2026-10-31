@@ -5,7 +5,7 @@ export type PetAction = 'idle' | 'nod' | 'sway' | 'peek' | 'sulk' | 'celebrate' 
 export type PersonaStage = 'adapting' | 'awkward' | 'tsundere' | 'settled';
 export type PersonaFace = 'daily' | 'work' | 'disagreement';
 export type CompanionMode = 'daily' | 'focus' | 'rest';
-export type InitiativeTopic = 'window' | 'clipboard' | 'browser' | 'task' | 'watch' | 'reunion' | 'unanswered' | 'system' | 'screen' | 'schedule';
+export type InitiativeTopic = 'window' | 'clipboard' | 'browser' | 'task' | 'watch' | 'reunion' | 'unanswered' | 'system' | 'screen' | 'schedule' | 'greeting' | 'share' | 'recall';
 export type InitiativeFeedback = 'welcome' | 'mute';
 export type CompanionPreferences = { version: 1; topics: Partial<Record<InitiativeTopic, InitiativeFeedback>>; ratings: Record<string, InitiativeFeedback> };
 export type PersonaVariables = {
@@ -29,6 +29,8 @@ export type Observation = {
   suspended?: boolean;
   error?: string;
 };
+export type VitalityTone = 'asleep' | 'sleepy' | 'tired' | 'sulky' | 'happy' | 'lively' | 'calm';
+export type VitalityView = { energy: number; mood: number; tone: VitalityTone; label: string };
 export type Settings = {
   /** Missing in old saves means daily. Modes never change personality or access permissions. */
   companionMode?: CompanionMode;
@@ -76,6 +78,22 @@ export type Settings = {
   quietHours?: { enabled: boolean; start: string; end: string };
   /** Shows small status captions and easter eggs above the pet. */
   funCaptions?: boolean;
+  /** 活人感: a reply may arrive as 2–3 short messages, like someone typing. */
+  splitReplies?: boolean;
+  /** 活人感: now and then a short "oh, and…" line a minute or two after a reply. */
+  afterthoughts?: boolean;
+  /** 活人感: energy follows the time of day, mood follows how you treat each other. */
+  moodEnabled?: boolean;
+  /** 活人感: the character keeps a small daily routine of its own. */
+  routineEnabled?: boolean;
+  /** 活人感: one-line reactions above the pet to the app in front (never stored, never a message). */
+  murmursEnabled?: boolean;
+  /** Times a day the character may share something it found online (0 = never). */
+  shareDailyLimit?: number;
+  /** Bring up something you mentioned days ago at most once every N days (0 = never). */
+  recallEveryDays?: number;
+  /** After this local time the character says goodnight once and goes to sleep. */
+  goodnightAt?: string;
   sandbox?: SandboxSettings;
 };
 /** Nested groups may be patched partially; the core merges and validates them. */
@@ -83,9 +101,11 @@ export type SettingsPatch = Partial<Omit<Settings, 'sandbox' | 'quietHours'>> & 
 export type SandboxLevel = 'strict' | 'standard' | 'open';
 export type SandboxSettings = {
   level: SandboxLevel;
-  /** File tools: read/write confinement. */
-  fileScope: 'workspace-read' | 'workspace' | 'anywhere';
+  /** File tools: read/write confinement. `read-anywhere`: read any non-protected path, write only inside the workspace. */
+  fileScope: 'workspace-read' | 'workspace' | 'read-anywhere' | 'anywhere';
   shell: boolean;
+  /** Ask the user before every Shell command (an "allow for this task" answer skips the rest of that task). */
+  shellConfirm: boolean;
   network: boolean;
   /** Optional FetchURL allow-list; empty means any public host. */
   allowedDomains: string[];
@@ -104,7 +124,7 @@ export type DailyArchiveView = { day: string; title: string; summary: string; di
 export type ArchiveStatus = { lastDay?: string; pendingDays: string[]; failedDays: string[]; nextRunAt: string };
 export type BondView = { firstMetAt?: string; daysTogether: number; streakDays: number; activeDays: number; todayChats: number; achievements: { id: string; icon: string; title: string; description: string; unlockedAt?: string; hidden?: boolean }[] };
 export type PetCatalogEntry = { id: string; name: string; description: string; builtin: boolean };
-export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[]; personaId?: string; speaker?: string };
+export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[]; personaId?: string; speaker?: string; /** A reply sent as several short messages, like typing (the text keeps all of them). */ parts?: string[]; /** A short follow-up line sent a minute or two after a reply. */ afterthought?: boolean };
 export type MemoryItem = { id: string; kind: 'fact' | 'episode' | 'reflection'; text: string; sourceId: string; createdAt: string; valid: boolean; validFrom?: string; validTo?: string; supersedes?: string; importance?: number; /** Ebbinghaus-style reinforcement: times the character actually cited it. */ recalls?: number; lastRecalledAt?: string };
 export type DiaryEntry = { id: string; text: string; createdAt: string; sourceIds: string[]; kind?: 'note' | 'journal'; title?: string };
 export type StoryScene = { type: 'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06'; key: string; sourceIds: string[]; evidence: Record<string, unknown> };
@@ -143,7 +163,9 @@ export type AppSnapshot = {
   browser?: BrowserView;
   identity: { id: string; name: string; onboarding: 'intro' | 'naming' | 'ready'; stage: 'S0' | 'S2' | 'S3' | 'S4' };
   /** Short caption of what the pet is doing right now (computed by the core). */
-  activity?: { kind: 'idle' | 'thinking' | 'working' | 'speaking' | 'quiet' | 'sleeping' | 'offline' | 'resting' | 'focus'; label: string };
+  /** Energy and mood (活人感); absent when switched off. */
+  vitality?: VitalityView;
+  activity?: { kind: 'idle' | 'thinking' | 'working' | 'speaking' | 'quiet' | 'sleeping' | 'offline' | 'resting' | 'focus'; label: string; /** What the character is up to in its own routine. */ routine?: string; /** Thinking about opening a conversation on its own rather than answering. */ initiative?: boolean; /** Dozing because the user stepped away (not quiet hours). */ away?: boolean; /** The executor is waiting for the user's answer (e.g. a Shell confirmation). */ waiting?: boolean };
   visual: { expression: Expression; action: PetAction; bubble: string; revision: number; intensity?: number };
   messages: Message[];
   memories: MemoryItem[];
@@ -178,7 +200,7 @@ export type AppCommand =
   | { type: 'agent.answer'; id:string; answers:Record<string,string> }
   | { type: 'chat.send'; text: string }
   | { type: 'chat.cancel' }
-  | { type: 'pet.interact'; interaction: 'tap' | 'drag' }
+  | { type: 'pet.interact'; interaction: 'tap' | 'drag' | 'pat' }
   | { type: 'pet.roam'; active?: boolean; direction?: -1 | 1 }
   | { type: 'tts.speak'; text: string }
   | { type: 'tts.stop' }

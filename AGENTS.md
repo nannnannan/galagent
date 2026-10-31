@@ -17,7 +17,7 @@
 
 ## 2. 目录结构与边界
 
-- `runtime/`：GalAgent 桌面程序源码（Electron 主进程、渲染器、SQLite 记忆/札记、25 工具执行宿主）。
+- `runtime/`：GalAgent 桌面程序源码（Electron 主进程、渲染器、SQLite 记忆/札记、26 工具执行宿主（Kimi Code 25 个 + WebSearch））。
   - `runtime/shared/personas.ts`：角色卡格式、内置角色卡与提示词拼装；`runtime/core/persona.ts`：角色卡存取。**角色性格只能来自角色卡数据**，不得在其他代码里写死某个角色的性格、名字或口癖。
   - `runtime/shared/pixel-sprite.ts` + `runtime/shared/pixel-pets/*.json`：像素小人格式与内置小人；`runtime/renderer/pixel-pet.ts`：渲染器；`runtime/core/pets.ts`：`<userData>/pets/` 自定义小人。
   - `runtime/core/scheduler.ts`：定时自唤醒；`runtime/core/privacy.ts`：沙箱预设、出站脱敏、URL 拦截与审计。
@@ -48,10 +48,11 @@ npm run preview:ui                                  # 桌宠窗口 + 主界面�
 2. **主动开口必须经过用户设置**：`proactiveGate`（间隔 / 每小时 / 每天）、免打扰时段、话题开关、陪伴模式。新增任何主动路径都要接入这些门控；用户自己设的定时提醒可在专注模式放行，角色自设的不可。
 3. **数值设置**：用户可填任意有限数字，核心只按 `numericSettings` 收拢到安全范围；截屏间隔不得低于 60 秒。
 4. **出站防外泄**：所有发往模型、执行器上游、TTS、联网工具的内容必须经过 `PrivacyGuard`；审计只记录类别与次数，绝不保存被隐藏的原文。
-5. **执行器沙箱**：默认 `standard`（工作目录内读写、无 Shell、仅公网）；`sensitivePath` 列出的凭据路径在任何级别都不可读；沙箱或禁止目录变化必须递增 `policyVersion` 并中止在途任务。称其为“应用内保护”，不得宣称是操作系统沙箱。
-6. **定时自唤醒走主代理工具**：主角色请求带 `runtime/core/main-tools.ts` 的 `schedule_wakeup / list_wakeups / cancel_wakeup / recall_day` 四个本地工具（最多 3 轮工具调用后必须给出 JSON 回复）；闹钟到点唤醒的永远是主角色。执行器的 `CronCreate/List/Delete` 通过 `mainCron` 钩子落到同一个主调度器，不再唤醒执行会话。网关拒绝 tools 时按端点记住并回退到 JSON 字段 `schedule{inMinutes|at|cron, note, repeatMinutes?}` / `cancelSchedule[]`；非法时间丢弃而不让整条回复失败。
+5. **执行器沙箱**：默认 `standard`（任意位置可读、只在工作目录内写、Shell 每条命令先经用户确认（可选“本任务都允许”）、仅公网）；确认走 `ToolHost.confirmShell` → `ask`，无回答即拒绝；`open` 才免确认；禁止目录非空时 Shell 一律停用；`sensitivePath` 列出的凭据路径在任何级别都不可读；沙箱或禁止目录变化必须递增 `policyVersion` 并中止在途任务。称其为“应用内保护”，不得宣称是操作系统沙箱。
+6. **定时自唤醒走主代理工具**：主角色请求带 `runtime/core/main-tools.ts` 的 `schedule_wakeup / list_wakeups / cancel_wakeup / recall_day` 四个本地工具（沙箱允许联网时另有 `web_search / read_webpage`，经 `runtime/core/web.ts`，每一跳都过 `PrivacyGuard.assertUrl` 与公网地址检查，网页内容只作数据）（最多 3 轮工具调用后必须给出 JSON 回复）；闹钟到点唤醒的永远是主角色。执行器的 `CronCreate/List/Delete` 通过 `mainCron` 钩子落到同一个主调度器，不再唤醒执行会话。网关拒绝 tools 时按端点记住并回退到 JSON 字段 `schedule{inMinutes|at|cron, note, repeatMinutes?}` / `cancelSchedule[]`；非法时间丢弃而不让整条回复失败。
 7. **上游调用统一走 `runtime/core/upstream.ts`**：每次尝试才占用并发池槽位，退避等待时释放；重试网络错误与 408/425/429/5xx，尊重 `Retry-After`（上限 60 秒），429 收紧池上限。并发池为 chat / attention 保留 2 个槽位，执行与后台任务最多用 18 路。
 8. **记忆与每日档案**（[docs/记忆系统-v2.md](docs/记忆系统-v2.md)）：每个自然日结束后整理一次（作业 id 按日期唯一）；次日上下文用档案摘要替代原文，跨午夜 2 小时内与档案未就绪的日子保留原文；原文永远保存在本地，可用 `recall_day` 读回；档案以消息指纹校验，删除或纠正后立即失效重建。
+9. **活人感**（[docs/活人感-v1.md](docs/活人感-v1.md)）：早安/晚安/分享/旧事重提只能经 `runtime/core/life.ts` 选出、`lifeBlocked` 放行后走 `generate('initiative')`，开始前必须 `recordInitiative`；同一时刻至多一个主动请求。分条消息只是 `Message.parts`，一条回复只存一条记录；小嘀咕不入库；补一句、心情、小日程、小嘀咕不得发起模型请求。
 
 ---
 
