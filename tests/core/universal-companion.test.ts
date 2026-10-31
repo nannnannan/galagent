@@ -182,7 +182,7 @@ test('executor sandbox confines file tools to the workspace and blocks shell and
     assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('top secret'));
     assert.ok(JSON.stringify(await call('Write', { path: join(outside, 'new.txt'), content: 'x' })).includes('confines file tools'));
     assert.match(JSON.stringify(await call('Read', { path: '.ssh/id_rsa' })), /Sensitive file|never readable/);
-    assert.ok(JSON.stringify(await call('Read', { path: '.ssh/config' })).includes('never readable'));
+    assert.ok(JSON.stringify(await call('Read', { path: '.ssh/config' })).includes('not readable'));
     assert.ok(JSON.stringify(await call('Bash', { command: 'echo hi' })).includes('declined'), 'no answer means no');
     sandbox = normalizeSandbox({ level: 'standard', fileScope: 'workspace' });
     assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('confines file tools'));

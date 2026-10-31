@@ -25,7 +25,9 @@ export function validateCommand(value: unknown): AppCommand {
       if(!bounded(command.task,12000)||!command.task.trim())throw new Error('任务为空或过长。');break;
     case 'agent.configure':
       if(!bounded(command.cwd,1000)||!command.cwd.trim())throw new Error('工作目录无效。');break;
-    case 'agent.cancel':break;
+    case 'agent.cancel':case 'agent.undo':case 'mcp.restart':break;
+    case 'mcp.secret':
+      if (!bounded(command.server, 32) || [command.env, command.headers].some(m => m !== undefined && (!plain(m) || Object.keys(m).length > 30 || Object.entries(m).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000)))) throw new Error('MCP 密钥格式不正确。'); break;
     case 'agent.answer':
       if(!bounded(command.id,100)||!plain(command.answers)||Object.entries(command.answers).some(([key,val])=>key.length>3000||!bounded(val,3000)))throw new Error('任务回答格式无效。');break;
     case 'chat.send':
@@ -86,14 +88,16 @@ export function validateCommand(value: unknown): AppCommand {
         else if (key === 'captureBlocklist') { if (!Array.isArray(val) || val.length > 80 || val.some(item => !bounded(item, 80))) throw new Error('截屏黑名单格式不正确。'); }
         else if (key === 'forbiddenPaths') { if (!Array.isArray(val) || val.length > 200 || val.some(item => !bounded(item, 500) || item.includes('\0'))) throw new Error('禁止访问目录列表格式不正确。'); }
         else if (settingNumbers.has(key)) { if (typeof val !== 'number' || !Number.isFinite(val)) throw new Error('请输入有效的数字。'); }
+        else if (key === 'mcpServers') { if (!Array.isArray(val) || val.length > 20 || val.some(v => !plain(v) || !bounded(v.name, 32) || typeof v.enabled !== 'boolean' || (v.url !== undefined ? !bounded(v.url, 1000) : !bounded(v.command, 500)) || (v.args !== undefined && (!Array.isArray(v.args) || v.args.length > 60 || v.args.some((x: unknown) => typeof x !== 'string' || x.length > 2000))) || [v.envKeys, v.headerKeys].some(k => k !== undefined && (!Array.isArray(k) || k.length > 30 || k.some((x: unknown) => !bounded(x, 100)))))) throw new Error('MCP 服务配置格式不正确。'); }
+        else if (key === 'executor') { if (!plain(val) || (val.model !== undefined && typeof val.model !== 'string') || (typeof val.model === 'string' && val.model.length > 120) || [val.maxOutputTokens, val.maxTurns].some(n => n !== undefined && (typeof n !== 'number' || !Number.isFinite(n)))) throw new Error('执行器设置格式不正确。'); }
         else if (key === 'petId') { if (val !== '' && !slug(val)) throw new Error('小人形象无效。'); }
         else if (key === 'quietHours') { if (!plain(val) || (val.enabled !== undefined && typeof val.enabled !== 'boolean') || (val.start !== undefined && !bounded(val.start, 5)) || (val.end !== undefined && !bounded(val.end, 5))) throw new Error('免打扰时段格式无效。'); }
         else if (key === 'sandbox') {
           if (!plain(val)) throw new Error('沙箱设置格式无效。');
           for (const [k, v] of Object.entries(val)) {
-            if (k === 'level') { if (!['strict', 'standard', 'open'].includes(String(v))) throw new Error('沙箱级别无效。'); }
+            if (k === 'level') { if (!['strict', 'standard', 'open', 'full'].includes(String(v))) throw new Error('沙箱级别无效。'); }
             else if (k === 'fileScope') { if (!['workspace-read', 'workspace', 'read-anywhere', 'anywhere'].includes(String(v))) throw new Error('文件范围无效。'); }
-            else if (['shell', 'shellConfirm', 'network', 'redactSecrets', 'redactPersonal'].includes(k)) { if (typeof v !== 'boolean') throw new Error('沙箱开关无效。'); }
+            else if (['shell', 'shellConfirm', 'network', 'lanAccess', 'credentialFiles', 'redactSecrets', 'redactPersonal'].includes(k)) { if (typeof v !== 'boolean') throw new Error('沙箱开关无效。'); }
             else if (k === 'allowedDomains') { if (!strings(v, 100, 200)) throw new Error('允许域名列表格式无效。'); }
             else if (k === 'sensitiveWords') { if (!strings(v, 200, 100)) throw new Error('敏感词列表格式无效。'); }
             else throw new Error('未知沙箱设置。');

@@ -550,14 +550,16 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
   const box = s.settings.sandbox!;
   const level = section('执行器沙箱级别', 'GalAgent 的本机工具（读写文件、Shell、联网）受这里约束。这是应用内保护，不等同于操作系统沙箱。');
   const seg = el('div', 'segmented'); seg.setAttribute('role', 'radiogroup');
-  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '全盘可读 · 只在工作目录写 · 命令先问你 · 公网搜索'], ['open', '宽松', '全盘读写（受保护目录除外）· 命令不再询问']] as const) {
-    const b = button('', () => void sandbox(s, { level: value }), 'segment selectable'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
+  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '全盘可读 · 只在工作目录写 · 命令先问你 · 公网搜索'], ['open', '宽松', '全盘读写（受保护目录除外）· 命令不再询问'], ['full', '完全放开', '最高权限：再加内网访问、可读凭据文件、MCP 免询问']] as const) {
+    const b = button('', () => { if (value === 'full' && box.level !== 'full' && !confirm('完全放开后，执行器可以不经询问运行任何命令、读写任何文件（包括 .ssh、.env 等凭据）、访问内网和本机服务。\n\n网页或文件里的恶意指令也可能借此操作你的电脑。只在你信任当前任务时使用，用完可一键切回。\n\n确定切换？')) return; void sandbox(s, { level: value }); }, `segment selectable${value === 'full' ? ' danger' : ''}`); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
   }
   level.append(seg,
     field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['read-anywhere', '任意位置可读，只在工作目录写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
     field('允许 Shell 命令', toggle(box.shell, v => void sandbox(s, { shell: v })), '脚本可以绕过文件检查'),
     field('运行命令前问我', toggle(box.shellConfirm !== false, v => void sandbox(s, { shellConfirm: v })), '每条命令先在聊天页给你看，可选“本任务都允许”'),
-    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '网页搜索与读网页；只能访问公网，本机与局域网地址始终拒绝'),
+    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '网页搜索与读网页'),
+    field('允许访问内网和本机服务', toggle(!!box.lanAccess, v => void sandbox(s, { lanAccess: v })), '路由器、NAS、localhost 开发服务等；默认拒绝'),
+    field('允许读写凭据文件', toggle(!!box.credentialFiles, v => void sandbox(s, { credentialFiles: v })), '.ssh、.env、密钥文件等；GalAgent 自己的密钥始终不可读'),
     field('只允许访问这些域名', linesArea(box.allowedDomains, v => void sandbox(s, { allowedDomains: v }), 3, '每行一个，如 github.com；留空不限'), '', 'field wide'),
     field('禁止访问的文件夹', linesArea(s.settings.forbiddenPaths || [], v => void settings({ forbiddenPaths: v }), 3, '每行一个路径'), '设置后 Shell 自动停用；修改会中止进行中的任务', 'field wide'),
   );
@@ -566,7 +568,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
     field('隐藏密钥、令牌与密码', toggle(box.redactSecrets, v => void sandbox(s, { redactSecrets: v })), 'API Key、私钥、JWT、“密码：xxx” 等'),
     field('隐藏个人信息', toggle(box.redactPersonal, v => void sandbox(s, { redactPersonal: v })), '身份证号、银行卡号、手机号、邮箱'),
     field('自定义敏感词', linesArea(box.sensitiveWords, v => void sandbox(s, { sensitiveWords: v }), 3, '每行一个：项目代号、客户名、地址…'), '出现即替换为〔已隐藏〕', 'field wide'),
-    el('p', 'hint', '凭据文件（.ssh、.aws、.env、*.pem、*.kdbx、浏览器登录数据、GalAgent 自己的密钥）永远不会被工具读取；带敏感内容的网址会被直接拦截。'),
+    el('p', 'hint', box.credentialFiles ? '已允许工具读写凭据文件（.ssh、.env、密钥等）；GalAgent 自己的密钥与数据目录始终不可访问；带敏感内容的网址仍会被拦截。' : '凭据文件（.ssh、.aws、.env、*.pem、*.kdbx、浏览器登录数据）不会被工具读取，GalAgent 自己的密钥任何档位都不可访问；带敏感内容的网址会被直接拦截。'),
   );
   const eyes = section('桌面观察', '默认全部关闭。截图原图不落盘，只保留文字摘要；黑名单应用在前台时不截屏。');
   eyes.append(
@@ -728,20 +730,64 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   tform.append(row);
   tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
-  const agent = section('本机执行器', `26 个本地工具（文件、搜索、Shell、网页搜索与读网页、子代理）。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
+  const agent = section('本机执行器', `${27 + (s.agent?.mcp || []).reduce((n, m) => n + m.tools, 0)} 个工具：文件读写与多文件补丁、搜索、Shell、网页搜索与读网页、子代理${s.agent?.mcp?.length ? '、MCP' : ''}；会读取工作目录里的 AGENTS.md，长任务自动压缩上下文，改动可撤销。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松', full: '完全放开' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
   const task = el('textarea'); task.rows = 3; task.maxLength = 12000; task.placeholder = '要执行的任务，例如：统计这个文件夹里有多少张图片';
   const run = el('button', 'btn primary', '开始执行'); run.type = 'submit';
-  const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : s.agent?.lastResult ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[s.agent.lastResult.status]} · ${s.agent.lastResult.toolCount} 次工具调用` : '待命');
+  const last = s.agent?.lastResult;
+  const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : last ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[last.status]} · ${last.toolCount} 次工具调用${last.changedFiles ? ` · 改了 ${last.changedFiles} 个文件${last.undone ? '（已撤销）' : ''}` : ''}` : '待命');
   const cwdRow = el('div', 'row'); cwdRow.append(cwd, button('保存目录', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
-  const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), el('span', 'spacer'), status);
+  const undo = button('撤销上次改动', async () => { if (!confirm(`把上次任务改过的 ${last?.changedFiles ?? ''} 个文件恢复原样？之后又被改过的文件不会动。`)) return; const r = await command({ type: 'agent.undo' }); if (r.ok) toast('已撤销，详情见聊天记录。'); }, 'btn ghost');
+  undo.hidden = !last?.changedFiles || !!last.undone || !!s.agent?.busy;
+  const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), undo, el('span', 'spacer'), status);
   aform.append(field('工作目录', cwdRow, '沙箱的“工作目录”指这里', 'field wide'), field('任务', task, '', 'field wide'), runRow);
   aform.onsubmit = async event => { event.preventDefault(); if (task.value.trim() && (await command({ type: 'agent.run', task: task.value.trim() })).ok) toast('任务已交给执行器，结果会回到聊天里。'); };
   agent.append(aform);
+  // Executor model and budget (Codex-style: a stronger coding model for tasks, the chat model for talking).
+  const ex = s.settings.executor || {};
+  const exModel = el('input'); exModel.value = ex.model || ''; exModel.placeholder = `留空 = 用聊天模型（${s.provider.model}）`; exModel.onchange = () => void settings({ executor: { model: exModel.value.trim() } });
+  agent.append(el('div', 'form-grid'));
+  agent.lastElementChild!.append(
+    field('执行器模型', exModel, '同一个 API 地址下的另一个模型，例如更擅长编程的那个', 'field wide'),
+    field('单次输出上限', numberInput(ex.maxOutputTokens ?? 8192, v => void settings({ executor: { maxOutputTokens: v } }), { step: 1024, unit: 'tokens' }), '模型不支持时会报错，调小即可'),
+    field('每个任务最多回合', numberInput(ex.maxTurns ?? 200, v => void settings({ executor: { maxTurns: v } }), { step: 10, unit: '轮' })),
+  );
+  // MCP servers: local programs (stdio) or remote URLs (Streamable HTTP), like Codex CLI / Kimi Code.
+  const mcp = section('MCP 工具服务', '接入 Model Context Protocol 服务给执行器加工具（浏览器自动化、GitHub、数据库、Figma…）。本地命令需要沙箱允许 Shell，远程网址需要允许联网；标准档下每个任务第一次使用前会问你，宽松/完全放开不再询问。密钥用系统加密保存，界面只显示名称。');
+  const servers = s.settings.mcpServers || [], states = new Map((s.agent?.mcp || []).map(m => [m.name, m]));
+  const saveServers = (next: typeof servers) => void settings({ mcpServers: next });
+  if (!servers.length) mcp.append(el('p', 'hint', '还没有接入。例子：本地 playwright → 命令 npx，参数 -y @playwright/mcp@latest；远程 GitHub → 网址 https://api.githubcopilot.com/mcp/，密钥里填 Authorization=Bearer 你的令牌。'));
+  for (const [i, server] of servers.entries()) {
+    const row = el('div', 'list-row'), main = el('div', 'row-main'), st = states.get(server.name), remote = !!server.url;
+    const keys = [...(server.envKeys || []), ...(server.headerKeys || [])];
+    main.append(el('strong', '', `${server.name}${remote ? ' · 远程' : ' · 本地'}`), el('small', 'row-meta', (server.url || `${server.command} ${(server.args || []).join(' ')}`).slice(0, 160)),
+      el('small', 'row-meta', `${!server.enabled ? '已停用' : st?.state === 'ready' ? `已连接 · ${st.tools} 个工具` : st?.state === 'failed' ? `连接失败：${st.error || ''}` : st?.state === 'starting' ? '连接中…' : '首次执行任务时启动'}${keys.length ? ` · 密钥：${keys.join('、')}` : ''}`));
+    const secretFold = el('details', 'fold'); const sum = el('summary', '', keys.length ? '更新密钥' : '设置密钥'); const body = el('div', 'fold-body');
+    const area = el('textarea'); area.rows = 3; area.placeholder = remote ? '每行一个请求头：Authorization=Bearer xxx' : '每行一个环境变量：GITHUB_TOKEN=xxx'; area.autocomplete = 'off'; area.spellcheck = false;
+    const saveKey = button('保存（覆盖原有）', async () => {
+      let map: Record<string, string>;
+      try { map = Object.fromEntries(area.value.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const k = l.indexOf('='); if (k <= 0) throw new Error(`每行写成 名称=值：${l.slice(0, 20)}`); return [l.slice(0, k).trim(), l.slice(k + 1).trim()]; })); } catch (error) { toast(error instanceof Error ? error.message : '格式不对', 'error'); return; }
+      const r = await command({ type: 'mcp.secret', server: server.name, ...(remote ? { headers: map } : { env: map }) }); area.value = ''; if (r.ok) toast(Object.keys(map).length ? '密钥已加密保存。' : '密钥已清除。');
+    }, 'btn primary small');
+    body.append(area, saveKey); secretFold.append(sum, body); main.append(secretFold);
+    row.append(iconBadge(remote ? '🌐' : '🧩', 'accent'), main, toggle(server.enabled, v => saveServers(servers.map((x, j) => j === i ? { ...x, enabled: v } : x)), `启用 ${server.name}`), button('删除', () => { if (keys.length) void command({ type: 'mcp.secret', server: server.name }, true); saveServers(servers.filter((_, j) => j !== i)); }, 'btn ghost small'));
+    mcp.append(row);
+  }
+  const mform = el('form', 'inline-form'), mName = el('input'), mTarget = el('input'), mArgs = el('input');
+  mName.placeholder = '名称'; mName.maxLength = 32; mTarget.placeholder = '命令（如 npx）或网址（https://…）'; mArgs.placeholder = '命令参数，空格分隔';
+  mTarget.oninput = () => { mArgs.disabled = /^https?:\/\//i.test(mTarget.value.trim()); };
+  const mAdd = el('button', 'btn primary', '添加'); mAdd.type = 'submit'; mform.append(mName, mTarget, mArgs, mAdd);
+  mform.onsubmit = async event => {
+    event.preventDefault(); const name = mName.value.trim(), target = mTarget.value.trim(); if (!name || !target) { toast('名称和命令/网址都要填', 'error'); return; }
+    const entry = /^https?:\/\//i.test(target) ? { name, url: target, enabled: true } : { name, command: target, args: mArgs.value.trim() ? mArgs.value.trim().split(/\s+/) : [], enabled: true };
+    const r = await settings({ mcpServers: [...servers, entry] }); if (r.ok) { mName.value = mTarget.value = mArgs.value = ''; }
+  };
+  const mRow = el('div', 'row wrap'); mRow.append(button('现在连接 / 重连', async () => { if ((await command({ type: 'mcp.restart' })).ok) toast('正在连接，稍后看状态。'); }, 'btn ghost small'));
+  mcp.append(mform, mRow);
   const archive = section('存档', '存档包含聊天、记忆、日记、自定义角色卡与提醒，不包含任何密钥。');
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
   archive.append(arow);
   const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
-  root.append(model, tts, agent, archive, thanks);
+  root.append(model, tts, agent, mcp, archive, thanks);
 }

@@ -9,6 +9,7 @@ import { CharacterVariables, classifyInteraction } from './variables';
 import { PersonaBook } from './persona';
 import { mainToolDefinitions, runMainTool, WEB_TOOL_NAMES, type MainToolDeps, type ToolCall } from './main-tools';
 import { fetchText, htmlToText, webSearch } from './web';
+import { McpHub, validSecrets, validServers } from './mcp';
 import { advance as advanceVitality, freshVitality, react as reactVitality, view as vitalityView, vitalityHint, type Vitality, type VitalityEvent } from './vitality';
 import { LIFE_TOPIC, emptyLedger, lifePrompt, markLife, pickLife, recallCandidate, type LifeKind, type LifeLedger } from './life';
 import { defaultRoutine, routineAt } from '../shared/routine';
@@ -56,6 +57,10 @@ export type CompanionOptions = {
     fetch?: typeof fetch;
     /** Tests only: replaces the network for the main character web tools (and skips the public-address DNS check). */
     webFetch?: typeof fetch;
+    /** Decrypted env vars / headers of one MCP server (DPAPI-backed in the desktop shell). */
+    mcpSecrets?: { get(server: string): Promise<import('./mcp').McpSecrets>; set(server: string, secrets: import('./mcp').McpSecrets): Promise<void> };
+    /** Tests only: network for remote MCP servers. */
+    mcpFetch?: typeof fetch;
     embeddings?: {
         encode(text: string, query?: boolean): Promise<number[]>;
         close(): Promise<void>;
@@ -172,6 +177,7 @@ export class CompanionService extends EventEmitter {
     private lifeLedger: LifeLedger = emptyLedger();
     private lifeRunning = false;
     private afterthoughtTimer?: ReturnType<typeof setTimeout>;
+    private mcp!: McpHub;
     constructor(private options: CompanionOptions) {
         super();
         this.store = new Store(options.dataDir);
@@ -182,9 +188,10 @@ export class CompanionService extends EventEmitter {
         this.guard = new PrivacyGuard(() => this.state?.settings?.sandbox || DEFAULT_SANDBOX, this.store);
         this.variables = new CharacterVariables(this.store, undefined, () => { const p = this.personas.active(); return { name: p.name, tagline: p.tagline, likes: p.likes }; });
         this.pool=options.pool||new RequestPool();if(options.capture)this.sampler=new ScreenSampler(options.capture);
-        this.agent=options.agentRunner||new OpenAIToolAgent({pool:this.pool,provider:()=>this.state.provider,credentials:options.credentials,fetch:options.fetch,forbiddenPaths:()=>this.state?.settings?.forbiddenPaths||[],protectedWritePaths:()=>[options.dataDir,...(options.protectedWritePaths||[])],policyVersion:()=>this.policyVersion,sandbox:()=>this.state?.settings?.sandbox||DEFAULT_SANDBOX,checkUrl:url=>this.guard.assertUrl(url,'executor-fetch'),outbound:messages=>this.guard.messages(messages,'executor'),skillRoots:()=>options.skillRoots||[],mainCron:{create:job=>{const item=this.schedules.add({note:job.prompt.slice(0,300),cron:job.recurring?job.cron:undefined,at:job.recurring?undefined:new Date(cronNext(job.cron,Date.now())).toISOString()},'user');this.emitSnapshot();return{id:item.id,nextAt:item.dueAt};},list:()=>this.schedules.list().map(i=>({id:i.id,cron:i.cron,prompt:i.note,nextAt:i.dueAt,recurring:!!(i.cron||i.repeatMinutes)})),delete:id=>{const ok=this.schedules.cancel(id);if(ok)this.emitSnapshot();return ok;}},storage:{sessions:()=>this.store.all<HostSession>('agent-session'),tasks:()=>this.store.all<HostTask>('agent-task'),save:session=>this.store.put('agent-session',session.id,session),saveTask:task=>this.store.put('agent-task',task.id,task)},ask:(questions,signal)=>this.askAgent(questions,signal),onUsage:tokens=>{if(!this.closed){this.rollover();this.state.stats.tokensToday+=tokens;this.persist();}},onResult:result=>{if(!this.closed)this.recordAgentResult(result.summary,result.stopReason,result.tools.length);}});
+        this.mcp=new McpHub(()=>this.state?.settings?.mcpServers||[],()=>this.state?.agent?.cwd||options.workingDir||process.cwd(),{secrets:options.mcpSecrets?name=>options.mcpSecrets!.get(name):undefined,fetch:options.mcpFetch,onStatus:()=>this.emitSnapshot()});
+        this.agent=options.agentRunner||new OpenAIToolAgent({budget:()=>this.state?.settings?.executor||{},mcp:this.mcp,checkpointDir:()=>join(options.dataDir,'checkpoints'),outboundText:text=>this.guard.text(text,'executor-mcp'),pool:this.pool,provider:()=>{const model=this.state?.settings?.executor?.model?.trim();return model?{...this.state.provider,model}:this.state.provider;},credentials:options.credentials,fetch:options.fetch,forbiddenPaths:()=>this.state?.settings?.forbiddenPaths||[],protectedWritePaths:()=>[options.dataDir,...(options.protectedWritePaths||[])],policyVersion:()=>this.policyVersion,sandbox:()=>this.state?.settings?.sandbox||DEFAULT_SANDBOX,checkUrl:url=>this.guard.assertUrl(url,'executor-fetch'),outbound:messages=>this.guard.messages(messages,'executor'),skillRoots:()=>options.skillRoots||[],mainCron:{create:job=>{const item=this.schedules.add({note:job.prompt.slice(0,300),cron:job.recurring?job.cron:undefined,at:job.recurring?undefined:new Date(cronNext(job.cron,Date.now())).toISOString()},'user');this.emitSnapshot();return{id:item.id,nextAt:item.dueAt};},list:()=>this.schedules.list().map(i=>({id:i.id,cron:i.cron,prompt:i.note,nextAt:i.dueAt,recurring:!!(i.cron||i.repeatMinutes)})),delete:id=>{const ok=this.schedules.cancel(id);if(ok)this.emitSnapshot();return ok;}},storage:{sessions:()=>this.store.all<HostSession>('agent-session'),tasks:()=>this.store.all<HostTask>('agent-task'),save:session=>this.store.put('agent-session',session.id,session),saveTask:task=>this.store.put('agent-task',task.id,task)},ask:(questions,signal)=>this.askAgent(questions,signal),onUsage:tokens=>{if(!this.closed){this.rollover();this.state.stats.tokensToday+=tokens;this.persist();}},onResult:result=>{if(!this.closed)this.recordAgentResult(result.summary,result.stopReason,result.tools.length);}});
         this.embeddings = options.embeddings || new Embeddings(join(options.dataDir, 'models'), options.embeddingModelPath, options.embeddingWorkerPath, { onState: state => { if (this.state) { this.state.status.embedding = state; this.emitSnapshot(); } } });
-        this.state = { identity: { id: randomUUID(), name: '', onboarding: 'intro', stage: 'S0' }, visual: { expression: 'neutral', action: 'idle', bubble: '', revision: 0 }, messages: [], memories: [], diary: [], settings: { ...defaults }, provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL, mode: 'mira-proxy', toolCount: 26 }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: CONTEXT_BUDGET, tasks: [] }, observation: { available: false, observedAt: new Date(Date.now()).toISOString() }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 } };
+        this.state = { identity: { id: randomUUID(), name: '', onboarding: 'intro', stage: 'S0' }, visual: { expression: 'neutral', action: 'idle', bubble: '', revision: 0 }, messages: [], memories: [], diary: [], settings: { ...defaults }, provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL, mode: 'mira-proxy', toolCount: 27 }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: CONTEXT_BUDGET, tasks: [] }, observation: { available: false, observedAt: new Date(Date.now()).toISOString() }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 } };
     }
     async init() {
         const existingIdentity=this.store.get<AppSnapshot['identity']>('identity');
@@ -207,12 +214,12 @@ export class CompanionService extends EventEmitter {
         this.policyVersion = (this.store.get<number>('policy-version') || 1);
         const forbidden = this.state.settings.forbiddenPaths || [];
         this.state.agent={backend:'openai-kimi-tools',mode:forbidden.length?'directory-guarded':'full-access',cwd:this.store.get<string>('agent-cwd')||this.options.workingDir||process.cwd(),busy:false,forbiddenPaths:[...forbidden],policyVersion:this.policyVersion,lastResult:this.store.get('agent-last-result')};
-        this.state.provider = { ...this.state.provider, ...this.store.get<AppSnapshot['provider']>('provider'), configured: false, toolCount: 26 };
+        this.state.provider = { ...this.state.provider, ...this.store.get<AppSnapshot['provider']>('provider'), configured: false, toolCount: 27 };
         if (this.state.provider.mode !== 'mira-proxy' && this.state.provider.mode !== 'native-api') {
             this.state.provider.mode = isKimiK3Model(this.state.provider.model) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(this.state.provider.baseUrl) ? 'mira-proxy' : 'native-api';
         }
         this.state.provider.configured=!!(await this.options.credentials.get());
-        if(!this.state.provider.configured&&this.state.provider.baseUrl==='https://api.moonshot.cn/v1'&&this.state.provider.model==='kimi-k3'){this.state.provider={baseUrl:'http://127.0.0.1:18890/v1',model:'kimi-code/k3',mode:'mira-proxy',toolCount:26,configured:false};this.state.provider.configured=!!(await this.options.credentials.get());}
+        if(!this.state.provider.configured&&this.state.provider.baseUrl==='https://api.moonshot.cn/v1'&&this.state.provider.model==='kimi-k3'){this.state.provider={baseUrl:'http://127.0.0.1:18890/v1',model:'kimi-code/k3',mode:'mira-proxy',toolCount:27,configured:false};this.state.provider.configured=!!(await this.options.credentials.get());}
         this.state.stats = this.store.get('stats') || this.state.stats;
         this.proactiveTokens = this.store.get<number>('proactive-tokens') || 0;
         const savedVitality = this.store.get<Vitality>('vitality'); if (savedVitality && Number.isFinite(savedVitality.energy) && Number.isFinite(savedVitality.mood)) this.vitality = savedVitality;
@@ -229,7 +236,7 @@ export class CompanionService extends EventEmitter {
         this.emitSnapshot();
     }
     private refresh() { const dead = this.store.deadIds(); /* one tombstone query instead of one per row */ this.state.messages = this.store.all<Message>('message').filter(m => !dead.has(m.id)).slice(-120); this.state.memories = this.store.all<MemoryItem>('memory').filter(m => m.valid && !dead.has(m.id) && !dead.has(m.sourceId)); this.state.diary = this.store.all<AppSnapshot['diary'][number]>('diary').filter(d => !d.sourceIds.some(id => dead.has(id))).slice(-30); this.state.stats.memories = this.state.memories.length; this.story.reconcile();this.state.story=this.story.snapshot();this.variables.reconcile(this.state.identity);this.variables.syncStage(this.state.identity);this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood); }
-    getSnapshot(): AppSnapshot { if(!this.closed){this.decorateStatus();if(this.state.settings.moodEnabled!==false){this.stepVitality();this.state.vitality=vitalityView(this.vitality);}else delete this.state.vitality;} if(!this.closed&&this.state.story){this.state.story.mood=this.story.moodView();this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood);}return structuredClone(this.state); }
+    getSnapshot(): AppSnapshot { if(!this.closed){this.decorateStatus();if(this.state.agent)this.state.agent.mcp=this.state.settings.mcpServers?.length?this.mcp.status():undefined;if(this.state.settings.moodEnabled!==false){this.stepVitality();this.state.vitality=vitalityView(this.vitality);}else delete this.state.vitality;} if(!this.closed&&this.state.story){this.state.story.mood=this.story.moodView();this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood);}return structuredClone(this.state); }
     private emitSnapshot() { if (!this.closed) {this.quietWasActive=this.state.settings.quietUntil>Date.now();this.emit('snapshot', this.getSnapshot());} }
     private persist() { this.store.put('state', 'identity', this.state.identity); this.store.put('state', 'settings', this.state.settings); const { configured: _configured, ...provider } = this.state.provider; this.store.put('state', 'provider', provider); this.store.put('state', 'stats', this.state.stats); }
     private cancel() { this.generation++; this.controller?.abort(); this.controller = undefined; this.activeKind = undefined;this.activeScenes=[]; this.state.status.busy = false; }
@@ -345,6 +352,26 @@ export class CompanionService extends EventEmitter {
                     this.state.agent!.cwd=cwd;this.store.put('state','agent-cwd',cwd);break;
                 }
                 case 'agent.cancel':this.agentController?.abort();break;
+                case 'agent.undo':{
+                    if(this.state.agent?.busy)throw new Error('执行器正在工作，请等它结束或先取消');
+                    if(!this.agent.undoLast)throw new Error('当前执行器不支持撤销');
+                    const r=await this.agent.undoLast();
+                    const last=this.state.agent?.lastResult;if(last&&(!last.runId||last.runId===r.runId)){last.undone=true;this.store.put('state','agent-last-result',last);}
+                    const text=`[已撤销执行器改动]${r.label?`「${r.label}」`:''}\n恢复 ${r.restored.length} 个文件${r.conflicts.length?`；${r.conflicts.length} 个文件之后又被改过，保持原样：${r.conflicts.slice(0,5).join('、')}`:''}${r.skipped.length?`；${r.skipped.length} 个无法恢复（过大或受保护）`:''}。命令（Bash）造成的改动无法撤销。`;
+                    const message:Message={id:randomUUID(),role:'assistant',source:'scene',text,createdAt:new Date(Date.now()).toISOString()};this.store.put('message',message.id,message);this.refresh();
+                    this.emitSnapshot();return{ok:true,data:r};
+                }
+                case 'mcp.restart':{this.mcp.restart();const box=this.state.settings.sandbox||DEFAULT_SANDBOX;void this.mcp.ensure({stdio:box.shell&&!(this.state.settings.forbiddenPaths||[]).length,http:box.network});break;}
+                case 'mcp.secret':{
+                    // Values go straight to the encrypted store; settings only remember which names are set.
+                    if(!this.options.mcpSecrets)throw new Error('当前环境不能保存密钥（需要桌面版的系统加密）');
+                    const servers=this.state.settings.mcpServers||[],index=servers.findIndex(s=>s.name===command.server);if(index<0)throw new Error('没有这个 MCP 服务');
+                    const secrets=validSecrets({env:command.env,headers:command.headers});
+                    await this.options.mcpSecrets.set(command.server,secrets);
+                    const next=servers.map((s,i)=>i===index?{...s,envKeys:Object.keys(secrets.env||{}),headerKeys:Object.keys(secrets.headers||{})}:s);
+                    this.state.settings={...this.state.settings,mcpServers:next};this.persist();this.mcp.restart();
+                    break;
+                }
                 case 'agent.run':this.startAgent(command.task);break;
                 case 'config.save': {
                     const url = new URL(command.baseUrl);
@@ -360,7 +387,7 @@ export class CompanionService extends EventEmitter {
                     const mode = command.mode === 'mira-proxy' || command.mode === 'native-api'
                         ? command.mode
                         : (isKimiK3Model(cleanModel) || /^https?:\/\/(127\.0\.0\.1|localhost):(18890|8787)\b/i.test(cleanUrl) ? 'mira-proxy' : 'native-api');
-                    this.state.provider = { baseUrl: cleanUrl, model: cleanModel, mode, toolCount: 26, configured: false };
+                    this.state.provider = { baseUrl: cleanUrl, model: cleanModel, mode, toolCount: 27, configured: false };
                     this.state.provider.configured=!!(await this.options.credentials.get());
                     this.cancel();
                     this.state.status.error = undefined;
@@ -388,6 +415,14 @@ export class CompanionService extends EventEmitter {
                         if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('请输入有效的数字');
                         const clamped = Math.min(range.max, Math.max(range.min, value));
                         (settings as Record<string, unknown>)[key] = range.integer ? Math.round(clamped) : clamped;
+                    }
+                    if (command.settings.mcpServers !== undefined) { settings.mcpServers = validServers(command.settings.mcpServers); }
+                    if (command.settings.executor !== undefined) {
+                        const e = command.settings.executor as Record<string, unknown>, prev = previous.executor || {};
+                        if (!e || typeof e !== 'object') throw new Error('执行器设置格式无效');
+                        const num = (v: unknown, fallback: number | undefined, min: number, max: number) => v === undefined ? fallback : typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(max, Math.max(min, v))) : (() => { throw new Error('请输入有效的数字'); })();
+                        const model = e.model === undefined ? prev.model : typeof e.model === 'string' && e.model.length <= 120 ? e.model.trim() : (() => { throw new Error('执行器模型名无效'); })();
+                        settings.executor = { ...(model ? { model } : {}), ...(() => { const o = num(e.maxOutputTokens, prev.maxOutputTokens, 1024, 131072), t = num(e.maxTurns, prev.maxTurns, 4, 1000); return { ...(o ? { maxOutputTokens: o } : {}), ...(t ? { maxTurns: t } : {}) }; })() };
                     }
                     if (command.settings.goodnightAt !== undefined) settings.goodnightAt = clockTime(command.settings.goodnightAt, previous.goodnightAt || defaults.goodnightAt!);
                     if (command.settings.quietHours !== undefined) {
@@ -1187,7 +1222,7 @@ export class CompanionService extends EventEmitter {
         const cwd=this.state.agent!.cwd;
         this.agentWork=(async()=>{
             let result:NonNullable<AppSnapshot['agent']>['lastResult'];
-            try{const output=await this.agent.run(await this.executorBrief(task),cwd,controller.signal);result={status:output.stopReason==='end_turn'&&output.summary.trim()?'done':output.stopReason==='cancelled'?'cancelled':'failed',summary:output.summary||'执行器没有返回最终摘要',toolCount:output.tools.length,completedAt:new Date(Date.now()).toISOString()};}
+            try{const output=await this.agent.run(await this.executorBrief(task),cwd,controller.signal);result={status:output.stopReason==='end_turn'&&output.summary.trim()?'done':output.stopReason==='cancelled'?'cancelled':'failed',summary:output.summary||'执行器没有返回最终摘要',toolCount:output.tools.length,completedAt:new Date(Date.now()).toISOString(),...(output.changedFiles?.length?{changedFiles:output.changedFiles.length,runId:output.runId}:{})};}
             catch(e){result={status:controller.signal.aborted?'cancelled':'failed',summary:controller.signal.aborted?'任务已取消':e instanceof Error?e.message:'执行失败',toolCount:0,completedAt:new Date(Date.now()).toISOString()};}
             if(this.closed)return;
             this.state.agent!.busy=false;this.state.agent!.lastResult=result;this.store.put('state','agent-last-result',result);
@@ -1722,7 +1757,7 @@ export class CompanionService extends EventEmitter {
         const result={status:stopReason==='end_turn'&&summary.trim()?'done' as const:stopReason==='cancelled'?'cancelled' as const:'failed' as const,summary,toolCount,completedAt:new Date(Date.now()).toISOString()};
         this.state.agent!.lastResult=result;this.store.put('state','agent-last-result',result);const message:Message={id:randomUUID(),role:'assistant',source:'scene',text:`[执行代理${result.status==='done'?'结束':result.status==='cancelled'?'取消':'未完成'}]\n${summary}`,createdAt:result.completedAt};this.store.put('message',message.id,message);this.refresh();this.taskEvent(message.id,result);this.emitSnapshot();
     }
-    async close() { this.closed = true;clearTimeout(this.afterthoughtTimer);this.store.put('state','vitality',this.vitality);this.attention?.close();this.agentController?.abort();this.agent.close();await this.agentWork; if(this.workTimer)clearTimeout(this.workTimer);this.workTimer=undefined; this.cancel(); for (const controller of this.backgroundControllers)
+    async close() { this.closed = true;this.mcp?.close();clearTimeout(this.afterthoughtTimer);this.store.put('state','vitality',this.vitality);this.attention?.close();this.agentController?.abort();this.agent.close();await this.agentWork; if(this.workTimer)clearTimeout(this.workTimer);this.workTimer=undefined; this.cancel(); for (const controller of this.backgroundControllers)
         controller.abort(); await this.embeddings.close(); await this.background; await this.attention?.idle(); this.pool.close(); this.store.put('state', 'session-lifecycle', { active: false, closedAt: new Date(Date.now()).toISOString(), lastSeenAt: this.state.stats.lastSeenAt }); this.persist(); this.store.close(); }
     async waitForBackground() { let pending: Promise<void>; do { pending = this.background; await pending; } while (pending !== this.background); }
     private archiveId(id: unknown): id is string { return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }

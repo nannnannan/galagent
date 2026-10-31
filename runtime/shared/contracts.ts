@@ -94,11 +94,15 @@ export type Settings = {
   recallEveryDays?: number;
   /** After this local time the character says goodnight once and goes to sleep. */
   goodnightAt?: string;
+  /** MCP servers the executor may use (stdio); local programs, so they need Shell in the sandbox. */
+  mcpServers?: { name: string; enabled: boolean; command?: string; args?: string[]; url?: string; /** Names only; values stay encrypted in the desktop shell. */ envKeys?: string[]; headerKeys?: string[] }[];
+  /** Executor model and budget (empty model = same as the chat model). */
+  executor?: { model?: string; maxOutputTokens?: number; maxTurns?: number };
   sandbox?: SandboxSettings;
 };
 /** Nested groups may be patched partially; the core merges and validates them. */
 export type SettingsPatch = Partial<Omit<Settings, 'sandbox' | 'quietHours'>> & { sandbox?: Partial<SandboxSettings>; quietHours?: Partial<NonNullable<Settings['quietHours']>> };
-export type SandboxLevel = 'strict' | 'standard' | 'open';
+export type SandboxLevel = 'strict' | 'standard' | 'open' | 'full';
 export type SandboxSettings = {
   level: SandboxLevel;
   /** File tools: read/write confinement. `read-anywhere`: read any non-protected path, write only inside the workspace. */
@@ -106,6 +110,10 @@ export type SandboxSettings = {
   shell: boolean;
   /** Ask the user before every Shell command (an "allow for this task" answer skips the rest of that task). */
   shellConfirm: boolean;
+  /** Network tools may reach localhost and LAN addresses (routers, NAS, local dev servers). */
+  lanAccess?: boolean;
+  /** File tools may read/write credential files (.ssh, .env, keys…). GalAgent's own key files stay blocked. */
+  credentialFiles?: boolean;
   network: boolean;
   /** Optional FetchURL allow-list; empty means any public host. */
   allowedDomains: string[];
@@ -156,7 +164,7 @@ export type AppSnapshot = {
   bond?: BondView;
   privacy?: PrivacyView;
   companionship?: CompanionPreferences;
-  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string}};
+  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
   variables?: PersonaVariables;
   story?: StorySnapshot;
   watches?: WatchView[];
@@ -196,6 +204,9 @@ export type AppCommand =
   | { type: 'privacy.lockdown' }
   | { type: 'agent.run'; task: string }
   | { type: 'agent.cancel' }
+  | { type: 'agent.undo' }
+  | { type: 'mcp.restart' }
+  | { type: 'mcp.secret'; server: string; env?: Record<string, string>; headers?: Record<string, string> }
   | { type: 'agent.configure'; cwd: string }
   | { type: 'agent.answer'; id:string; answers:Record<string,string> }
   | { type: 'chat.send'; text: string }

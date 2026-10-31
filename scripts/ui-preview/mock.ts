@@ -34,12 +34,12 @@ const kiri: PersonaProfile = {
 const snapshot: AppSnapshot = structuredClone(previewSnapshot);
 snapshot.persona = { active: builtinPersonas[0], list: [...builtinPersonas, kiri], greeted: true };
 Object.assign(snapshot, {
-  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 26 },
+  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 27 },
   status: { ...snapshot.status, online: true, busy, embedding: 'ready', contextTokens: 3120, journal: { lastDay: day(-1), pendingDays: [], failedDays: [day(-4)], nextRunAt: new Date(new Date(now).setHours(24, 0, 30, 0)).toISOString() } },
   activity: busy ? { kind: 'thinking', label: '思考中…' } : params.get('sleep') === '1' ? { kind: 'sleeping', label: '你不在，先眯一会儿' } : { kind: 'idle', label: '星野 · 星空时间', routine: '星空时间' },
   vitality: { energy: 46, mood: 81, tone: 'tired', label: '有点困' },
   pets: { catalog: builtinPixelPets.map(p => ({ id: p.id, name: p.name, description: p.description, builtin: true })), revision: 1 },
-  settings: { ...snapshot.settings, petId: params.get('pet') || '' },
+  settings: { ...snapshot.settings, petId: params.get('pet') || '', mcpServers: [{ name: 'playwright', command: 'npx', args: ['-y', '@playwright/mcp@latest'], enabled: true }, { name: 'github', url: 'https://api.githubcopilot.com/mcp/', enabled: true, headerKeys: ['Authorization'] }], executor: { model: 'kimi-k3-coder', maxOutputTokens: 16384, maxTurns: 200 }, sandbox: { ...snapshot.settings.sandbox, ...(params.get('full') ? { level: 'full', fileScope: 'anywhere', shell: true, shellConfirm: false, lanAccess: true, credentialFiles: true } : {}) } },
   visual: { expression: 'pleased', action: params.get('action') || 'wave', bubble: params.get('bubble') ?? '嘿！今天也一起加油吧～要不要先喝口水？', revision: 1, intensity: 0.85 },
   stats: { conversations: 42, memories: 7, proactiveToday: 2, tokensToday: 12000 },
   bond: bond(),
@@ -65,7 +65,7 @@ Object.assign(snapshot, {
     { day: day(-3), title: '夜猫子之夜', summary: '凌晨还在赶项目，聊了几句就去睡了。', diary: '凌晨一点半，他终于说了晚安。', mood: '担心', topics: ['熬夜'], highlights: [], openThreads: ['答应以后早点睡'], messageCount: 9, createdAt: iso(-68 * 3600_000) },
   ],
   watches: [{ id: 'w1', title: '快递到了没', createdAt: now, nextCheckAt: now + 1e6, expiresAt: now + 1e7, status: 'active', dedupeKey: 'x' }],
-  agent: { backend: 'openai-kimi-tools', mode: 'full-access', cwd: 'C:\\Users\\me\\Documents', busy: false },
+  agent: { backend: 'openai-kimi-tools', mode: 'full-access', cwd: 'C:\\Users\\me\\Documents', busy: false, lastResult: { status: 'done', summary: '整理完成', toolCount: 14, completedAt: iso(-600_000), changedFiles: 3, runId: 'r1' }, mcp: [{ name: 'playwright', state: 'ready', tools: 21, transport: 'stdio' }, { name: 'github', state: 'ready', tools: 38, transport: 'http' }] },
 });
 // Previews start fresh: the daily greeting and pet history live in localStorage.
 try { localStorage.clear(); } catch { /* file:// may refuse storage */ }

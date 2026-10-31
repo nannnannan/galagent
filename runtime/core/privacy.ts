@@ -9,6 +9,8 @@ export const SANDBOX_PRESETS: Record<SandboxLevel, Omit<SandboxSettings, 'level'
   strict: { fileScope: 'workspace-read', shell: false, shellConfirm: true, network: false, redactSecrets: true, redactPersonal: true },
   standard: { fileScope: 'read-anywhere', shell: true, shellConfirm: true, network: true, redactSecrets: true, redactPersonal: false },
   open: { fileScope: 'anywhere', shell: true, shellConfirm: false, network: true, redactSecrets: true, redactPersonal: false },
+  /** 完全放开: everything the app can grant. Outbound redaction stays on by default (its own switch). */
+  full: { fileScope: 'anywhere', shell: true, shellConfirm: false, network: true, lanAccess: true, credentialFiles: true, redactSecrets: true, redactPersonal: false },
 };
 export const DEFAULT_SANDBOX: SandboxSettings = { level: 'standard', ...SANDBOX_PRESETS.standard, allowedDomains: [], sensitiveWords: [] };
 
@@ -24,13 +26,14 @@ export function normalizeSandbox(raw: unknown, previous: SandboxSettings = DEFAU
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('沙箱设置格式无效');
   const r = raw as Partial<SandboxSettings>;
   const level = r.level ?? previous.level;
-  if (!['strict', 'standard', 'open'].includes(level)) throw new Error('沙箱级别无效');
-  const base: SandboxSettings = level !== previous.level ? { ...previous, level, ...SANDBOX_PRESETS[level] } : { ...previous };
+  if (!['strict', 'standard', 'open', 'full'].includes(level)) throw new Error('沙箱级别无效');
+  // A new level resets the two "full" switches unless its preset sets them.
+  const base: SandboxSettings = level !== previous.level ? { ...previous, lanAccess: false, credentialFiles: false, level, ...SANDBOX_PRESETS[level] } : { ...previous };
   const out: SandboxSettings = { ...base };
   if (r.fileScope !== undefined) { if (!['workspace-read', 'workspace', 'read-anywhere', 'anywhere'].includes(r.fileScope)) throw new Error('文件范围无效'); out.fileScope = r.fileScope; }
   // Settings saved before shellConfirm existed: keep asking unless the level is open.
-  if (typeof out.shellConfirm !== 'boolean') out.shellConfirm = out.level !== 'open';
-  for (const key of ['shell', 'shellConfirm', 'network', 'redactSecrets', 'redactPersonal'] as const) if (r[key] !== undefined) { if (typeof r[key] !== 'boolean') throw new Error('沙箱开关格式无效'); out[key] = r[key]; }
+  if (typeof out.shellConfirm !== 'boolean') out.shellConfirm = out.level !== 'open' && out.level !== 'full';
+  for (const key of ['shell', 'shellConfirm', 'network', 'lanAccess', 'credentialFiles', 'redactSecrets', 'redactPersonal'] as const) if (r[key] !== undefined) { if (typeof r[key] !== 'boolean') throw new Error('沙箱开关格式无效'); out[key] = r[key]; }
   out.allowedDomains = list(r.allowedDomains, base.allowedDomains, 100, 200).map(d => d.toLowerCase().replace(/^\*\./, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(d => /^[a-z0-9.-]+$/.test(d));
   out.sensitiveWords = list(r.sensitiveWords, base.sensitiveWords, 200, 100);
   return out;
@@ -131,10 +134,15 @@ export class PrivacyGuard {
 }
 
 /** Files that are never readable by tools whatever the sandbox level. */
+/** GalAgent's own encrypted keys and app data: never readable by tools, at any level. */
+export function galagentSecret(file: string): boolean {
+  const normalized = file.replace(/\\/g, '/').toLowerCase(), base = normalized.split('/').pop() || '';
+  return /^(provider-key|tts-key|mcp-secrets)\.bin$/.test(base) || /\/appdata\/roaming\/galagent(\/|$)/.test(normalized);
+}
 export function sensitivePath(file: string): boolean {
   const normalized = file.replace(/\\/g, '/').toLowerCase();
   const base = normalized.split('/').pop() || '';
-  if (/^(\.env(\..*)?|id_rsa|id_dsa|id_ed25519|id_ecdsa|credentials(\.json)?|\.netrc|_netrc|\.npmrc|\.pypirc|\.git-credentials|wallet\.dat|login data|cookies|web data|key[34]\.db|logins\.json|provider-key\.bin|tts-key\.bin)$/.test(base)) return true;
+  if (/^(\.env(\..*)?|id_rsa|id_dsa|id_ed25519|id_ecdsa|credentials(\.json)?|\.netrc|_netrc|\.npmrc|\.pypirc|\.git-credentials|wallet\.dat|login data|cookies|web data|key[34]\.db|logins\.json|provider-key\.bin|tts-key\.bin|mcp-secrets\.bin)$/.test(base)) return true;
   if (/\.(pem|key|p12|pfx|kdbx|kdb|keychain|ovpn|gpg)$/.test(base)) return true;
   return /\/(\.ssh|\.aws|\.gnupg|\.kube|\.azure|\.config\/gcloud|\.docker)(\/|$)/.test(normalized) || /\/appdata\/roaming\/galagent(\/|$)/.test(normalized);
 }
