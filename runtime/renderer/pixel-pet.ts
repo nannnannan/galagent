@@ -269,6 +269,14 @@ export class PixelPet {
     return false;
   }
 
+  /** Client-space box of the sprite's opaque pixels at its resting pose (ignores bobs and jumps so UI anchored to it stays steady). */
+  restBox(): { left: number; top: number; right: number; bottom: number } {
+    const rect = this.canvas.getBoundingClientRect(), L = this.layout();
+    const kx = rect.width / (L.width || 1), ky = rect.height / (L.height || 1), u = L.unit;
+    const cx = rect.left + L.footX * kx, foot = rect.top + L.footY * ky, half = (this.bounds.width * u * kx) / 2;
+    return { left: cx - half, right: cx + half, top: foot - this.bounds.height * u * ky, bottom: foot };
+  }
+
   headAnchor(): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
     const layout = this.layout();

@@ -1,5 +1,5 @@
 // ⌘K / Ctrl+K command palette for the notebook: a filterable list of quick actions.
-import { el } from './ui';
+import { el, iconBadge } from './ui';
 
 export type PaletteAction = { id: string; title: string; icon: string; group: string; hint?: string; keywords?: string; shortcut?: string; run: () => void };
 
@@ -35,7 +35,7 @@ export function openPalette(actions: PaletteAction[], onClose?: () => void) {
       if (action.group !== group) { group = action.group; list.append(el('div', 'palette-group', group)); }
       const item = el('button', 'palette-item'); item.type = 'button'; item.id = `palette-${i}`; item.setAttribute('role', 'option'); item.tabIndex = -1;
       const text = el('span', 'palette-text'); text.append(el('strong', '', action.title)); if (action.hint) text.append(el('small', '', action.hint));
-      item.append(el('span', 'palette-icon', action.icon), text); if (action.shortcut) item.append(el('kbd', '', action.shortcut));
+      item.append(iconBadge(action.icon, 'sm'), text); if (action.shortcut) item.append(el('kbd', '', action.shortcut));
       item.onmousemove = () => { if (index !== i) { index = i; highlight(); } };
       item.onclick = () => run(action);
       list.append(item);

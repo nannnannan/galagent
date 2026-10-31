@@ -48,7 +48,7 @@ $mutex = $null
 $locked = $false
 $staging = $null
 try {
-    if (!$PackageDirectory) { $PackageDirectory = Join-Path $PSScriptRoot '..\release\v0.2.0\win-unpacked' }
+    if (!$PackageDirectory) { $PackageDirectory = Join-Path $PSScriptRoot '..\release\v0.3.0\win-unpacked' }
     if (!$InstallRoot) { $InstallRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'GalAgent\app' }
     if ($ProfileDirectory) {
         $ProfileDirectory = Get-FullDirectory (Resolve-Path -LiteralPath $ProfileDirectory).Path

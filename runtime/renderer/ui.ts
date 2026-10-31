@@ -12,7 +12,7 @@ export const previewSnapshot: AppSnapshot = {
   activity: { kind: 'offline', label: '预览模式' },
   visual: { expression: 'neutral', action: 'idle', bubble: previewPersona.greeting, revision: 0 }, messages: [], memories: [], diary: [],
   settings: { observationEnabled: false, windowTitlesEnabled: false, initiativeEnabled: true, mischiefEnabled: true, roamingEnabled: true, ttsEnabled: false, ttsBaseUrl: '', ttsModel: 'tts-1', ttsVoice: '', ttsSpeed: 1, quietUntil: 0, proactiveIntervalMinutes: 5, proactiveHourlyLimit: 2, proactiveDailyLimit: 8, petScale: 1, reducedMotion: false, screenCaptureEnabled: true, clipboardEnabled: true, captureBlocklist: [], forbiddenPaths: [], petId: '', heartbeatSeconds: 60, unansweredMinutes: 20, reunionHours: 6, screenIntervalSeconds: 60, idleSleepMinutes: 10, bubbleSeconds: 12, roamSpeed: 1, quietHours: { enabled: false, start: '23:00', end: '08:00' }, funCaptions: true, sandbox: { level: 'standard', fileScope: 'workspace', shell: false, network: true, allowedDomains: [], redactSecrets: true, redactPersonal: false, sensitiveWords: [] } },
-  provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: 16000, tasks: [] }, observation: { available: false, observedAt: '' }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 },
+  provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: 1_000_000, tasks: [] }, observation: { available: false, observedAt: '' }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 },
 };
 const offline: GalAgentBridge = { getSnapshot: async () => previewSnapshot, onSnapshot: () => () => {}, dispatch: async () => ({ ok: false, error: '浏览器预览未连接桌面程序，不能调用模型或保存数据。' }) };
 /** Resolved on every access so a bridge installed after this module loads (tests, previews) is still used. */
@@ -22,11 +22,24 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = ''
   const element = document.createElement(tag); if (className) element.className = className; if (text) element.textContent = text; return element;
 }
 export function button(text: string, action: () => void, className = 'btn') { const b = el('button', className, text); b.type = 'button'; b.onclick = action; return b; }
+/** The one way an emoji/illustration icon is shown: a rounded square badge. Sizes: '' | 'sm' | 'lg'; tones: accent, solid, gold, danger. */
+export const iconBadge = (icon: string, variant = '') => { const b = el('span', `icon-badge${variant ? ' ' + variant : ''}`, icon); b.setAttribute('aria-hidden', 'true'); return b; };
+/** Card with the shared header pattern: title, optional hint, optional trailing actions. */
+export function section(title: string, hint = '', ...actions: HTMLElement[]) {
+  const box = el('section', 'card'), head = el('header', 'card-head'), text = el('div');
+  text.append(el('h3', '', title)); if (hint) text.append(el('p', 'hint', hint));
+  head.append(text, ...actions); box.append(head); return box;
+}
+/** Status / warning line with an optional trailing action. */
+export function notice(text: string, tone: '' | 'warn' | 'accent' = '', action?: HTMLElement, dot?: string) {
+  const box = el('div', `notice${tone ? ' ' + tone : ''}`); if (dot !== undefined) box.append(el('i', `dot ${dot}`)); box.append(el('span', '', text)); if (action) box.append(action); return box;
+}
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function toast(text: string, tone: 'info' | 'error' = 'info') {
   let box = document.querySelector<HTMLElement>('#toast');
   if (!box) { box = el('div', 'toast'); box.id = 'toast'; box.setAttribute('role', 'status'); document.body.append(box); }
-  box.textContent = text; box.dataset.tone = tone; box.classList.add('visible');
+  box.replaceChildren(iconBadge(tone === 'error' ? '!' : '✓', tone === 'error' ? 'sm danger' : 'sm accent'), el('span', 'toast-text', text));
+  box.dataset.tone = tone; box.classList.add('visible');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => box!.classList.remove('visible'), 5200);
 }
 type Hook = (command: AppCommand) => void;

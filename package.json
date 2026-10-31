@@ -1,6 +1,6 @@
 {
   "name": "galagent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A customizable desktop companion: pick or write a character, choose a pixel pet, and let it keep you company.",
   "main": "dist/main/index.cjs",

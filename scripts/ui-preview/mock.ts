@@ -1,10 +1,13 @@
 // Fake desktop bridge for screenshotting the renderer without Electron.
 // Query flags: busy=1, sleep=1, bubble=, pet=, action=, empty=1 (no messages/archives/diary),
-// unlock=1 (push a fresh achievement after load), palette=1 (open Ctrl+K), season=snow|petals|fireflies|leaves.
+// unlock=1 (push a fresh achievement after load), palette=1 (open Ctrl+K), season=snow|petals|fireflies|leaves,
+// editor=<persona id> (open the card editor on the 角色 page; mode=simple|tavern), aidraft=1 (new card + AI draft with questions),
+// handle=1 (hover the pet, then move away: the menu handle lingers).
 import type { AppCommand, AppSnapshot, BondView, GalAgentBridge } from '../../runtime/shared/contracts';
 import { achievements } from '../../runtime/shared/achievements';
 import { previewSnapshot } from '../../runtime/renderer/ui';
 import { builtinPixelPets } from '../../runtime/shared/pixel-pets';
+import { builtinPersonas, emptyCard, type PersonaProfile } from '../../runtime/shared/personas';
 
 const now = Date.now(), iso = (offset: number) => new Date(now + offset).toISOString();
 const day = (offset: number) => { const d = new Date(now + offset * 86400_000); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -14,7 +17,22 @@ const bond = (extra: string[] = []): BondView => ({
   firstMetAt: iso(-12 * 86400_000), daysTogether: 13, streakDays: 8, activeDays: 11, todayChats: 6,
   achievements: achievements.map(a => ({ id: a.id, icon: a.icon, title: a.title, description: a.description, hidden: a.hidden, unlockedAt: a.id in unlocked ? iso(unlocked[a.id] * 86400_000) : extra.includes(a.id) ? iso(0) : undefined })),
 });
+// A custom card that exercises every tavern section (phases, facets, NPCs); Kimi is the built-in tavern card.
+const kiri: PersonaProfile = {
+  id: 'custom-kiri', name: '雾岛', pronoun: '他', avatar: 'scholar-boy', tagline: '深夜便利店的店员，话少，会给你留一份关东煮。',
+  personality: '', speakingStyle: '短句，偶尔停顿很久才接话。', background: '', relationship: '常去的便利店店员', userTitle: '', likes: '雨夜、热饮', boundaries: '不追问你为什么这么晚还不睡。',
+  greeting: '……欢迎光临。老样子？', idleLines: ['补货中', '擦柜台'], voiceStyle: '低、慢、带点沙哑', createdAt: iso(-20 * 86400_000), updatedAt: iso(-86400_000),
+  card: { ...emptyCard(), age: '二十五六', gender: '男', identity: '深夜便利店店员', appearance: '左手总缠着创可贴；制服第二颗扣子永远扣错一格。',
+    base: '温柔', main: ['沉默'], accents: ['嘴硬'],
+    derivations: [{ trait: '温柔', text: '你说不饿，他还是把关东煮多煮一份放在收银台边，说是“煮多了”。' }, { trait: '温柔', text: '下雨时把店里的伞递给你，不提还的事。' }, { trait: '沉默', text: '你讲很长的事时他不插话，只在你停下来时“嗯”一声。' }],
+    lines: ['……老样子？', '煮多了，别浪费。', '伞，拿着。'],
+    facets: [{ name: '营业模式', trigger: '店里有其他客人', energy: '低耗、礼貌', lines: ['欢迎光临。'], body: '站得很直，只看收银机。', purpose: '把自己藏在流程后面' }],
+    notes: [{ topic: '沉默', text: '不是冷淡，是在认真听。他只在你需要时开口。' }],
+    phases: [{ name: '熟客', fromDays: 7, main: ['沉默', '照顾'], accents: [], derivations: [{ trait: '照顾', text: '开始记得你常买的东西，提前放到你手边。' }], notes: [] }, { name: '朋友', fromDays: 30, main: ['照顾'], accents: ['话多一点'], derivations: [], notes: [] }],
+    npcs: [{ name: '店长', role: '便利店店长', look: '', traits: '爱唠叨', relation: '偶尔会问你“又是你啊”', lines: [] }] },
+};
 const snapshot: AppSnapshot = structuredClone(previewSnapshot);
+snapshot.persona = { active: builtinPersonas[0], list: [...builtinPersonas, kiri], greeted: true };
 Object.assign(snapshot, {
   provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 25 },
   status: { ...snapshot.status, online: true, busy, embedding: 'ready', contextTokens: 3120, journal: { lastDay: day(-1), pendingDays: [], failedDays: [day(-4)], nextRunAt: new Date(new Date(now).setHours(24, 0, 30, 0)).toISOString() } },
@@ -53,11 +71,31 @@ const bridge: GalAgentBridge = {
   onSnapshot: listener => { listeners.push(listener); return () => {}; },
   dispatch: async (command: AppCommand) => {
     if (command.type === 'pet.get') return { ok: true, data: builtinPixelPets.find(p => p.id === command.id) };
+    if (command.type === 'persona.generate') return { ok: true, data: { name: '阿澄', pronoun: '她', tagline: '会做饭的狼人管家，嘴硬心软。', card: { ...emptyCard(), identity: '狼人管家', base: '责任感', main: ['嘴硬', '会照顾人'], accents: ['怕打雷'] }, questions: ['她被你夸做饭好吃时，第一反应是什么动作？', '“嘴硬”在什么场合会突然失效？', '有没有一件她绝对不会替你做的事？为什么？'] } };
     return { ok: true };
   },
 };
 (window as unknown as { galagent: GalAgentBridge }).galagent = bridge;
 if (params.get('unlock') === '1') setTimeout(() => { const next = { ...snapshot, bond: bond(['pat']) }; for (const l of listeners) l(next); }, 300);
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+const editor = params.get('editor'), aidraft = params.get('aidraft') === '1';
+if (editor || aidraft) void (async () => {
+  await wait(300);
+  if (aidraft) document.querySelector<HTMLElement>('.persona-card.create')?.click();
+  else document.querySelector<HTMLElement>(`.persona-card[data-id="${CSS.escape(editor!)}"] [data-action="edit"]`)?.click();
+  await wait(50);
+  const mode = params.get('mode'); if (mode) document.querySelector<HTMLElement>(`.editor .tab[data-mode="${mode}"]`)?.click();
+  if (params.get('guide') === '1') [...document.querySelectorAll<HTMLElement>('.editor .btn')].find(b => b.textContent === '写卡指南')?.click();
+  if (params.get('open') === '1') document.querySelectorAll<HTMLDetailsElement>('.editor details.fold').forEach(d => { d.open = true; });
+  if (aidraft) { const input = document.querySelector<HTMLInputElement>('.ai-draft input')!; input.value = '会做饭的狼人管家，嘴硬心软'; document.querySelector<HTMLElement>('.ai-draft .btn')?.click(); }
+  await wait(80); (document.activeElement as HTMLElement | null)?.blur(); document.querySelector('.content-page')!.scrollTop = 0;
+})();
+if (params.get('handle') === '1') setTimeout(() => {
+  const body = document.querySelector<HTMLElement>('#pet-body'); if (!body) return;
+  const r = body.getBoundingClientRect(), app = document.querySelector('#app')!;
+  app.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + r.width / 2, clientY: r.top + r.height * 0.7, bubbles: true }));
+  setTimeout(() => app.dispatchEvent(new MouseEvent('mousemove', { clientX: 8, clientY: 8, bubbles: true })), 120);
+}, 600);
 if (params.get('palette') === '1') setTimeout(() => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true })), 300);
 // gesture=pat: sweep the cursor back and forth over the pet's head (exercises the real hover-stroke path).
 if (params.get('gesture') === 'pat') setTimeout(() => {

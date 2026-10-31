@@ -1,3 +1,11 @@
+## v0.3.0 · 2026-10-31
+
+- 合并 5f1f307：可选 Kimi 卡与像素小人、结构化角色编辑器、统一界面与桌宠菜单交互。
+- 保留 Mira K3.1 Pro 适配、五分钟默认节流、安全启动和 NSIS 安装配置。
+- 主角色上下文预算调整为 1,000,000 tokens；界面同步显示。这是应用侧预算，不保证上游接受百万上下文；单条输入长度等独立限制不变。
+- 发布包 v0.3.0，沿用默认存档；未做存档重置或迁移。
+- 验证：187/187 测试、类型检查、生产构建通过；百万上下文未做真实上游请求验收。
+
 ## v0.2.0 · Windows 安装版 · 2026-10-30
 
 - 合并通用角色卡、像素桌宠、主代理工具和每日记忆档案，接回 Mira K3.1 Pro 与安全启动改进。
@@ -12,6 +20,13 @@
 - 修复 Windows 测试的 SQLite 关闭及 CRLF 示例解析问题。类型检查、构建通过；183 项测试中原先 178 项通过，修复后相关 15 项全部通过。未执行新版桌面实机或在线模型验收，未重新打包 EXE。
 
 # GalAgent 当前续接
+
+## 最新交付 · TAVERN-KIMI-20261031 · Kimi 可选、酒馆写法角色卡、界面统一、桌宠菜单按钮
+
+- Kimi 角色卡 `builtin:kimi`（`runtime/shared/personas.ts`，非默认）与小人 `kimi-star`（`scripts/pixel-pet/generate-builtins.mjs` 生成）。
+- 角色卡结构化部分 `PersonaProfile.card`（基本信息 / 外貌 / 调色盘与衍生 / 语料 / 三面性 / 二次解释 / 按相处天数的多阶段 / NPC）；写法与参考见 `skills/galagent-persona/`；编辑器 `runtime/renderer/persona-editor.ts`。
+- 界面统一与桌宠菜单按钮停留：`runtime/renderer/style.css`、`pet-view.ts`（`pixel-pet.ts` 新增 `restBox()`）。
+- 验证：typecheck、build、177 项测试通过；截图 `docs/evidence/ui/editor-*.png`、`pet-handle*.png`。仍未在 Windows 实机验收。
 
 ## 最新交付 · AGENT-MEMORY-20261029 · 主代理工具 / 并发与重试 / 每日档案 / 彩蛋与成就
 

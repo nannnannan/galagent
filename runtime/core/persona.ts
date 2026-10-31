@@ -50,5 +50,5 @@ export class PersonaBook {
     if (typeof activeId === 'string' && this.get(activeId)) this.store.put('state', 'active-persona', activeId);
   }
   exportCustom() { return this.custom(); }
-  prompt(): string { return buildPersonaPrompt(this.active()); }
+  prompt(daysTogether = 0): string { return buildPersonaPrompt(this.active(), daysTogether); }
 }

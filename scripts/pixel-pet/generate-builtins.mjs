@@ -310,6 +310,32 @@ const starWitch = human({
   },
 });
 
+
+// Kimi：长白发 + 淡紫内层、女仆风木耳边发箍、右鬓三角棱镜发饰（内嵌彩虹）、深蓝星空披肩与 K 标记胸针。
+const kimiStar = human({
+  id: 'kimi-star', name: 'Kimi 娘', description: '来自 Kimi 的桌面少女：白发淡紫内层，戴着木耳边发箍和棱镜发饰，星空披肩上别着 K 标记，喜欢弹钢琴。', tags: ['人类', '长发', '星空', 'Kimi'],
+  oy: 2,
+  palette: { o: '#3a2f52', ...SKIN, h: '#efebf9', H: '#b9a4ec', L: '#ffffff', c: '#25305e', C: '#171f42', d: '#fff3b0', w: '#ffffff', W: '#e3dcf5', q: '#8fd3ff', Q: '#ff9ad5', g: '#ffd75e', b: '#2a2440', ...FACE, e: '#7a5cd6' },
+  hair: 'long',
+  body(c, oy) {
+    // 星空披肩上的星点与胸前 K 标记胸针
+    c.set(11, 24 + oy, 'd'); c.set(20, 25 + oy, 'd'); c.set(12, 27 + oy, 'd'); c.set(19, 27 + oy, 'd');
+    c.spans2([[21 + oy, 14, 15]], 'w');
+    c.stamp(14, 22 + oy, ['g.g', 'gg.', 'g.g']);
+  },
+  legColor: 'W',
+  details(c, oy) {
+    const hair = (x, y, cur) => cur === 'h' || cur === 'L' || cur === 'H';
+    // 白发淡紫内层：发尾一圈透出淡紫
+    c.replace('h', 'H', (x, y) => y >= 18 + oy);
+    // 木耳边发箍：藏青发带 + 上沿白色木耳边
+    c.spans([[5 + oy, 7, 24]], 'c', hair);
+    for (let x = 8; x <= 23; x += 2) if (hair(x, 4 + oy, c.get(x, 4 + oy))) c.set(x, 4 + oy, 'W');
+    // 右鬓三角棱镜发饰（内嵌彩虹）
+    c.stamp(21, 8 + oy, ['.q.', 'qQq', 'gqQ']);
+  },
+});
+
 // ------------------------------------------------------------- 配方：动物与奇妙生物
 
 const mochiCat = {
@@ -536,7 +562,7 @@ const shroomSprout = {
   feetY: 26, legFrames: 4,
 };
 
-const RECIPES = [sunnyGirl, scholarBoy, starWitch, peachTwin, mochiCat, foxKit, roboUnit, cloudSprite, tinyDino, puffBunny, jellySlime, booGhost, pebblePenguin, shroomSprout];
+const RECIPES = [sunnyGirl, scholarBoy, kimiStar, starWitch, peachTwin, mochiCat, foxKit, roboUnit, cloudSprite, tinyDino, puffBunny, jellySlime, booGhost, pebblePenguin, shroomSprout];
 
 let failed = 0;
 for (const recipe of RECIPES) {
