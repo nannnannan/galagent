@@ -1,8 +1,9 @@
 import type { AppSnapshot, GalAgentBridge, PetAction } from '../shared/contracts';
 import { PixelPet } from './pixel-pet';
+import { splitReply } from '../shared/reply';
 import { SpeechPlayback } from './speech-playback';
 import { VoicePlayer } from './voice';
-import { AchievementWatcher, Fling, FLING_MIN_SPEED, Mischief, Petting, chimeCaption, dayKey, firstGreeting, idleCaption, isMidnight, midnightCaption, patLines, releaseVelocity, seasonFor, type MoveSample, type Season } from './fun';
+import { AchievementWatcher, Fling, FLING_MIN_SPEED, Mischief, Murmurer, Orbit, Petting, Stare, busyLabeler, chatReaction, chimeCaption, dayKey, firstGreeting, holdLines, idleCaption, isMidnight, midnightCaption, orbitLines, patLines, releaseVelocity, seasonFor, stareLines, tickleLines, wallLines, welcomeBackLines, type MoveSample, type Season } from './fun';
 import { Ambient, confetti } from './effects';
 import { firstVisitToday, reportAchievement, trackPet } from './bond';
 import { bridge, command, onCommand } from './ui';
@@ -33,7 +34,10 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   let localAction: { action: PetAction; until: number } | undefined;
   let shownSpec = builtinPixelPets[0];
   const pet = new PixelPet(host, shownSpec);
-  const mischief = new Mischief(), petting = new Petting(), watcher = new AchievementWatcher();
+  const mischief = new Mischief(), petting = new Petting(), watcher = new AchievementWatcher(), stare = new Stare(4000), orbit = new Orbit();
+  let lastInteraction = Date.now(), lastUserMessage = initial.messages.filter(m => m.role === 'user').at(-1)?.id || '', lastActivity = initial.activity;
+  const touched = () => { lastInteraction = Date.now(); };
+  const funOn = () => snapshot.settings.funCaptions !== false;
   const reduce = () => snapshot.settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Seasonal particles behind the pet (a ?season= override exists for previews only).
   const ambient = new Ambient(stage), forcedSeason = new URLSearchParams(location.search).get('season') as Season | null;
@@ -62,8 +66,17 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   // ---- overhead: speech bubble with a typewriter reveal, status chip, idle captions ----
   let bubbleTimer: ReturnType<typeof setTimeout> | undefined, typeTimer: ReturnType<typeof setInterval> | undefined, captionTimer: ReturnType<typeof setTimeout> | undefined;
   let caption = '', captionUntil = 0;
-  const hideBubble = () => { bubble.classList.remove('visible'); clearInterval(typeTimer); pet.playText(''); refreshPointer(); updateChip(); };
+  let partTimer: ReturnType<typeof setTimeout> | undefined;
+  const hideBubble = () => { clearTimeout(partTimer); bubble.classList.remove('visible'); clearInterval(typeTimer); pet.playText(''); refreshPointer(); updateChip(); };
+  /** A reply written as short paragraphs plays like several messages: each part types out, then the next replaces it. */
   const showBubble = (line: string) => {
+    clearTimeout(partTimer);
+    const parts = snapshot.settings.splitReplies !== false ? splitReply(line) : undefined;
+    if (!parts) { showPart(line); return; }
+    const play = (i: number) => { showPart(parts[i]); if (i < parts.length - 1) partTimer = setTimeout(() => play(i + 1), Math.min(6500, 1400 + [...parts[i]].length * 110)); };
+    play(0);
+  };
+  const showPart = (line: string) => {
     clearTimeout(bubbleTimer); clearInterval(typeTimer);
     if (!line) { hideBubble(); return; }
     const chars = [...line]; let shown = 0;
@@ -83,24 +96,42 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     if (captionKind === 'trophy' && kind !== 'trophy' && Date.now() < captionUntil) return;
     caption = line; captionKind = kind; captionUntil = Date.now() + ms; updateChip(); setTimeout(updateChip, ms + 50);
   };
+  // Claude-Code-style rotating words while a reply is cooking or a task runs; plain label when fun captions are off.
+  const busyText = busyLabeler();
+  let tickerTimer: ReturnType<typeof setInterval> | undefined;
+  const busyLabel = (a: NonNullable<AppSnapshot['activity']>) => {
+    const text = busyText(a, snapshot.persona?.active.thinkingLines || []);
+    if (text === undefined) { clearInterval(tickerTimer); tickerTimer = undefined; return a.label; }
+    if (!tickerTimer) tickerTimer = setInterval(() => { if (canAnimate()) updateChip(); }, 500);
+    return funOn() ? text : a.label;
+  };
   function updateChip() {
     const a = snapshot.activity, bubbleOpen = bubble.classList.contains('visible');
     let label = '', kind: string = a?.kind || 'idle';
+    const busy = a ? busyLabel(a) : '';
     if (caption && Date.now() < captionUntil) { label = caption; kind = captionKind; }
-    else if (a && a.kind !== 'idle') label = a.label;
+    else if (a && a.kind !== 'idle') label = busy;
     chip.dataset.kind = kind;
     const show = !!label && !(bubbleOpen && kind !== 'thinking' && kind !== 'working' && kind !== 'trophy');
     if (show) chipText.textContent = label;
+    chipText.classList.toggle('spark-text', (kind === 'thinking' || kind === 'working') && funOn() && !snapshot.activity?.waiting);
     chip.classList.toggle('visible', show);
   }
   const scheduleCaption = () => {
     clearTimeout(captionTimer);
     captionTimer = setTimeout(() => {
-      if (snapshot.settings.funCaptions !== false && snapshot.activity?.kind === 'idle' && !bubble.classList.contains('visible') && canAnimate()) say(idleCaption(snapshot), 5200);
+      if (snapshot.settings.funCaptions !== false && snapshot.activity?.kind === 'idle' && !bubble.classList.contains('visible') && canAnimate()) say(idleCaption(snapshot, Date.now() - lastInteraction), 5200);
       scheduleCaption();
     }, 28_000 + Math.random() * 40_000);
   };
   scheduleCaption();
+  // 头顶小嘀咕: a one-line reaction to the kind of app in front (process name only), never stored.
+  const murmurer = new Murmurer();
+  setInterval(() => {
+    const line = murmurer.note(snapshot.observation?.available ? snapshot.observation.appName : undefined, Date.now());
+    if (!line || snapshot.settings.murmursEnabled === false || !funOn() || snapshot.activity?.kind !== 'idle' || bubble.classList.contains('visible') || !canAnimate() || snapshot.settings.quietUntil > Date.now() || snapshot.settings.companionMode === 'rest') return;
+    say(line, 3800);
+  }, 5000);
   // Hourly chime: a quiet caption on the hour while idle; 1–4 am it becomes a nudge to rest.
   const inQuietHours = (now: Date) => {
     const q = snapshot.settings.quietHours; if (!q?.enabled) return false;
@@ -151,12 +182,20 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   }
   const overHandle = (x: number, y: number) => handleOn() && contains(handle, x, y);
   /** Called for every pointer sample (DOM move or native hit test): reaching the pet or the handle keeps the handle up. */
-  const notePointer = (x: number, y: number) => { if (drag || overHandle(x, y) || pet.hit(x, y)) showHandle(); };
+  const notePointer = (x: number, y: number) => { if (drag || overHandle(x, y) || pet.hit(x, y)) showHandle(); playful(x, y); };
+  /** Hover-only games: resting the cursor on the pet (stare) and circling around it (orbit). */
+  const playful = (x: number, y: number) => {
+    const free = !drag && !hold && !fling && input.hidden && funOn() && !bubble.classList.contains('visible');
+    if (stare.move(free && pet.hit(x, y))) { touched(); localEffect('peek', 1800); say(pickOne(stareLines), 2800); reportAchievement('stare', snapshot); }
+    const box = pet.restBox();
+    if (free && orbit.move(x, y, (box.left + box.right) / 2, (box.top + box.bottom) / 2)) { touched(); localEffect('dizzy', 2000); say(pickOne(orbitLines), 2600); reportAchievement('orbit', snapshot); }
+    else if (!free) orbit.reset();
+  };
   const interactive = (x: number, y: number) => !!drag || overHandle(x, y) || (!input.hidden && contains(input, x, y)) || (bubble.classList.contains('visible') && contains(bubble, x, y)) || pet.hit(x, y);
   const setInteractive = (value: boolean) => { if (value === lastInteractive) return; lastInteractive = value; stage.classList.toggle('hovered', value); void command({ type: 'shell.pointer', interactive: value }, true); };
   function refreshPointer() { if (frame) return; frame = requestAnimationFrame(() => { frame = 0; setInteractive(!!drag || (!!latest && interactive(latest.x, latest.y))); }); }
   // ---- gestures: pat (hover strokes over the head), hold-to-charge, fling, taps ----
-  let hold: { start: number; raf: number; charged: boolean } | undefined, fling: { sim: Fling; raf: number } | undefined, samples: MoveSample[] = [];
+  let hold: { start: number; raf: number; charged: boolean; nagged?: boolean } | undefined, fling: { sim: Fling; raf: number } | undefined, samples: MoveSample[] = [];
   const overHead = (x: number, y: number) => {
     const a = pet.headAnchor(), r = body.getBoundingClientRect(), height = r.bottom - 4 - a.y;
     return height > 0 && Math.abs(x - a.x) < r.width * 0.32 && y >= a.y - 8 && y <= a.y + height * 0.5;
@@ -172,19 +211,21 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     const result = petting.move(x, overHead(x, y));
     if (result === 'stroke') pet.impulse('hearts', 0);
     if (result !== 'pat') return;
-    localEffect('love', 2400); pet.impulse('hearts', 1);
+    touched(); localEffect('love', 2400); pet.impulse('hearts', 1);
     say(noteInteraction() || pickOne(patLines), 3400);
     reportAchievement('pat', snapshot);
+    void command({ type: 'pet.interact', interaction: 'pat' }, true);
   };
   const endHold = () => { if (hold) cancelAnimationFrame(hold.raf); hold = undefined; stage.classList.remove('charging', 'charged'); stage.style.removeProperty('--charge'); };
   const startHold = () => {
-    const current: { start: number; raf: number; charged: boolean } = { start: performance.now(), raf: 0, charged: false }; hold = current;
+    const current: { start: number; raf: number; charged: boolean; nagged?: boolean } = { start: performance.now(), raf: 0, charged: false }; hold = current;
     const step = () => {
       if (hold !== current) return;
       if (drag?.moved) { endHold(); return; }
       const level = Math.max(0, Math.min(1, ((performance.now() - current.start) / 1000 - 0.25) / 0.95));
       stage.style.setProperty('--charge', level.toFixed(3)); stage.classList.toggle('charging', level > 0);
       if (level >= 1 && !current.charged) { current.charged = true; stage.classList.add('charged'); pet.impulse('sparkles', 1); say('蓄力完成！松手！', 2200); }
+      if (!current.nagged && performance.now() - current.start > 6000) { current.nagged = true; say(pickOne(holdLines), 2400); }
       current.raf = requestAnimationFrame(step);
     };
     current.raf = requestAnimationFrame(step);
@@ -204,7 +245,8 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     reportAchievement('fling', snapshot);
   };
   const startFling = (vx: number, vy: number) => {
-    const sim = new Fling(vx, vy); let last = performance.now();
+    const sim = new Fling(vx, vy); let last = performance.now(), bumped = false;
+    const bump = () => { pet.impulse('squash', 0.6); if (!bumped && sim.speed > 1.2) { bumped = true; say(pickOne(wallLines), 1800); } };
     const step = (ts: number) => {
       if (!fling || fling.sim !== sim) return;
       const r = sim.step(ts - last); last = ts;
@@ -212,8 +254,8 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
       const sc = window.screen as Screen & { availLeft?: number; availTop?: number }, left = sc.availLeft ?? 0, top = sc.availTop ?? 0;
       let { dx, dy } = r;
       const nx = window.screenX + dx, ny = window.screenY + dy;
-      if ((dx < 0 && nx < left) || (dx > 0 && nx + window.outerWidth > left + sc.availWidth)) { sim.bounce('x'); dx = 0; pet.impulse('squash', 0.6); }
-      if ((dy < 0 && ny < top) || (dy > 0 && ny + window.outerHeight > top + sc.availHeight)) { sim.bounce('y'); dy = 0; pet.impulse('squash', 0.6); }
+      if ((dx < 0 && nx < left) || (dx > 0 && nx + window.outerWidth > left + sc.availWidth)) { sim.bounce('x'); dx = 0; bump(); }
+      if ((dy < 0 && ny < top) || (dy > 0 && ny + window.outerHeight > top + sc.availHeight)) { sim.bounce('y'); dy = 0; bump(); }
       if (dx || dy) void command({ type: 'shell.drag', dx, dy }, true);
       if (r.done) stopFling(false); else fling.raf = requestAnimationFrame(step);
     };
@@ -245,7 +287,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   const release = (event: PointerEvent) => {
     if (!drag) return;
     const moved = drag.moved, held = hold ? performance.now() - hold.start : 0, charged = !!hold?.charged;
-    drag = null; stage.classList.remove('held'); endHold();
+    drag = null; stage.classList.remove('held'); endHold(); touched();
     if (moved) {
       pet.dragEnd();
       const v = releaseVelocity(samples, performance.now());
@@ -255,8 +297,10 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     } else if (charged) chargeJump();
     else if (held < 450) {
       pet.touch(event.clientX, event.clientY);
-      const special = noteInteraction(), poke = mischief.tap();
-      if (poke) { localEffect(poke.dizzy ? 'dizzy' : 'sulk', 2200); say(special || poke.line, special ? 4200 : 3200); reportAchievement(poke.dizzy ? 'dizzy' : 'poke', snapshot); }
+      if (snapshot.vitality?.tone === 'asleep' && funOn()) { localEffect('wave', 1600); say(pickOne(['唔…你叫我？', '（揉眼睛）嗯…？', '我醒啦…']), 2800); }
+      const special = noteInteraction(), poke = mischief.tap(), box = pet.restBox(), feet = event.clientY > box.bottom - (box.bottom - box.top) * 0.2;
+      if (feet && !poke && !special && funOn()) { localEffect('celebrate', 1200); pet.impulse('jump', 0.5); say(pickOne(tickleLines), 2400); reportAchievement('tickle', snapshot); }
+      else if (poke) { localEffect(poke.dizzy ? 'dizzy' : 'sulk', 2200); say(special || poke.line, special ? 4200 : 3200); reportAchievement(poke.dizzy ? 'dizzy' : 'poke', snapshot); }
       else if (special) say(special, 4200);
       void command({ type: 'pet.interact', interaction: 'tap' }, true);
     }
@@ -317,6 +361,20 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     }
     firstSnapshot = false;
     const wearing = wantedPet(next); if (wearing !== trackedPet) { trackedPet = wearing; trackPet(wearing, next); }
+    // The user's newest message may carry a word the pet reacts to locally (hearts for 谢谢, confetti for 生日快乐…).
+    const newest = next.messages.filter(m => m.role === 'user').at(-1);
+    if (newest && newest.id !== lastUserMessage) {
+      lastUserMessage = newest.id; touched();
+      const reaction = funOn() ? chatReaction(newest.text) : undefined;
+      if (reaction && canAnimate()) {
+        localEffect(reaction.action, 1800); say(reaction.line, 2400); reportAchievement('chat-react', snapshot);
+        if (reaction.effect === 'confetti') { if (!reduce()) { const a = pet.headAnchor(); confetti({ x: a.x, y: a.y - 10 }, 28, 0.6); } pet.impulse('sparkles', 1); }
+        else pet.impulse(reaction.effect, 1);
+      }
+    }
+    // Back from being away: the dozing pet perks up.
+    if (lastActivity?.away && next.activity?.kind === 'idle' && funOn() && canAnimate()) { localEffect('wave', 2000); pet.impulse('jump', 0.6); say(pickOne(welcomeBackLines), 3200); }
+    lastActivity = next.activity;
     watcher.update(next.bond).forEach((a, i) => setTimeout(() => celebrate(a.title), i * 5400));
     syncAmbient(); applyState(); updateChip(); refreshPointer();
   }

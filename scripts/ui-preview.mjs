@@ -31,6 +31,9 @@ const shots = [
   // character-card editor (tavern method) and the lingering pet menu handle
   ['editor-tavern', 'page=persona&editor=builtin:kimi&mode=tavern', '1100,2300'], ['editor-tavern-dark', 'page=persona&editor=builtin:kimi&mode=tavern', '1100,2300', 2500, true],
   ['editor-full', 'page=persona&editor=custom-kiri&mode=tavern&open=1&guide=1', '1100,3600'], ['editor-simple', 'page=persona&editor=builtin:baiyan&mode=simple', '1100,1300'], ['editor-ai', 'page=persona&aidraft=1', '1100,1500'],
+  // rotating thinking words (orange shimmer) with the elapsed timer
+  ['page-companion-full', 'page=companion', '1100,2400'], ['page-config-full', 'page=config', '1100,2900'], ['page-privacy-full', 'page=privacy&full=1', '1100,1700'],
+  ['pet-thinking', 'view=pet&busy=1&bubble=', '320,440', 7000], ['pet-thinking-dark', 'view=pet&busy=1&bubble=', '320,440', 7000, true], ['chat-thinking', 'page=chat&busy=1', '1100,800', 7000],
   ['pet-handle', 'view=pet&bubble=&action=idle&handle=1', '320,440', 1500], ['pet-handle-dark', 'view=pet&bubble=&action=idle&handle=1', '320,440', 1500, true],
   ...['persona', 'companion', 'memory', 'privacy', 'schedule', 'config', 'pets'].map(page => [`page-${page}-dark`, `page=${page}`, '1100,800', 2500, true]),
 ];

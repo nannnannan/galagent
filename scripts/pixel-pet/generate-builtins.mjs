@@ -336,6 +336,179 @@ const kimiStar = human({
   },
 });
 
+// ------------------------------------------------------------- 配方：更多人类（职业 / 年龄 / 肤色各不相同）
+
+/** 程序员：乱乱的深蓝短发、头戴大耳机、灰色连帽卫衣。 */
+const coderHoodie = human({
+  id: 'coder-hoodie', name: '阿码', description: '戴着大耳机、穿灰色连帽卫衣的程序员少年，头发总是乱乱的，代码跑通的瞬间会悄悄握拳。', tags: ['人类', '程序员', '耳机'],
+  oy: 1,
+  palette: { o: '#232a3a', ...SKIN, h: '#33405e', H: '#222b45', L: '#6577a0', c: '#9aa6ba', C: '#76829a', d: '#ffffff', z: '#ff6b5e', Z: '#c94a40', g: '#3a3f4f', n: '#3e5c8a', b: '#eef2f8', ...FACE, e: '#3a4f86' },
+  hair: 'short',
+  fringe: [[9, 8, 15], [10, 8, 10], [10, 12, 13], [11, 8, 9], [11, 13, 13], [12, 8, 8]],
+  legColor: 'n',
+  body(c, oy) {
+    c.rect2(9, 20 + oy, 12, 21 + oy, 'c'); // 帽兜露在肩后
+    c.sym(14, 22 + oy, 'd'); c.sym(14, 23 + oy, 'd'); // 抽绳
+    c.rect(12, 26 + oy, 19, 26 + oy, 'C'); // 袋鼠兜
+  },
+  extras: [{
+    id: 'headphones', kind: 'accessory', layer: 'front', frames: 1,
+    draw(c) {
+      c.spans([[1, 11, 20], [2, 9, 10], [2, 21, 22], [3, 8, 8], [3, 23, 23]], 'g');
+      c.rect2(7, 4, 7, 9, 'g');
+      c.rect2(4, 10, 6, 15, 'z'); c.rect2(6, 11, 6, 14, 'Z');
+    },
+  }],
+});
+
+/** 宇航员：白色头盔开着面窗、橙色条纹航天服、头盔天线一闪一闪。 */
+const astroKid = human({
+  id: 'astro-kid', name: '星航', description: '穿白色航天服的小宇航员，头盔面窗里露出好奇的脸，天线灯一闪一闪，梦想是带你去看地球升起。', tags: ['人类', '宇航员', '太空'],
+  oy: 2,
+  palette: { o: '#2b3350', s: '#f1c29b', S: '#d6a07c', h: '#f4f6fb', H: '#c5cde0', L: '#ffffff', c: '#f4f6fb', C: '#c5cde0', v: '#7fb8ff', n: '#5a3a2a', r: '#ff8a3d', q: '#3d6fd8', b: '#5a6378', ...FACE, e: '#4a3a2a' },
+  hair: 'short',
+  fringe: [],
+  legColor: 'c',
+  body(c, oy) {
+    c.spans2([[21 + oy, 12, 15]], 'C'); // 领圈
+    c.rect2(10, 26 + oy, 15, 26 + oy, 'r'); // 腰间橙色条纹
+    c.stamp(12, 23 + oy, ['.q.', 'qqq', '.q.']); // 胸前星形徽章
+  },
+  details(c, oy) {
+    // 面窗边框：贴着头盔的那一圈皮肤换成蓝色镜框
+    const marks = [];
+    for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+      if (c.g[y][x] !== 's' && c.g[y][x] !== 'S') continue;
+      if ([[1, 0], [-1, 0], [0, -1]].some(([dx, dy]) => ['h', 'H', 'L'].includes(c.get(x + dx, y + dy)))) marks.push([x, y]);
+    }
+    for (const [x, y] of marks) c.set(x, y, 'v');
+    // 面窗里露出一点棕色刘海
+    c.spans2([[10 + oy, 9, 15], [11 + oy, 9, 10], [11 + oy, 13, 14]], 'n', (x, y, cur) => cur === 's' || cur === 'S');
+  },
+  extras: [{
+    id: 'antenna', kind: 'accessory', frames: 2,
+    draw(c, f) { c.rect(23, 1, 23, 4, 'H'); c.set(23, 0, f ? 'r' : 'q'); },
+  }],
+});
+
+/** 小厨师：高高的白色厨师帽、红色领巾、双排扣白色厨师服。 */
+const chefSpoon = human({
+  id: 'chef-spoon', name: '阿勺', description: '戴着高高厨师帽的小厨师，系着红领巾，最拿手的是番茄炒蛋，总惦记着你今天有没有好好吃饭。', tags: ['人类', '厨师', '美食'],
+  oy: 7,
+  palette: { o: '#3a2620', s: '#c98a5e', S: '#a86c45', h: '#3b2a22', H: '#2a1d18', L: '#6a5040', c: '#fbfbf7', C: '#dcdcd2', t: '#ffffff', T: '#dedfd8', r: '#e5484d', R: '#b8333a', d: '#3a3a46', n: '#3a3a46', b: '#2b2b30', ...FACE, e: '#4a2e20' },
+  hair: 'short',
+  fringe: [[9, 8, 15], [10, 8, 9], [10, 11, 12], [11, 8, 8]],
+  legColor: 'n',
+  body(c, oy) {
+    c.spans2([[21 + oy, 13, 15], [22 + oy, 14, 15]], 'r'); c.sym(15, 23 + oy, 'R'); // 领巾
+    c.sym(13, 24 + oy, 'd'); c.sym(13, 26 + oy, 'd'); // 双排扣
+  },
+  hat(c, oy) {
+    c.ellipse(16, 4.2, 6.6, 4, 't'); c.ellipse2(10.2, 5.4, 4.2, 3.4, 't');
+    c.rect(8, 5, 23, oy + 3, 't');
+  },
+  details(c, oy) {
+    c.shadeBelow('t', 'T', 1);
+    for (const x of [11, 14, 17, 20]) c.rect(x, oy + 1, x, oy + 2, 'T', (xx, yy, cur) => cur === 't');
+  },
+});
+
+/** 侦探：格纹猎鹿帽、金色短发、驼色风衣，手里一把放大镜。 */
+const sleuthGirl = human({
+  id: 'sleuth-girl', name: '小探', description: '戴着格纹猎鹿帽、穿驼色风衣的小侦探，举着放大镜到处找线索，最擅长帮你找回“刚才还在这儿”的东西。', tags: ['人类', '侦探', '推理'],
+  oy: 3,
+  palette: { o: '#3a2a1e', ...SKIN, h: '#f2c76b', H: '#c99a40', L: '#fff0b8', c: '#c08a52', C: '#94653a', t: '#8a6a4a', T: '#6b4f35', u: '#b8946a', d: '#ffffff', g: '#7a5a30', l: '#cfeaff', n: '#4a3a50', b: '#4a3428', ...FACE, e: '#3f6a52' },
+  hair: 'bob',
+  legColor: 'n',
+  body(c, oy) {
+    c.spans2([[21 + oy, 13, 15], [22 + oy, 14, 15]], 'd'); // 衬衫领口
+    c.rect(10, 25 + oy, 21, 25 + oy, 'C'); // 腰带
+    c.sym(14, 23 + oy, 'C'); c.sym(14, 27 + oy, 'C');
+  },
+  hat(c, oy) {
+    c.ellipse(16, oy + 6, 11.4, 6.6, 't', (x, y) => y <= oy + 5);
+    c.rect(11, oy + 6, 20, oy + 6, 'T'); // 前帽檐
+    c.rect(15, oy - 2, 16, oy - 1, 'T'); // 头顶系好的护耳绳结
+  },
+  details(c, oy) {
+    for (let y = 0; y <= oy + 5; y++) for (let x = 0; x < c.w; x++) if (c.get(x, y) === 't' && ((x - 16) % 3 === 0 || (y - oy) % 3 === 0)) c.set(x, y, 'u');
+  },
+  extras: [{
+    id: 'magnifier', kind: 'accessory', layer: 'front', frames: 1,
+    draw(c) {
+      c.set(23, 27, 'g'); c.set(24, 26, 'g'); c.set(25, 25, 'g');
+      c.ellipse(27, 22, 3, 3, 'g'); c.ellipse(27, 22, 2, 2, 'l'); c.set(26, 21, 'd');
+    },
+  }],
+});
+
+/** 古风少女：黑色长发盘着发髻、金簪与流苏、薄荷绿交领襦裙、红色腰带。 */
+const hanfuGirl = human({
+  id: 'hanfu-girl', name: '青禾', description: '穿薄荷绿交领襦裙的古风少女，发髻上插着金簪，流苏随步子轻轻摇，说话慢慢的，喜欢陪你读诗喝茶。', tags: ['人类', '古风', '汉服', '长发'],
+  oy: 4,
+  palette: { o: '#2a2230', ...SKIN, h: '#2b2233', H: '#1b1520', L: '#5e4e70', c: '#bfe3d0', C: '#8fc4ab', d: '#ffffff', r: '#d9485b', g: '#e7b84a', q: '#ff8fa3', b: '#7a5a4a', ...FACE, e: '#5a3a2a' },
+  hair: 'long',
+  fringe: [[9, 8, 15], [10, 8, 9], [10, 13, 15], [11, 8, 8]],
+  legColor: 'c',
+  body(c, oy) {
+    c.rect2(7, 22 + oy, 9, 25 + oy, 'c'); c.rect2(8, 25 + oy, 9, 25 + oy, 's'); // 宽袖
+    for (const [x, y] of [[13, 21], [14, 22], [15, 23], [16, 24], [18, 21], [17, 22]]) c.set(x, y + oy, 'd'); // 交领（右衽）
+    c.rect(10, 25 + oy, 21, 25 + oy, 'r'); // 腰带
+  },
+  hat(c, oy) { c.ellipse(16, oy - 0.2, 4.6, 3.6, 'h'); },
+  details(c, oy) {
+    c.rect(10, oy - 1, 13, oy - 1, 'g'); c.set(9, oy - 2, 'g'); // 金簪
+    c.stamp(7, oy + 6, ['.q.', 'qgq', '.q.']); // 鬓边小花
+    c.spans2([[oy + 1, 14, 14]], 'L', (x, y, cur) => cur === 'h');
+  },
+  extras: [{
+    id: 'tassel', kind: 'accessory', layer: 'front', frames: 3,
+    draw(c, f) { const s = [0, 1, -1][f]; c.rect(20, 5, 20, 7, 'g'); c.rect(20 + s, 8, 20 + s, 10, 'q'); },
+  }],
+});
+
+/** 老爷爷：秃顶白发、浓白眉与白胡子、棕色开衫。 */
+const grandpaFu = human({
+  id: 'grandpa-fu', name: '福爷爷', description: '笑眯眯的白胡子老爷爷，穿着棕色开衫，肚子里装满了老故事，常念叨“慢慢来，不着急”。', tags: ['人类', '长者', '胡子'],
+  palette: { o: '#3a2c26', s: '#f5d2b8', S: '#e0ad8f', h: '#ececf2', H: '#c3c4cf', L: '#ffffff', w: '#fff6ee', c: '#9b6b43', C: '#7a5230', d: '#f3e6c8', n: '#5a5a66', b: '#4a3a30', ...FACE, e: '#4a3a30' },
+  hair: 'short',
+  fringe: [],
+  legColor: 'n',
+  body(c) {
+    c.spans2([[21, 14, 15], [22, 15, 15], [23, 15, 15], [24, 15, 15], [25, 15, 15], [26, 15, 15], [27, 15, 15]], 'd'); // 开衫里的衬衫
+    c.sym(14, 24, 'C'); c.sym(14, 26, 'C');
+  },
+  details(c) {
+    // 秃顶：头顶的白发换成皮肤，留一点反光
+    c.replace('h', 's', (x, y) => y <= 8 && x >= 9 && x <= 22); c.replace('L', 's', (x, y) => y <= 8);
+    c.replace('H', 's', (x, y) => y <= 8 && x >= 9 && x <= 22);
+    c.set(12, 4, 'w'); c.set(13, 4, 'w'); c.set(11, 5, 'w');
+    c.spans2([[11, 9, 12]], 'h'); // 浓眉
+    c.spans2([[18, 12, 15]], 'h'); // 八字胡
+    c.ellipse(16, 21.6, 4.6, 2.8, 'h', (x, y) => y >= 21); c.shadeBelow('h', 'H', 1, (x, y) => y >= 21);
+  },
+});
+
+/** 运动少年：红色棒球帽、蓝色 7 号球衣、短裤和白球鞋。 */
+const sportyKid = human({
+  id: 'sporty-kid', name: '阿跑', description: '戴红色棒球帽、穿 7 号球衣的运动少年，精力多到用不完，看你久坐就拉你起来伸伸腰。', tags: ['人类', '运动', '棒球帽'],
+  oy: 2,
+  palette: { o: '#2a2020', s: '#e0a57c', S: '#c4865c', h: '#2a2222', H: '#1a1414', L: '#5a4a4a', c: '#3f7be0', C: '#2c5cb0', t: '#e5484d', T: '#b8333a', d: '#ffffff', n: '#2c3a5a', b: '#ffffff', ...FACE, e: '#3a2a20' },
+  hair: 'short',
+  fringe: [[9, 8, 15], [10, 8, 9], [10, 12, 13]],
+  body(c, oy) {
+    c.stamp(14, 22 + oy, ['ddd', '..d', '.d.', '.d.']); // 7 号
+    c.rect(10, 26 + oy, 21, 27 + oy, 'n'); // 短裤
+  },
+  hat(c, oy) {
+    c.ellipse(16, oy + 8.6, 11, 7.2, 't', (x, y) => y <= oy + 7);
+    c.rect(5, oy + 8, 23, oy + 8, 't'); // 帽口
+    c.spans([[oy + 7, 24, 28], [oy + 8, 24, 30], [oy + 9, 25, 29]], 'T'); // 歪向一侧的帽檐
+    c.set(16, oy + 1, 'T');
+  },
+  details(c, oy) { c.spans2([[oy + 3, 12, 13], [oy + 4, 11, 11]], 'd', (x, y, cur) => cur === 't'); c.rect(5, oy + 8, 23, oy + 8, 'T', (x, y, cur) => cur === 't'); },
+});
+
 // ------------------------------------------------------------- 配方：动物与奇妙生物
 
 const mochiCat = {
@@ -562,7 +735,7 @@ const shroomSprout = {
   feetY: 26, legFrames: 4,
 };
 
-const RECIPES = [sunnyGirl, scholarBoy, kimiStar, starWitch, peachTwin, mochiCat, foxKit, roboUnit, cloudSprite, tinyDino, puffBunny, jellySlime, booGhost, pebblePenguin, shroomSprout];
+const RECIPES = [sunnyGirl, scholarBoy, kimiStar, starWitch, peachTwin, coderHoodie, astroKid, chefSpoon, sleuthGirl, hanfuGirl, grandpaFu, sportyKid, mochiCat, foxKit, roboUnit, cloudSprite, tinyDino, puffBunny, jellySlime, booGhost, pebblePenguin, shroomSprout];
 
 let failed = 0;
 for (const recipe of RECIPES) {

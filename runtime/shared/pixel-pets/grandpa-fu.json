@@ -1,0 +1,182 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "grandpa-fu",
+  "name": "福爷爷",
+  "description": "笑眯眯的白胡子老爷爷，穿着棕色开衫，肚子里装满了老故事，常念叨“慢慢来，不着急”。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "长者",
+    "胡子"
+  ],
+  "size": [32, 32],
+  "palette": {
+    "o": "#3a2c26",
+    "s": "#f5d2b8",
+    "S": "#e0ad8f",
+    "h": "#ececf2",
+    "H": "#c3c4cf",
+    "L": "#ffffff",
+    "w": "#ffffff",
+    "c": "#9b6b43",
+    "C": "#7a5230",
+    "d": "#f3e6c8",
+    "n": "#5a5a66",
+    "b": "#4a3a30",
+    "k": "#2d1b2e",
+    "e": "#4a3a30",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "............oooooooo............",
+    "..........oossssssssoo..........",
+    "........oossssssssssssoo........",
+    ".......ohssswwsssssssssho.......",
+    "......ohhsswssssssssssshho......",
+    "......ohhsssssssssssssshho......",
+    ".....ohhhsssssssssssssshhho.....",
+    ".....ohhhsssssssssssssshhho.....",
+    "....ohhhhHSSSSSSSSSSSSHhhhho....",
+    "....ohhhHSssssssssssssSHhhho....",
+    "....ohhhShhhhsssssshhhhShhho....",
+    "....ohhHssssssssssssssssHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....oHHhsssssssssssssssshHHo....",
+    ".....ooHssssssssssssssssHoo.....",
+    ".......oHssshhhhhhhhsssHo.......",
+    "........oHssssssssssssHo........",
+    ".........oossssssssssoo.........",
+    "........oo.HhhhhhhhhH.oo........",
+    ".......occooHhhhhhhHoocco.......",
+    ".......oCCoCcHHHHHHcCoCCo.......",
+    ".......oCCoCccCddCccCoCCo.......",
+    ".......ossoCccCddCccCosso.......",
+    "........ooCcccCddCcccCoo........",
+    ".........oCCCCCddCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 13],
+    "mouth": [14, 19],
+    "blush": [8, 18],
+    "feet": [0, 28]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..nn.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ]
+}

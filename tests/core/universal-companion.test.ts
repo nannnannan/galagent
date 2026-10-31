@@ -178,14 +178,41 @@ test('executor sandbox confines file tools to the workspace and blocks shell and
   const call = (name: string, args: Record<string, unknown>) => host.execute(session, name, args, new AbortController().signal);
   try {
     assert.ok(JSON.stringify(await call('Read', { path: 'note.txt' })).includes('hello'));
-    assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('confines file tools'));
+    // standard: read anywhere, write only inside the workspace, Shell only after the user says yes
+    assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('top secret'));
+    assert.ok(JSON.stringify(await call('Write', { path: join(outside, 'new.txt'), content: 'x' })).includes('confines file tools'));
     assert.match(JSON.stringify(await call('Read', { path: '.ssh/id_rsa' })), /Sensitive file|never readable/);
-    assert.ok(JSON.stringify(await call('Read', { path: '.ssh/config' })).includes('never readable'));
+    assert.ok(JSON.stringify(await call('Read', { path: '.ssh/config' })).includes('not readable'));
+    assert.ok(JSON.stringify(await call('Bash', { command: 'echo hi' })).includes('declined'), 'no answer means no');
+    sandbox = normalizeSandbox({ level: 'standard', fileScope: 'workspace' });
+    assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('confines file tools'));
+    sandbox = normalizeSandbox({ level: 'standard', shell: false });
     assert.ok(JSON.stringify(await call('Bash', { command: 'echo hi' })).includes('Shell is disabled'));
     sandbox = normalizeSandbox({ level: 'strict' });
     assert.ok(JSON.stringify(await call('Write', { path: 'new.txt', content: 'x' })).includes('read-only'));
     sandbox = normalizeSandbox({ level: 'open' });
     assert.ok(JSON.stringify(await call('Read', { path: join(outside, 'secret.txt') })).includes('top secret'));
+  } finally { host.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('Shell confirmation: the user sees the command and may allow once, for the whole task, or refuse', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'galagent-confirm-'));
+  const asked: string[] = []; let reply = '拒绝';
+  const host = new ToolHost({ save: () => {}, ask: async questions => { asked.push(questions[0].question); return { [questions[0].question]: reply }; }, child: async () => '', sandbox: () => normalizeSandbox({}) });
+  const session = host.session(root);
+  const run = (command: string) => host.execute(session, 'Bash', { command }, new AbortController().signal).then(r => JSON.stringify(r));
+  try {
+    assert.match(await run('echo one'), /declined/);
+    assert.match(asked[0], /echo one/);
+    reply = '允许这一次'; assert.match(await run('echo two'), /two/);
+    reply = '本任务都允许'; assert.match(await run('echo three'), /three/);
+    reply = '拒绝'; assert.match(await run('echo four'), /four/, 'no more questions after "allow for this task"');
+    assert.equal(asked.length, 3);
+    const other = host.session(root);
+    await host.execute(other, 'Bash', { command: 'echo five' }, new AbortController().signal);
+    assert.equal(asked.length, 4, 'a new task asks again');
+    const open = new ToolHost({ save: () => {}, ask: async () => { throw new Error('should not ask'); }, child: async () => '', sandbox: () => normalizeSandbox({ level: 'open' }) });
+    try { assert.match(JSON.stringify(await open.execute(open.session(root), 'Bash', { command: 'echo six' }, new AbortController().signal)), /six/); } finally { open.close(); }
   } finally { host.close(); await rm(root, { recursive: true, force: true }); }
 });
 

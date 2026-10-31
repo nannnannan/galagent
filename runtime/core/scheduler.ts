@@ -10,7 +10,8 @@ export type ScheduleRequest = { note: string; inMinutes?: number; at?: string; c
 export const SCHEDULE_LIMITS = { active: 30, note: 300, minMinutes: 1, maxMinutes: 60 * 24 * 30, minRepeat: 5, staleAfterMs: 12 * 3600_000 } as const;
 
 /** Taught to the character in its system prompt; kept short on purpose. */
-export const schedulePrompt = `定时自唤醒：想过一段时间再主动找用户（用户让你提醒、追问进展、约好的事），调用工具 schedule_wakeup（note + in_minutes / at / cron 三选一；用户明确要求的提醒设 for_user:true）；查看用 list_wakeups，取消用 cancel_wakeup。到点系统会叫醒你本人并把 note 交给你。若当前没有工具可用，也可以在 JSON 里加 "schedule":{"inMinutes":分钟数,"note":"到时要做的事"}（或 "at":"HH:MM"、"cron":"5段"、"repeatMinutes":N），取消用 "cancelSchedule":["id"]。确有需要才设，设好后用一句话告诉用户时间。过去日子的完整原话需要时用 recall_day 读取。`;
+export const schedulePrompt = `定时自唤醒：想过一段时间再主动找用户（用户让你提醒、追问进展、约好的事），调用工具 schedule_wakeup（note + in_minutes / at / cron 三选一；用户明确要求的提醒设 for_user:true）；查看用 list_wakeups，取消用 cancel_wakeup。到点系统会叫醒你本人并把 note 交给你。若当前没有工具可用，也可以在 JSON 里加 "schedule":{"inMinutes":分钟数,"note":"到时要做的事"}（或 "at":"HH:MM"、"cron":"5段"、"repeatMinutes":N），取消用 "cancelSchedule":["id"]。确有需要才设，设好后用一句话告诉用户时间。过去日子的完整原话需要时用 recall_day 读取。
+用户提到之后的具体事（面试、考试、看病等），用 schedule_wakeup 在事后设一次回访（note 写要问什么）。`;
 
 /** "HH:MM" → next local occurrence; ISO strings as given. */
 export function resolveAt(at: string, now: number): number {

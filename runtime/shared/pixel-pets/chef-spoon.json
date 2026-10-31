@@ -1,0 +1,193 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "chef-spoon",
+  "name": "阿勺",
+  "description": "戴着高高厨师帽的小厨师，系着红领巾，最拿手的是番茄炒蛋，总惦记着你今天有没有好好吃饭。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "厨师",
+    "美食"
+  ],
+  "size": [32, 39],
+  "palette": {
+    "o": "#3a2620",
+    "s": "#c98a5e",
+    "S": "#a86c45",
+    "h": "#3b2a22",
+    "H": "#2a1d18",
+    "L": "#6a5040",
+    "c": "#fbfbf7",
+    "C": "#dcdcd2",
+    "t": "#ffffff",
+    "T": "#dedfd8",
+    "r": "#e5484d",
+    "R": "#b8333a",
+    "d": "#3a3a46",
+    "n": "#3a3a46",
+    "b": "#2b2b30",
+    "k": "#2d1b2e",
+    "e": "#4a2e20",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "...........oottttttoo...........",
+    "........ooottttttttttooo........",
+    ".......otttttttttttttttto.......",
+    "......otttttttttttttttttto......",
+    ".....otttttttttttttttttttto.....",
+    ".....otttttttttttttttttttto.....",
+    ".....oTttttttttttttttttttTo.....",
+    "......oTttttttttttttttttTo......",
+    ".......otttTttTttTttTttto.......",
+    ".......otttTttTttTttTttto.......",
+    ".......oTTTTTTTTTTTTTTTTo.......",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhHhhHHHHHHhhHhhhhho....",
+    "....ohhhhHSHHSSSSSSHHSHhhhho....",
+    "....ohhhHSsSSssssssSSsSHhhho....",
+    "....ohhHSssssssssssssssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....oHHhsssssssssssssssshHHo....",
+    ".....ooHssssssssssssssssHoo.....",
+    ".......oHssssssssssssssHo.......",
+    "........oHssssssssssssHo........",
+    ".........oossssssssssoo.........",
+    "........oo.oorssssroo.oo........",
+    ".......occooccrrrrccoocco.......",
+    ".......oCCoCcCCRRCCcCoCCo.......",
+    ".......oCCoCCdCccCdCCoCCo.......",
+    ".......ossoCcCccccCcCosso.......",
+    "........ooCcCdCccCdCcCoo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 20],
+    "mouth": [14, 26],
+    "blush": [8, 25],
+    "feet": [0, 35]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..nn.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ]
+}

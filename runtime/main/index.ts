@@ -1,3 +1,4 @@
+import type { McpSecrets } from '../core/mcp';
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell, Tray } from 'electron';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -107,6 +108,20 @@ const ttsCredentials = {
   async set(key: string) {
     if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存 TTS 密钥。');
     await atomicWrite(path.join(dataDir, 'tts-key.bin'), safeStorage.encryptString(key));
+  },
+};
+/** MCP server secrets (env vars / headers), one DPAPI-encrypted JSON map; never sent to the renderer. */
+const mcpSecrets = {
+  async all(): Promise<Record<string, McpSecrets>> {
+    try { const encrypted = await readFile(path.join(dataDir, 'mcp-secrets.bin')); if (safeStorage.isEncryptionAvailable()) return JSON.parse(safeStorage.decryptString(encrypted)) || {}; } catch { /* none saved */ }
+    return {};
+  },
+  async get(server: string): Promise<McpSecrets> { return (await mcpSecrets.all())[server] || {}; },
+  async set(server: string, secrets: McpSecrets) {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存 MCP 密钥。');
+    const all = await mcpSecrets.all();
+    if (Object.keys(secrets.env || {}).length || Object.keys(secrets.headers || {}).length) all[server] = secrets; else delete all[server];
+    await atomicWrite(path.join(dataDir, 'mcp-secrets.bin'), safeStorage.encryptString(JSON.stringify(all)));
   },
 };
 function publishRoamState(active: boolean, direction: -1 | 0 | 1) {
@@ -338,7 +353,7 @@ else {
     const packagedModel = path.join(process.resourcesPath, 'models');
     const developmentModel = path.resolve(__dirname, '../../.cache/models/Xenova/multilingual-e5-small');
     const skillRoot = app.isPackaged ? path.join(process.resourcesPath, 'skills') : path.resolve(__dirname, '../../skills');
-    companion = new CompanionService({ dataDir, credentials, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
+    companion = new CompanionService({ dataDir, credentials, mcpSecrets, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
     await companion.init();
     if (!override) {
       const configuredBaseUrl = companion.getSnapshot().provider.baseUrl;

@@ -1,0 +1,215 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "coder-hoodie",
+  "name": "阿码",
+  "description": "戴着大耳机、穿灰色连帽卫衣的程序员少年，头发总是乱乱的，代码跑通的瞬间会悄悄握拳。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "程序员",
+    "耳机"
+  ],
+  "size": [32, 33],
+  "palette": {
+    "o": "#232a3a",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#33405e",
+    "H": "#222b45",
+    "L": "#6577a0",
+    "c": "#9aa6ba",
+    "C": "#76829a",
+    "d": "#ffffff",
+    "z": "#ff6b5e",
+    "Z": "#c94a40",
+    "g": "#3a3f4f",
+    "n": "#3e5c8a",
+    "b": "#eef2f8",
+    "k": "#2d1b2e",
+    "e": "#3a4f86",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "............oooooooo............",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhhHhhHHHHhhHhhhhhho....",
+    "....ohhhhhHSHhSSSShHSHhhhhho....",
+    "....ohhhhHSsSHssssHSsSHhhhho....",
+    "....ohhHHSsssSssssSsssSHHhho....",
+    "....ohhSSssssssssssssssSShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....oHHhsssssssssssssssshHHo....",
+    ".....ooHssssssssssssssssHoo.....",
+    ".......oHssssssssssssssHo.......",
+    "........oHssssssssssssHo........",
+    "........occsssssssssscco........",
+    "........ocCCccssssccCCco........",
+    ".......occooccdccdccoocco.......",
+    ".......oCCoCcCdCCdCcCoCCo.......",
+    ".......oCCoCccccccccCoCCo.......",
+    ".......ossoCccccccccCosso.......",
+    "........ooCcCCCCCCCCcCoo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 14],
+    "mouth": [14, 20],
+    "blush": [8, 19],
+    "feet": [0, 29]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..nn.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "headphones",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [3, 0],
+      "frames": [
+        [
+          "........oooooooooo........",
+          "......ooggggggggggoo......",
+          ".....oggooooooooooggo.....",
+          "....ogoo..........oogo....",
+          "...ogo..............ogo...",
+          "...ogo..............ogo...",
+          "...ogo..............ogo...",
+          "...ogo..............ogo...",
+          "...ogo..............ogo...",
+          ".ooogo..............ogooo.",
+          "ozzzo................ozzzo",
+          "ozzZo................oZzzo",
+          "ozzZo................oZzzo",
+          "ozzZo................oZzzo",
+          "ozzZo................oZzzo",
+          "ozzzo................ozzzo",
+          ".ooo..................ooo."
+        ]
+      ]
+    }
+  ]
+}
