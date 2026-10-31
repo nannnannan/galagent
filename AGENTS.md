@@ -21,6 +21,7 @@
   - `runtime/shared/personas.ts`：角色卡格式、内置角色卡与提示词拼装；`runtime/core/persona.ts`：角色卡存取。**角色性格只能来自角色卡数据**，不得在其他代码里写死某个角色的性格、名字或口癖。
   - `runtime/shared/pixel-sprite.ts` + `runtime/shared/pixel-pets/*.json`：像素小人格式与内置小人；`runtime/renderer/pixel-pet.ts`：渲染器；`runtime/core/pets.ts`：`<userData>/pets/` 自定义小人。
   - `runtime/core/scheduler.ts`：定时自唤醒；`runtime/core/privacy.ts`：沙箱预设、出站脱敏、URL 拦截与审计。
+- `skills/galagent-persona/`：酒馆写法角色卡 skill（衍生与二次解释由作者写，AI 只引导；Kimi 卡 `builtin:kimi` 为范例，保留用户原话，不得润色）。
 - `skills/galagent-pixel-pet/`：自制像素小人 skill（随安装包放到 `resources/skills`，执行器 `Skill` 工具可读）。
 - `scripts/pixel-pet/`：内置小人生成（`generate-builtins.mjs`）、校验、预览、渲染演示；`scripts/ui-preview.mjs`：界面截图。
 - `release/`：各里程碑打包产物。未经用户要求不得覆盖用户 `%APPDATA%/GalAgent/` 存档。

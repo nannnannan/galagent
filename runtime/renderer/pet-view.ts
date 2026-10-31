@@ -20,7 +20,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
       <div id="status-chip" class="status-chip" aria-live="polite"><i class="status-icon" aria-hidden="true"></i><span></span></div>
     </div>
     <div id="pet-body" class="pet-body"><div class="pet-sprite"></div></div>
-    <button class="pet-handle" type="button" aria-label="打开菜单">⋯</button>
+    <button class="pet-handle" type="button" aria-label="打开菜单" title="菜单"><span aria-hidden="true">⋯</span></button>
     <form id="pet-input" class="pet-input" hidden>
       <textarea id="pet-text" rows="2" maxlength="1200" aria-label="说点什么" placeholder="想说点什么…"></textarea>
       <div class="pet-input-actions"><small id="pet-input-note"></small><button id="pet-input-close" type="button" class="btn ghost">收起</button><button type="submit" class="btn primary">发送</button></div>
@@ -117,14 +117,42 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     const line = chimeCaption(now); if (line) say(line, 6000);
   }, 15_000);
   // The overhead follows the sprite's head so jumps and bobs carry the bubble along.
-  const follow = () => { const anchor = pet.headAnchor(), rect = stage.getBoundingClientRect(); overhead.style.setProperty('--head-x', `${Math.round(anchor.x - rect.left)}px`); overhead.style.setProperty('--head-y', `${Math.round(anchor.y - rect.top)}px`); };
+  const follow = () => {
+    const anchor = pet.headAnchor(), rect = stage.getBoundingClientRect();
+    overhead.style.setProperty('--head-x', `${Math.round(anchor.x - rect.left)}px`); overhead.style.setProperty('--head-y', `${Math.round(anchor.y - rect.top)}px`);
+    if (handleOn()) placeHandle();
+  };
   setInterval(() => { if (canAnimate()) follow(); }, 50);
 
   // ---- pointer: click-through except over the sprite and our own controls ----
   let drag: { x: number; y: number; moved: boolean } | null = null, latest: { x: number; y: number } | null = null, frame = 0, lastInteractive: boolean | undefined;
   const contains = (element: HTMLElement, x: number, y: number) => { const r = element.getBoundingClientRect(); return x >= r.left && x < r.right && y >= r.top && y < r.bottom; };
-  const handle = app.querySelector<HTMLElement>('.pet-handle')!;
-  const interactive = (x: number, y: number) => !!drag || (stage.classList.contains('hovered') && contains(handle, x, y)) || (!input.hidden && contains(input, x, y)) || (bubble.classList.contains('visible') && contains(bubble, x, y)) || pet.hit(x, y);
+  // Menu handle: appears when the pointer reaches the pet, sits just off the sprite's lower right,
+  // and lingers HANDLE_LINGER ms after the pointer leaves (fading for the last part) so it can be reached.
+  const handle = app.querySelector<HTMLElement>('.pet-handle')!, HANDLE_LINGER = 2500, HANDLE_FADE = 900;
+  let handleUntil = 0, handleTimer: ReturnType<typeof setTimeout> | undefined;
+  const handleOn = () => stage.classList.contains('handle-on');
+  function placeHandle() {
+    const box = pet.restBox(), rect = stage.getBoundingClientRect(), size = handle.offsetWidth || 36;
+    const x = Math.max(4, Math.min(rect.width - size - 4, box.right - rect.left - 6)), y = Math.max(4, Math.min(rect.height - size - 4, box.bottom - rect.top - size - 2));
+    handle.style.setProperty('--handle-x', `${Math.round(x)}px`); handle.style.setProperty('--handle-y', `${Math.round(y)}px`);
+  }
+  function tickHandle() {
+    clearTimeout(handleTimer);
+    const left = handleUntil - Date.now();
+    if (left <= 0) { stage.classList.remove('handle-on', 'handle-fading'); refreshPointer(); return; }
+    stage.classList.toggle('handle-fading', left <= HANDLE_FADE);
+    handleTimer = setTimeout(tickHandle, left > HANDLE_FADE ? left - HANDLE_FADE : left);
+  }
+  function showHandle() {
+    handleUntil = Date.now() + HANDLE_LINGER;
+    if (!handleOn()) { placeHandle(); stage.classList.add('handle-on'); }
+    tickHandle();
+  }
+  const overHandle = (x: number, y: number) => handleOn() && contains(handle, x, y);
+  /** Called for every pointer sample (DOM move or native hit test): reaching the pet or the handle keeps the handle up. */
+  const notePointer = (x: number, y: number) => { if (drag || overHandle(x, y) || pet.hit(x, y)) showHandle(); };
+  const interactive = (x: number, y: number) => !!drag || overHandle(x, y) || (!input.hidden && contains(input, x, y)) || (bubble.classList.contains('visible') && contains(bubble, x, y)) || pet.hit(x, y);
   const setInteractive = (value: boolean) => { if (value === lastInteractive) return; lastInteractive = value; stage.classList.toggle('hovered', value); void command({ type: 'shell.pointer', interactive: value }, true); };
   function refreshPointer() { if (frame) return; frame = requestAnimationFrame(() => { frame = 0; setInteractive(!!drag || (!!latest && interactive(latest.x, latest.y))); }); }
   // ---- gestures: pat (hover strokes over the head), hold-to-charge, fling, taps ----
@@ -192,8 +220,8 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     fling = { sim, raf: requestAnimationFrame(step) };
   };
 
-  (bridge as GalAgentBridge).onHitTest?.(point => { latest = point; pet.pointerAt(point.x, point.y); stroke(point.x, point.y); const value = interactive(point.x, point.y); stage.classList.toggle('hovered', value); return value; });
-  const track = (event: MouseEvent) => { latest = { x: event.clientX, y: event.clientY }; pet.pointerAt(event.clientX, event.clientY); stroke(event.clientX, event.clientY, event.buttons); refreshPointer(); };
+  (bridge as GalAgentBridge).onHitTest?.(point => { latest = point; pet.pointerAt(point.x, point.y); stroke(point.x, point.y); notePointer(point.x, point.y); const value = interactive(point.x, point.y); stage.classList.toggle('hovered', value); return value; });
+  const track = (event: MouseEvent) => { latest = { x: event.clientX, y: event.clientY }; pet.pointerAt(event.clientX, event.clientY); stroke(event.clientX, event.clientY, event.buttons); notePointer(event.clientX, event.clientY); refreshPointer(); };
   app.addEventListener('pointermove', track); app.addEventListener('mousemove', track);
   app.addEventListener('pointerleave', () => { petting.reset(); if (bridge.onHitTest) return; latest = null; if (!drag) setInteractive(false); });
   body.addEventListener('pointerdown', event => {
@@ -239,7 +267,8 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   body.addEventListener('pointercancel', () => { if (drag?.moved) pet.dragEnd(); drag = null; endHold(); samples = []; stage.classList.remove('held'); refreshPointer(); });
   body.addEventListener('dblclick', event => { if (pet.hit(event.clientX, event.clientY)) void openInput(); });
   app.addEventListener('contextmenu', event => { event.preventDefault(); if (interactive(event.clientX, event.clientY)) void command({ type: 'shell.menu' }); });
-  handle.addEventListener('click', () => void command({ type: 'shell.menu' }));
+  handle.addEventListener('click', () => { showHandle(); void command({ type: 'shell.menu' }); });
+  handle.addEventListener('focus', showHandle);
   bridge.onRoamState?.(state => pet.setRoamState(state.active, state.direction));
 
   // ---- quick input ----
@@ -271,7 +300,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   }
   let trackedPet = '';
   const celebrate = (title: string) => {
-    say(`🏆 解锁成就：${title}`, 5200, 'trophy');
+    say(`解锁成就：${title}`, 5200, 'trophy');
     pet.impulse('sparkles', 1.2);
     if (canAnimate()) { const a = pet.headAnchor(); confetti({ x: a.x, y: a.y - 10 }, 24, 0.6); }
   };

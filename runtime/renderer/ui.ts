@@ -21,11 +21,24 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = ''
   const element = document.createElement(tag); if (className) element.className = className; if (text) element.textContent = text; return element;
 }
 export function button(text: string, action: () => void, className = 'btn') { const b = el('button', className, text); b.type = 'button'; b.onclick = action; return b; }
+/** The one way an emoji/illustration icon is shown: a rounded square badge. Sizes: '' | 'sm' | 'lg'; tones: accent, solid, gold, danger. */
+export const iconBadge = (icon: string, variant = '') => { const b = el('span', `icon-badge${variant ? ' ' + variant : ''}`, icon); b.setAttribute('aria-hidden', 'true'); return b; };
+/** Card with the shared header pattern: title, optional hint, optional trailing actions. */
+export function section(title: string, hint = '', ...actions: HTMLElement[]) {
+  const box = el('section', 'card'), head = el('header', 'card-head'), text = el('div');
+  text.append(el('h3', '', title)); if (hint) text.append(el('p', 'hint', hint));
+  head.append(text, ...actions); box.append(head); return box;
+}
+/** Status / warning line with an optional trailing action. */
+export function notice(text: string, tone: '' | 'warn' | 'accent' = '', action?: HTMLElement, dot?: string) {
+  const box = el('div', `notice${tone ? ' ' + tone : ''}`); if (dot !== undefined) box.append(el('i', `dot ${dot}`)); box.append(el('span', '', text)); if (action) box.append(action); return box;
+}
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 export function toast(text: string, tone: 'info' | 'error' = 'info') {
   let box = document.querySelector<HTMLElement>('#toast');
   if (!box) { box = el('div', 'toast'); box.id = 'toast'; box.setAttribute('role', 'status'); document.body.append(box); }
-  box.textContent = text; box.dataset.tone = tone; box.classList.add('visible');
+  box.replaceChildren(iconBadge(tone === 'error' ? '!' : '✓', tone === 'error' ? 'sm danger' : 'sm accent'), el('span', 'toast-text', text));
+  box.dataset.tone = tone; box.classList.add('visible');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => box!.classList.remove('visible'), 5200);
 }
 type Hook = (command: AppCommand) => void;

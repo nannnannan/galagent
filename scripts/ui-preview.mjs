@@ -28,6 +28,11 @@ const shots = [
   ['palette', 'page=chat&palette=1', '1100,800'], ['unlock', 'page=achievements&unlock=1', '1100,800', 1100], ['narrow', 'page=achievements', '760,700'],
   ...['chat', 'diary', 'achievements'].map(page => [`page-${page}-dark`, `page=${page}`, '1100,800', 2500, true]),
   ['palette-dark', 'page=chat&palette=1', '1100,800', 2500, true], ['pet-dark', 'view=pet&season=petals', '320,440', 2500, true],
+  // character-card editor (tavern method) and the lingering pet menu handle
+  ['editor-tavern', 'page=persona&editor=builtin:kimi&mode=tavern', '1100,2300'], ['editor-tavern-dark', 'page=persona&editor=builtin:kimi&mode=tavern', '1100,2300', 2500, true],
+  ['editor-full', 'page=persona&editor=custom-kiri&mode=tavern&open=1&guide=1', '1100,3600'], ['editor-simple', 'page=persona&editor=builtin:baiyan&mode=simple', '1100,1300'], ['editor-ai', 'page=persona&aidraft=1', '1100,1500'],
+  ['pet-handle', 'view=pet&bubble=&action=idle&handle=1', '320,440', 1500], ['pet-handle-dark', 'view=pet&bubble=&action=idle&handle=1', '320,440', 1500, true],
+  ...['persona', 'companion', 'memory', 'privacy', 'schedule', 'config', 'pets'].map(page => [`page-${page}-dark`, `page=${page}`, '1100,800', 2500, true]),
 ];
 const only = process.env.ONLY ? new RegExp(process.env.ONLY) : undefined;
 // Pet shots go through a fixed-size iframe over a desktop-like backdrop: headless Chrome lays the page

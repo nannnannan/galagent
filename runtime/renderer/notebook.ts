@@ -1,7 +1,6 @@
-import type { AppSnapshot, Expression, Message, PersonaDraft, PersonaProfile, PetAction, SandboxSettings, SettingsPatch } from '../shared/contracts';
+import type { AppSnapshot, Expression, Message, PetAction, SandboxSettings, SettingsPatch } from '../shared/contracts';
 import { companionModes, topicLabels, validTopic } from '../shared/companionship';
 import { achievements as achievementDefs } from '../shared/achievements';
-import { blankPersona, PERSONA_LIMITS } from '../shared/personas';
 import { builtinPixelPets } from '../shared/pixel-pets';
 import { PixelPet } from './pixel-pet';
 import { SpeechPlayback } from './speech-playback';
@@ -12,14 +11,13 @@ import { confetti, trophyToast } from './effects';
 import { openPalette, type PaletteAction } from './palette';
 import { reportAchievement, trackPet } from './bond';
 import { loadPet, wantedPet } from './pet-assets';
-import { bridge, button, clockText, command, el, field, linesArea, numberInput, onCommand, readFileText, relativeTime, select, toast, toggle } from './ui';
+import { guidePanel, openPersonaEditor, personaBadges } from './persona-editor';
+import { bridge, button, clockText, command, el, field, iconBadge, linesArea, notice, numberInput, onCommand, readFileText, relativeTime, section, select, toast, toggle } from './ui';
 
 type Page = { id: string; icon: string; title: string; intro: string; key: (s: AppSnapshot) => unknown; render: (root: HTMLElement, s: AppSnapshot) => void };
 const settings = (patch: SettingsPatch) => command({ type: 'settings.update', settings: patch });
 // Partial patches only: the core merges them, so a stale page can never revert another switch or mask a preset.
 const sandbox = (_s: AppSnapshot, patch: Partial<SandboxSettings>) => settings({ sandbox: patch });
-const section = (title: string, hint = '', className = 'card') => { const box = el('section', className); const head = el('header', 'card-head'); head.append(el('h3', '', title)); if (hint) head.append(el('p', 'hint', hint)); box.append(head); return box; };
-const empty = (text: string, icon = '✦') => { const box = el('div', 'empty'); box.append(el('span', 'empty-icon', icon), el('p', '', text)); return box; };
 const pick = <T,>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)];
 const dayLabel = (day: string) => { const d = new Date(`${day}T12:00:00`); return Number.isNaN(d.getTime()) ? day : d.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }); };
 const tip = <T extends HTMLElement>(element: T, text: string, side: 'top' | 'bottom' | 'right' = 'bottom') => { element.dataset.tip = text; element.dataset.tipSide = side; if (!element.getAttribute('aria-label') && !element.textContent?.trim()) element.setAttribute('aria-label', text); return element; };
@@ -39,9 +37,9 @@ function miniPet(s: AppSnapshot, action: PetAction, expression: Expression = 'ne
   });
   return host;
 }
-/** Friendlier empty state: a tiny pet doing something fitting, plus a line (and optional action). */
-function emptyPet(s: AppSnapshot, text: string, action: PetAction = 'idle', extra?: HTMLElement) {
-  const box = el('div', 'empty pet-empty'); box.append(miniPet(s, action, action === 'sleep' ? 'neutral' : 'curious'), el('p', '', text));
+/** The one empty state: a tiny pet doing something fitting, one line, optional action. `compact` sits inline in a card. */
+function emptyPet(s: AppSnapshot, text: string, action: PetAction = 'idle', extra?: HTMLElement, compact = false) {
+  const box = el('div', `empty${compact ? ' compact' : ''}`); box.append(miniPet(s, action, action === 'sleep' ? 'neutral' : 'curious'), el('p', '', text));
   if (extra) box.append(extra);
   return box;
 }
@@ -50,23 +48,23 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   let snapshot = initial, page = 'chat', pageKey = '', lastMessages = '', enterTimer: ReturnType<typeof setTimeout> | undefined;
   app.innerHTML = `<main class="notebook">
     <aside class="sidebar">
-      <div class="brand"><button class="brand-mark" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面陪伴 · 养成 · 助手</small></span></div>
+      <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面陪伴 · 养成 · 助手</small></span></div>
       <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span></div></div>
       <button id="bond-card" class="bond-card" type="button">
-        <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="bond-trophies" id="bond-trophies"></span></span>
-        <span class="bond-chips"><span id="bond-streak"></span><span id="bond-today"></span></span>
-        <span class="bond-progress" aria-hidden="true"><i id="bond-bar"></i></span>
+        <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="pill gold" id="bond-trophies"></span></span>
+        <span class="bond-chips"><span id="bond-streak"></span><span aria-hidden="true">·</span><span id="bond-today"></span></span>
+        <span class="progress" aria-hidden="true"><i id="bond-bar"></i></span>
       </button>
       <nav class="nav" aria-label="页面"></nav>
       <footer class="sidebar-foot"><span id="foot-stats"></span><button id="pet-return" class="btn ghost small" type="button">回到桌面</button></footer>
     </aside>
     <section class="workspace">
-      <header class="page-head"><div><h1 id="page-title"></h1><p id="page-intro"></p></div><div id="page-tools" class="page-tools"><button id="palette-open" class="kbd-button" type="button"><span>快捷操作</span><kbd>Ctrl</kbd><kbd>K</kbd></button></div></header>
+      <header class="page-head"><div><h1 id="page-title"></h1><p id="page-intro"></p></div><div id="page-tools" class="page-tools"><button id="palette-open" class="btn ghost small" type="button"><span>快捷操作</span><kbd>Ctrl</kbd><kbd>K</kbd></button></div></header>
       <div id="chat-page" class="chat-page">
         <div id="messages" class="messages" aria-live="polite"></div>
         <div id="agent-questions"></div>
         <form id="composer" class="composer">
-          <div id="runtime-error" class="banner" hidden></div>
+          <div id="runtime-error" class="notice warn" hidden></div>
           <div class="composer-box"><textarea id="input" rows="1" maxlength="12000" placeholder="说点什么…  (Enter 发送，Shift+Enter 换行，/任务 xxx 交给执行器)"></textarea>
           <button id="send" class="btn primary round" type="submit" aria-label="发送">↑</button></div>
           <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> 正在想</span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
@@ -96,7 +94,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   const nav = app.querySelector<HTMLElement>('.nav')!, content = app.querySelector<HTMLElement>('#content-page')!, chatPage = app.querySelector<HTMLElement>('#chat-page')!;
   pages.forEach((p, i) => {
     const b = button('', () => go(p.id), 'nav-item'); b.dataset.page = p.id;
-    b.append(el('span', 'nav-icon', p.icon), el('span', 'nav-label', p.title), el('kbd', 'nav-key', `${(i + 1) % 10}`));
+    b.append(iconBadge(p.icon, 'sm'), el('span', 'nav-label', p.title), el('kbd', 'nav-key', `${(i + 1) % 10}`));
     tip(b, `${p.title} · Ctrl+${(i + 1) % 10}`, 'right'); nav.append(b);
   });
   function go(id: string) {
@@ -149,7 +147,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   app.querySelector<HTMLElement>('.brand-mark')!.addEventListener('click', event => {
     const now = performance.now(); logoClicks = [...logoClicks.filter(t => now - t < 3000), now];
     const mark = event.currentTarget as HTMLElement; mark.classList.remove('spin'); void mark.offsetWidth; mark.classList.add('spin');
-    if (logoClicks.length >= 7) { logoClicks = []; const r = mark.getBoundingClientRect(); confetti({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, 40); toast('✨ 你发现了一个没什么用的彩蛋。今天也辛苦啦！'); portraitEffect('celebrate', 1500); }
+    if (logoClicks.length >= 7) { logoClicks = []; const r = mark.getBoundingClientRect(); confetti({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, 40); toast('你发现了一个没什么用的彩蛋。今天也辛苦啦！'); portraitEffect('celebrate', 1500); }
   });
 
   // ---- chat ----
@@ -197,14 +195,14 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     let lastDay = '', freshUser = false;
     for (const message of snapshot.messages) {
       const day = new Date(message.createdAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' });
-      if (day !== lastDay) { box.append(el('div', 'day-rule', day)); lastDay = day; }
+      if (day !== lastDay) { box.append(el('div', 'day-rule pill', day)); lastDay = day; }
       const fresh = !firstPaint && !seen.has(message.id); seen.add(message.id);
       if (fresh && message.role === 'user') freshUser = true;
       const row = el('article', `message ${message.role}${message.source === 'scene' ? ' system' : ''}${fresh ? ' fresh' : ''}`);
       const who = message.role === 'user' ? '你' : message.speaker || snapshot.identity.name || 'TA';
       const meta = el('div', 'message-meta');
       meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}`));
-      const copy = tip(button('⧉', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'message-copy'), '复制', 'top');
+      const copy = tip(button('⧉', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
       copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
       let body: HTMLElement;
       if (message.role === 'assistant') { body = el('div', 'message-text md'); body.innerHTML = renderMarkdown(message.text); }
@@ -239,7 +237,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const requests = snapshot.agent?.questions || [], signature = JSON.stringify(requests.map(q => q.id));
     if (host.dataset.signature === signature) return; host.dataset.signature = signature; host.replaceChildren();
     for (const request of requests) {
-      const form = el('form', 'card question'); form.append(el('h3', '', '执行任务需要你的选择'));
+      const form = el('form', 'card question'), head = el('header', 'card-head'), title = el('div'); title.append(el('h3', '', '执行任务需要你的选择'), el('p', 'hint', '执行器在等你决定，选一个或写下你的回答。')); head.append(iconBadge('🧭', 'accent'), title); form.append(head);
       const fields: { question: string; choices: HTMLInputElement[]; custom: HTMLInputElement }[] = [];
       for (const [index, q] of request.questions.entries()) {
         const set = el('fieldset'); set.append(el('legend', '', q.question)); const choices: HTMLInputElement[] = [];
@@ -247,7 +245,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
         const custom = el('input'); custom.placeholder = '或者写下你的回答'; set.append(custom); fields.push({ question: q.question, choices, custom }); form.append(set);
       }
       const submit = el('button', 'btn primary', '提交'); submit.type = 'submit';
-      form.append(submit, button('暂不回答', () => void command({ type: 'agent.answer', id: request.id, answers: {} }), 'btn ghost'));
+      const actions = el('div', 'row'); actions.append(submit, button('暂不回答', () => void command({ type: 'agent.answer', id: request.id, answers: {} }), 'btn ghost')); form.append(actions);
       form.onsubmit = async event => { event.preventDefault(); const answers: Record<string, string> = Object.create(null); for (const f of fields) { const a = f.custom.value.trim() || f.choices.filter(c => c.checked).map(c => c.value).join('、'); if (a) answers[f.question] = a; } await command({ type: 'agent.answer', id: request.id, answers }); };
       host.append(form);
     }
@@ -265,15 +263,15 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       { id: 'roam', group: '常用', icon: '🚶', title: '出去溜达一圈', keywords: 'roam walk 漫步', run: () => void command({ type: 'pet.roam', active: true }) },
       { id: 'stop-voice', group: '常用', icon: '🔇', title: '停止朗读', keywords: 'tts voice 语音', run: () => void command({ type: 'tts.stop' }) },
     );
-    for (const mode of companionModes) if ((s.settings.companionMode || 'daily') !== mode.value) list.push({ id: `mode:${mode.value}`, group: '陪伴模式', icon: mode.value === 'focus' ? '🎯' : mode.value === 'rest' ? '🌙' : '☀', title: `切换到「${mode.label}」`, hint: mode.description, keywords: 'mode 模式', run: () => void settings({ companionMode: mode.value }) });
+    for (const mode of companionModes) if ((s.settings.companionMode || 'daily') !== mode.value) list.push({ id: `mode:${mode.value}`, group: '陪伴模式', icon: mode.value === 'focus' ? '🎯' : mode.value === 'rest' ? '🌙' : '☀️', title: `切换到「${mode.label}」`, hint: mode.description, keywords: 'mode 模式', run: () => void settings({ companionMode: mode.value }) });
     pages.forEach((p, i) => list.push({ id: `page:${p.id}`, group: '页面', icon: p.icon, title: `前往「${p.title}」`, shortcut: `Ctrl+${(i + 1) % 10}`, keywords: `${p.id} ${p.intro}`, run: () => go(p.id) }));
     for (const p of s.persona?.list || []) if (p.id !== s.persona?.active.id) list.push({ id: `persona:${p.id}`, group: '切换角色', icon: '🎭', title: `切换到「${p.name}」`, hint: p.tagline, keywords: 'persona character 角色', run: () => void command({ type: 'persona.select', id: p.id }) });
     const current = wantedPet(s);
     for (const p of s.pets?.catalog?.length ? s.pets.catalog : builtinPixelPets) if (p.id !== current) list.push({ id: `pet:${p.id}`, group: '换小人', icon: '🐾', title: `换上「${p.name}」`, hint: p.description, keywords: 'pet sprite 小人', run: () => void command({ type: 'pet.select', id: p.id }) });
     list.push(
       { id: 'lockdown', group: '隐私与其他', icon: '🔒', title: '一键隐私锁定', hint: '停止观察、中止任务并切到严格沙箱', keywords: 'privacy lock 隐私 锁定 沙箱', run: async () => { if (!confirm('立即停止桌面观察、中止进行中的任务，并切换到严格沙箱？')) return; const r = await command({ type: 'privacy.lockdown' }); if (r.ok) toast('已停止观察、中止任务并切换到严格沙箱。'); } },
-      { id: 'corner', group: '隐私与其他', icon: '↘', title: '小人回到屏幕角落', keywords: 'reset position 位置', run: () => void command({ type: 'shell.resetPosition' }) },
-      { id: 'desk', group: '隐私与其他', icon: '🖥', title: '回到桌面', hint: '收起这个窗口', keywords: 'close hide 关闭', run: () => void command({ type: 'shell.chat', open: false }) },
+      { id: 'corner', group: '隐私与其他', icon: '🏠', title: '小人回到屏幕角落', keywords: 'reset position 位置', run: () => void command({ type: 'shell.resetPosition' }) },
+      { id: 'desk', group: '隐私与其他', icon: '🖥️', title: '回到桌面', hint: '收起这个窗口', keywords: 'close hide 关闭', run: () => void command({ type: 'shell.chat', open: false }) },
       { id: 'export', group: '隐私与其他', icon: '📦', title: '导出相处存档', keywords: 'export backup 备份', run: () => void command({ type: 'app.export' }) },
     );
     return list;
@@ -298,9 +296,9 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   function renderBond(next: AppSnapshot) {
     const bond = next.bond, list = bond?.achievements?.length ? bond.achievements : achievementDefs, unlocked = bond?.achievements.filter(a => a.unlockedAt).length || 0;
     app.querySelector('#bond-days')!.textContent = String(Math.max(1, bond?.daysTogether || 1));
-    app.querySelector('#bond-streak')!.textContent = `🔥 连续 ${Math.max(bond?.streakDays || 0, 0)} 天`;
-    app.querySelector('#bond-today')!.textContent = `💬 今天 ${bond?.todayChats ?? 0} 次`;
-    app.querySelector('#bond-trophies')!.textContent = `🏆 ${unlocked}/${list.length}`;
+    app.querySelector('#bond-streak')!.textContent = `连续 ${Math.max(bond?.streakDays || 0, 0)} 天`;
+    app.querySelector('#bond-today')!.textContent = `今天聊了 ${bond?.todayChats ?? 0} 次`;
+    app.querySelector('#bond-trophies')!.textContent = `徽章 ${unlocked}/${list.length}`;
     app.querySelector<HTMLElement>('#bond-bar')!.style.width = `${Math.round((unlocked / Math.max(1, list.length)) * 100)}%`;
   }
   function render(next: AppSnapshot, force = false) {
@@ -342,9 +340,11 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
 }
 
 // ---------------- pages ----------------
+// Every page is a stack of `section()` cards; rows inside use .field / .list-row, picks use .selectable,
+// empty states use emptyPet(), status lines use notice(). No page sets its own colours or radii.
 const pages: Page[] = [
   { id: 'chat', icon: '💬', title: '聊天', intro: '日常聊天、提醒和交给执行器的任务都在这里。', key: () => 0, render: () => {} },
-  { id: 'persona', icon: '🎭', title: '角色', intro: '选择一位角色，或者写一张属于你自己的角色卡。', key: s => [s.persona?.active.id, s.persona?.list.map(p => p.id + p.updatedAt)], render: renderPersonas },
+  { id: 'persona', icon: '🎭', title: '角色', intro: '选择一位角色，或者写一张属于你自己的角色卡。', key: s => [s.persona?.active.id, s.persona?.list.map(p => p.id + p.updatedAt), s.bond?.daysTogether], render: renderPersonas },
   { id: 'pets', icon: '🐾', title: '小人', intro: '换一个桌面小人形象，或导入自己画的像素小人。', key: s => [s.settings.petId, s.pets?.revision, s.persona?.active.avatar, s.pets?.catalog.length, s.settings.reducedMotion, s.settings.funCaptions], render: renderPets },
   { id: 'companion', icon: '🌙', title: '陪伴', intro: '主动陪伴的节奏完全由你决定：选项点选，数字随意填。', key: s => [s.settings, s.companionship?.topics, s.watches], render: renderCompanion },
   { id: 'schedule', icon: '⏰', title: '定时', intro: '你和 TA 设下的提醒。到点后 TA 会主动来找你。', key: s => [s.schedules, s.settings.petId], render: renderSchedules },
@@ -356,83 +356,42 @@ const pages: Page[] = [
 ];
 
 function renderPersonas(root: HTMLElement, s: AppSnapshot) {
-  const list = s.persona?.list || [], active = s.persona?.active;
+  const list = s.persona?.list || [], active = s.persona?.active, days = s.bond?.daysTogether || 0;
   const grid = el('div', 'persona-grid');
   for (const p of list) {
-    const card = el('article', 'persona-card'); card.classList.toggle('active', p.id === active?.id);
-    const top = el('div', 'persona-top'); top.append(el('span', 'avatar-dot', p.name.slice(0, 1)), el('div', 'persona-names'));
-    top.lastElementChild!.append(el('strong', '', p.name), el('small', '', `${p.pronoun} · ${p.relationship || (p.builtin ? '内置角色' : '自定义角色')}`));
+    const card = el('article', 'persona-card selectable'); card.classList.toggle('active', p.id === active?.id); card.dataset.id = p.id;
+    const top = el('div', 'persona-top'), names = el('div', 'persona-names');
+    names.append(el('strong', '', p.name), el('small', '', `${p.pronoun} · ${p.relationship || (p.builtin ? '内置角色' : '自定义角色')}`));
+    top.append(iconBadge(p.name.slice(0, 1), 'lg solid'), names);
     card.append(top, el('p', 'persona-tagline', p.tagline || '（还没有简介）'));
+    const badges = personaBadges(p, days); if (badges.length) { const row = el('div', 'persona-badges'); row.append(...badges); card.append(row); }
     const actions = el('div', 'row');
     if (p.id !== active?.id) actions.append(button('选择', () => void command({ type: 'persona.select', id: p.id }), 'btn primary small'));
-    else actions.append(el('span', 'pill on', '当前角色'));
-    actions.append(button(p.builtin ? '复制并修改' : '编辑', () => openEditor(root, s, p), 'btn ghost small'), button('导出', () => void command({ type: 'persona.export', id: p.id }), 'btn ghost small'));
-    if (!p.builtin) actions.append(button('删除', async () => { if (confirm(`删除角色卡「${p.name}」？聊天记录和记忆会保留。`)) await command({ type: 'persona.delete', id: p.id }); }, 'btn ghost small danger'));
+    else actions.append(el('span', 'pill accent', '当前角色'));
+    const edit = button(p.builtin ? '复制并修改' : '编辑', () => openPersonaEditor(root, s, p), 'btn ghost small'); edit.dataset.action = 'edit';
+    actions.append(edit, button('导出', () => void command({ type: 'persona.export', id: p.id }), 'btn ghost small'));
+    if (!p.builtin) actions.append(button('删除', async () => { if (confirm(`删除角色卡「${p.name}」？聊天记录和记忆会保留。`)) await command({ type: 'persona.delete', id: p.id }); }, 'btn danger small'));
     card.append(actions); grid.append(card);
   }
-  const create = el('article', 'persona-card create');
-  create.append(el('span', 'create-plus', '+'), el('strong', '', '新建角色卡'), el('small', '', '从空白开始，或用一句话让 AI 帮你起草'));
-  create.onclick = () => openEditor(root, s); grid.append(create);
-  const tools = el('div', 'row');
-  tools.append(button('导入角色卡文件…', async () => { const text = await readFileText('.json,application/json'); if (text) { const r = await command({ type: 'persona.import', text }); if (r.ok) toast('角色卡已导入，可以在列表里选择它。'); } }, 'btn ghost'));
-  root.append(grid, tools, el('p', 'hint', '角色卡只决定性格和说话方式。隐私守则、安静请求和 JSON 格式等通用规则始终生效，不受角色卡影响。'));
-}
-
-function openEditor(root: HTMLElement, s: AppSnapshot, base?: PersonaProfile) {
-  const draft: PersonaDraft = base ? { ...base } : blankPersona();
-  const editable = base && !base.builtin ? base.id : undefined;
-  const form = el('form', 'card editor');
-  form.append(el('h3', '', base ? (base.builtin ? `以「${base.name}」为模板新建` : `编辑「${base.name}」`) : '新建角色卡'));
-  const ai = el('div', 'ai-draft'); const brief = el('input'); brief.placeholder = '一句话描述，例如：会做饭的狼人管家，嘴硬心软'; brief.maxLength = 1000;
-  const aiButton = button('✨ AI 起草', async () => {
-    if (!brief.value.trim()) { toast('先写一句想要的角色', 'error'); return; }
-    aiButton.disabled = true; aiButton.textContent = '起草中…';
-    const r = await command({ type: 'persona.generate', brief: brief.value.trim() });
-    aiButton.disabled = false; aiButton.textContent = '✨ AI 起草';
-    if (r.ok && r.data) { Object.assign(draft, r.data); fill(); toast('草稿已填好，看看哪里想改。'); }
-  }, 'btn ghost');
-  ai.append(brief, aiButton); form.append(ai);
-  const L = PERSONA_LIMITS;
-  const defs: [keyof PersonaDraft, string, string, number, number][] = [
-    ['name', '名字', '桌宠和聊天里显示的名字', L.name, 0], ['pronoun', '代称', '她 / 他 / 它 / TA', L.pronoun, 0], ['tagline', '一句话简介', '', L.tagline, 0],
-    ['personality', '性格', '底色、优点、小缺点、情绪反应', L.personality, 4], ['speakingStyle', '说话方式', '口癖、句子长短、语气词、称呼', L.speakingStyle, 3],
-    ['background', '背景设定', '来历、生活习惯、和桌面的关系', L.background, 3], ['relationship', '和你的关系', '朋友、室友、助手、搭档…', L.relationship, 0],
-    ['userTitle', '对你的称呼', '留空则由相处中决定', L.userTitle, 0], ['likes', '喜好', '', L.likes, 2], ['boundaries', '边界', 'TA 不会做的事，例如不催促、不说教', L.boundaries, 2],
-    ['greeting', '初见问候', '第一次被选中时说的话', L.greeting, 2], ['voiceStyle', '声音风格', '给语音合成的演绎提示', L.voiceStyle, 0],
-  ];
-  const inputs = new Map<string, HTMLInputElement | HTMLTextAreaElement>();
-  const grid = el('div', 'form-grid');
-  for (const [key, title, hint, max, rows] of defs) {
-    const control = rows ? el('textarea') : el('input'); if (rows) (control as HTMLTextAreaElement).rows = rows; control.maxLength = max; control.placeholder = hint;
-    control.oninput = () => { (draft as Record<string, unknown>)[key] = control.value; };
-    inputs.set(key, control); grid.append(field(title, control, '', rows ? 'field wide' : 'field'));
-  }
-  const idle = el('textarea'); idle.rows = 2; idle.placeholder = '每行一个，10 字以内，会偶尔显示在小人头顶'; idle.oninput = () => { draft.idleLines = idle.value.split('\n').map(x => x.trim()).filter(Boolean); };
-  grid.append(field('发呆小词条', idle, '', 'field wide'));
-  const avatar = select(draft.avatar || '', [['', '（不指定）'], ...(s.pets?.catalog || builtinPixelPets).map(p => [p.id, p.name] as [string, string])], v => { draft.avatar = v; });
-  grid.append(field('默认小人', avatar));
-  form.append(grid);
-  const fill = () => { for (const [key, control] of inputs) control.value = String((draft as Record<string, unknown>)[key] ?? ''); idle.value = (draft.idleLines || []).join('\n'); avatar.value = draft.avatar || ''; };
-  fill();
-  const save = el('button', 'btn primary', '保存角色卡'); save.type = 'submit';
-  form.append(el('div', 'row'));
-  form.lastElementChild!.append(save, button('取消', () => form.remove(), 'btn ghost'));
-  form.onsubmit = async event => {
-    event.preventDefault();
-    const r = await command({ type: 'persona.save', ...(editable ? { id: editable } : {}), persona: { ...draft, name: String(draft.name || '').trim() } });
-    if (r.ok) { const id = (r.data as { id: string }).id; if (!editable) await command({ type: 'persona.select', id }); toast(editable ? '角色卡已更新。' : '新角色卡已保存并选中。'); }
-  };
-  root.querySelector('.editor')?.remove();
-  root.prepend(form); form.scrollIntoView({ behavior: 'smooth', block: 'start' }); (inputs.get('name') as HTMLInputElement).focus();
+  const create = el('button', 'persona-card selectable dashed create'); create.type = 'button';
+  create.append(iconBadge('+', 'lg accent'), el('strong', '', '新建角色卡'), el('small', '', '从空白开始，或用一句话让 AI 帮你起草'));
+  create.onclick = () => openPersonaEditor(root, s); grid.append(create);
+  const tools = section('角色卡文件', '角色卡只决定性格和说话方式。隐私守则、安静请求和 JSON 格式等通用规则始终生效，不受角色卡影响。');
+  const guide = guidePanel(); guide.hidden = true;
+  const row = el('div', 'row wrap');
+  row.append(button('导入角色卡文件…', async () => { const text = await readFileText('.json,application/json'); if (text) { const r = await command({ type: 'persona.import', text }); if (r.ok) toast('角色卡已导入，可以在列表里选择它。'); } }, 'btn ghost'),
+    button('写卡指南', () => { guide.hidden = !guide.hidden; }, 'btn ghost'));
+  tools.append(row, guide);
+  root.append(grid, tools);
 }
 
 function renderPets(root: HTMLElement, s: AppSnapshot) {
   const current = wantedPet(s), catalog = s.pets?.catalog?.length ? s.pets.catalog : builtinPixelPets.map(p => ({ id: p.id, name: p.name, description: p.description, builtin: true }));
   const grid = el('div', 'pet-grid');
   for (const entry of catalog) {
-    const card = el('button', 'pet-card'); card.type = 'button'; card.classList.toggle('active', entry.id === current);
+    const card = el('button', 'pet-card selectable'); card.type = 'button'; card.classList.toggle('active', entry.id === current);
     const stage = el('div', 'pet-card-stage'); card.append(stage, el('strong', '', entry.name), el('small', '', entry.description || (entry.builtin ? '内置小人' : '自定义小人')));
-    if (!entry.builtin) card.append(el('span', 'pill', '自定义'));
+    if (!entry.builtin) card.append(el('span', 'pill accent', '自定义'));
     card.onclick = () => void command({ type: 'pet.select', id: entry.id });
     grid.append(card);
     // Previews animate only while hovered, keeping a dozen canvases cheap.
@@ -448,23 +407,27 @@ function renderPets(root: HTMLElement, s: AppSnapshot) {
   const custom = section('自己做一个小人', '小人是一份 JSON 像素图（16–64 像素见方），可以手画，也可以让 AI 按配套 skill 生成。');
   const steps = el('ol', 'steps');
   for (const line of ['在仓库 skills/galagent-pixel-pet/ 找到 SKILL.md 和 template.json，交给你常用的 AI（或自己照着改）', '用 scripts/pixel-pet/validate.mjs 校验、preview.mjs 生成预览图', '点下面「导入小人文件」，或直接把 .json 放进小人文件夹（自动识别）']) steps.append(el('li', '', line));
-  const row = el('div', 'row');
+  const row = el('div', 'row wrap');
   row.append(button('导入小人文件…', async () => { const text = await readFileText('.json,application/json'); if (text) { const r = await command({ type: 'pet.import', text }); if (r.ok) toast('小人导入成功！'); } }, 'btn primary'), button('打开小人文件夹', () => void command({ type: 'pet.openFolder' }), 'btn ghost'));
   if (s.settings.petId) row.append(button('跟随角色卡默认小人', () => void command({ type: 'pet.select', id: '' }), 'btn ghost'));
   custom.append(steps, row);
   const own = catalog.filter(p => !p.builtin);
-  if (own.length) { const list = el('div', 'row wrap'); for (const p of own) list.append(button(`删除「${p.name}」`, async () => { if (confirm(`删除自定义小人「${p.name}」？`)) await command({ type: 'pet.delete', id: p.id }); }, 'btn ghost small danger')); custom.append(list); }
+  if (own.length) {
+    const mine = section('我的小人', `${own.length} 个自定义小人`);
+    for (const p of own) { const r = el('div', 'list-row'), main = el('div', 'row-main'); main.append(el('strong', '', p.name), el('small', 'row-meta', p.description || '自定义小人')); r.append(iconBadge('🐾', 'accent'), main, button('删除', async () => { if (confirm(`删除自定义小人「${p.name}」？`)) await command({ type: 'pet.delete', id: p.id }); }, 'btn danger small')); mine.append(r); }
+    root.append(grid, custom, mine);
+  } else root.append(grid, custom);
   const size = section('大小与动效');
   size.append(field('桌宠缩放', numberInput(s.settings.petScale, v => void settings({ petScale: v }), { step: 0.1, unit: '倍' }), '0.3 – 4 倍'),
     field('减少动态效果', toggle(s.settings.reducedMotion, v => void settings({ reducedMotion: v }))), field('头顶小词条与彩蛋', toggle(s.settings.funCaptions !== false, v => void settings({ funCaptions: v })), '发呆时偶尔冒出的小状态、节日问候'));
-  root.append(grid, custom, size);
+  root.append(size);
 }
 
 function renderCompanion(root: HTMLElement, s: AppSnapshot) {
   const st = s.settings;
-  const modes = section('今天怎样陪你');
+  const modes = section('今天怎样陪你', '模式只改变 TA 主动的程度；你随时都可以找 TA 聊天。');
   const choices = el('div', 'segmented'); choices.setAttribute('role', 'radiogroup');
-  for (const mode of companionModes) { const b = button('', () => void settings({ companionMode: mode.value }), 'segment'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String((st.companionMode || 'daily') === mode.value)); b.append(el('strong', '', mode.label), el('small', '', mode.description)); choices.append(b); }
+  for (const mode of companionModes) { const b = button('', () => void settings({ companionMode: mode.value }), 'segment selectable'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String((st.companionMode || 'daily') === mode.value)); b.append(el('strong', '', mode.label), el('small', '', mode.description)); choices.append(b); }
   modes.append(choices);
   const pace = section('主动开口的节奏', '数字可以随便填，程序只会把明显不合理的值收拢到安全范围。');
   pace.append(
@@ -481,15 +444,18 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
   const time = (value: string, key: 'start' | 'end') => { const t = el('input'); t.type = 'time'; t.value = value; t.onchange = () => void settings({ quietHours: { [key]: t.value } }); return t; };
   quiet.append(field('启用', toggle(q.enabled, v => void settings({ quietHours: { enabled: v } }))), field('开始', time(q.start, 'start')), field('结束', time(q.end, 'end')),
     field('临时安静', select(st.quietUntil > Date.now() ? 'now' : 'none', [st.quietUntil > Date.now() ? ['now', `安静中，到 ${new Date(st.quietUntil).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`] : ['none', '不安静'], ['30', '安静 30 分钟'], ['60', '安静 1 小时'], ['180', '安静 3 小时'], ...(st.quietUntil > Date.now() ? [['0', '现在恢复主动'] as [string, string]] : [])] as [string, string][], v => { if (v === 'now' || v === 'none') return; void settings({ quietUntil: v === '0' ? 0 : Date.now() + Number(v) * 60_000 }); })));
-  const topics = section('TA 可以因为什么来找你', '关掉的话题，后台注意力代理不会再因此叫醒 TA。');
+  const reset = button('恢复全部默认', async () => { const r = await command({ type: 'initiative.resetFeedback' }); if (r.ok) toast('已恢复默认话题偏好。'); }, 'btn ghost small');
+  const topics = section('TA 可以因为什么来找你', '关掉的话题，后台注意力代理不会再因此叫醒 TA。', reset);
   const prefs = s.companionship?.topics || {};
   const grid = el('div', 'toggle-grid');
   for (const [topic, label] of Object.entries(topicLabels)) {
     const on = prefs[topic as keyof typeof prefs] !== 'mute';
     grid.append(field(label, toggle(on, v => void command({ type: 'initiative.topic', topic: topic as keyof typeof topicLabels, enabled: v }), label)));
   }
-  topics.append(grid, button('恢复全部默认', async () => { const r = await command({ type: 'initiative.resetFeedback' }); if (r.ok) toast('已恢复默认话题偏好。'); }, 'btn ghost small'));
+  topics.append(grid);
   const desk = section('桌面上的 TA');
+  const deskActions = el('div', 'row wrap');
+  deskActions.append(button('出去溜达一圈', () => void command({ type: 'pet.roam', active: true }), 'btn ghost small'), button('回到屏幕角落', () => void command({ type: 'shell.resetPosition' }), 'btn ghost small'));
   desk.append(
     field('自在漫步', toggle(st.roamingEnabled !== false, v => void settings({ roamingEnabled: v })), '鼠标靠近、对话或睡着时会停下'),
     field('漫步速度', numberInput(st.roamSpeed, v => void settings({ roamSpeed: v }), { step: 0.1, unit: '倍' })),
@@ -497,19 +463,19 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
     field('气泡停留', numberInput(st.bubbleSeconds, v => void settings({ bubbleSeconds: v }), { unit: '秒' }), '另按字数自动加长'),
     field('偶尔的小调皮', toggle(st.mischiefEnabled, v => void settings({ mischiefEnabled: v })), '只影响表情和小动作'),
     field('自动朗读', toggle(!!st.ttsEnabled, v => void settings({ ttsEnabled: v })), '需在「连接」页配置语音'),
-    el('div', 'row'),
+    deskActions,
   );
-  desk.lastElementChild!.append(button('出去溜达一圈', () => void command({ type: 'pet.roam', active: true }), 'btn ghost small'), button('回到屏幕角落', () => void command({ type: 'shell.resetPosition' }), 'btn ghost small'));
   const watch = section('TA 在留意的事', '告诉 TA 一件事，TA 会在合适的时候帮你看一眼。');
   const items = s.watches || [];
-  if (!items.length) watch.append(empty('现在没有在留意的事。'));
-  for (const w of items) { const row = el('div', 'list-row'); row.append(el('span', '', w.title + (w.condition ? `（${w.condition}）` : '')), button('移除', () => void command({ type: 'watch.dismiss', id: w.id }), 'btn ghost small')); watch.append(row); }
-  const form = el('form', 'inline-form'); const input = el('input'); input.placeholder = '比如：下午那个快递到了没'; input.maxLength = 120; const add = el('button', 'btn primary small', '添加'); add.type = 'submit'; form.append(input, add);
+  if (!items.length) watch.append(emptyPet(s, '现在没有在留意的事。', 'idle', undefined, true));
+  for (const w of items) { const row = el('div', 'list-row'), main = el('div', 'row-main'); main.append(el('strong', '', w.title), ...(w.condition ? [el('small', 'row-meta', w.condition)] : [])); row.append(iconBadge('👀', 'accent'), main, button('移除', () => void command({ type: 'watch.dismiss', id: w.id }), 'btn ghost small')); watch.append(row); }
+  const form = el('form', 'inline-form'); const input = el('input'); input.placeholder = '比如：下午那个快递到了没'; input.maxLength = 120; const add = el('button', 'btn primary', '添加'); add.type = 'submit'; form.append(input, add);
   form.onsubmit = async event => { event.preventDefault(); if (input.value.trim() && (await command({ type: 'watch.add', title: input.value.trim() })).ok) input.value = ''; };
   watch.append(form);
   root.append(modes, pace, quiet, topics, desk, watch);
 }
 
+const repeatText = (minutes: number) => minutes >= 1440 && minutes % 1440 === 0 ? `每 ${minutes / 1440} 天` : minutes >= 60 && minutes % 60 === 0 ? `每 ${minutes / 60} 小时` : `每 ${minutes} 分钟`;
 function renderSchedules(root: HTMLElement, s: AppSnapshot) {
   const add = section('新建提醒', 'TA 到点会醒来，用自己的口吻提醒你。你也可以直接在聊天里说“半小时后提醒我…”。');
   const form = el('form', 'schedule-form');
@@ -519,7 +485,8 @@ function renderSchedules(root: HTMLElement, s: AppSnapshot) {
   const repeat = select('0', [['0', '不重复'], ['30', '每 30 分钟'], ['60', '每小时'], ['1440', '每天'], ['10080', '每周'], ['custom', '自定义…']], v => { custom.hidden = v !== 'custom'; });
   const custom = numberInput(90, () => {}, { unit: '分钟一次' }); custom.hidden = true;
   const submit = el('button', 'btn primary', '设定'); submit.type = 'submit';
-  form.append(note, el('div', 'row wrap'), submit); form.children[1].append(mode, minutes, at, repeat, custom);
+  const when = el('div', 'row wrap'); when.append(mode, minutes, at, repeat, custom);
+  form.append(note, when, submit);
   form.onsubmit = async event => {
     event.preventDefault();
     const inMinutes = Number(minutes.querySelector('input')!.value), repeatMinutes = repeat.value === 'custom' ? Number(custom.querySelector('input')!.value) : Number(repeat.value);
@@ -527,13 +494,14 @@ function renderSchedules(root: HTMLElement, s: AppSnapshot) {
     if (r.ok) { note.value = ''; toast('提醒已设定。'); }
   };
   add.append(form);
-  const list = section('已设定的提醒');
   const items = s.schedules || [];
+  const list = section('已设定的提醒', items.length ? `${items.length} 个提醒，按时间先后排列` : '');
   if (!items.length) list.append(emptyPet(s, '还没有提醒。TA 也会在聊天中自己约定下次来找你的时间。', 'sleep'));
   for (const item of items) {
-    const row = el('div', 'list-row schedule');
-    const info = el('div'); info.append(el('strong', '', item.note), el('small', '', `${clockText(item.dueAt)}（${relativeTime(item.dueAt)}）${item.repeatMinutes ? ` · 每 ${item.repeatMinutes >= 1440 && item.repeatMinutes % 1440 === 0 ? item.repeatMinutes / 1440 + ' 天' : item.repeatMinutes + ' 分钟'}` : ''} · ${item.createdBy === 'user' ? '你设的' : 'TA 自己约的'}`));
-    row.append(el('span', 'badge', item.createdBy === 'user' ? '你' : 'TA'), info, button('取消', () => void command({ type: 'schedule.cancel', id: item.id }), 'btn ghost small'));
+    const row = el('div', 'list-row'), main = el('div', 'row-main'), meta = el('div', 'row-meta');
+    meta.append(el('span', '', `${clockText(item.dueAt)}（${relativeTime(item.dueAt)}）`), ...(item.repeatMinutes ? [el('span', 'pill', repeatText(item.repeatMinutes))] : []), el('span', `pill ${item.createdBy === 'user' ? '' : 'accent'}`, item.createdBy === 'user' ? '你设的' : 'TA 自己约的'));
+    main.append(el('strong', '', item.note), meta);
+    row.append(iconBadge(item.createdBy === 'user' ? '你' : 'TA', 'accent'), main, button('取消', () => void command({ type: 'schedule.cancel', id: item.id }), 'btn ghost small'));
     list.append(row);
   }
   root.append(add, list);
@@ -542,9 +510,9 @@ function renderSchedules(root: HTMLElement, s: AppSnapshot) {
 function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
   const box = s.settings.sandbox!;
   const level = section('执行器沙箱级别', 'GalAgent 的本机工具（读写文件、Shell、联网）受这里约束。这是应用内保护，不等同于操作系统沙箱。');
-  const seg = el('div', 'segmented');
+  const seg = el('div', 'segmented'); seg.setAttribute('role', 'radiogroup');
   for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '工作目录内读写 · 无 Shell · 仅公网'], ['open', '宽松', '全盘读写（受保护目录除外）· 允许 Shell']] as const) {
-    const b = button('', () => void sandbox(s, { level: value }), 'segment'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
+    const b = button('', () => void sandbox(s, { level: value }), 'segment selectable'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
   }
   level.append(seg,
     field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
@@ -569,35 +537,41 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
     field('剪贴板（最近 50 条）', toggle(s.settings.clipboardEnabled, v => void settings({ clipboardEnabled: v })), '标记为敏感的剪贴板内容会被跳过'),
     field('截屏黑名单', linesArea(s.settings.captureBlocklist, v => void settings({ captureBlocklist: v }), 4, '应用名或窗口标题关键词'), '', 'field wide'),
   );
-  const audit = section('今日防护记录', '只记录类别和次数，从不保存被隐藏的内容。');
+  const lockdown = button('一键隐私锁定', async () => { const r = await command({ type: 'privacy.lockdown' }); if (r.ok) toast('已停止观察、中止任务并切换到严格沙箱。'); }, 'btn danger solid small');
+  const audit = section('今日防护记录', '只记录类别和次数，从不保存被隐藏的内容。', lockdown);
   const stats = el('div', 'stat-row'); const v = s.privacy || { redactedToday: 0, blockedToday: 0, recent: [] };
-  for (const [n, label] of [[v.redactedToday, '处隐藏'], [v.blockedToday, '次拦截']] as const) { const stat = el('div', 'stat'); stat.append(el('strong', '', String(n)), el('small', '', label)); stats.append(stat); }
+  for (const [n, label] of [[v.redactedToday, '处隐藏'], [v.blockedToday, '次拦截']] as const) { const stat = el('div', 'tile stat'); stat.append(el('strong', '', String(n)), el('small', '', label)); stats.append(stat); }
   audit.append(stats);
   const names: Record<string, string> = { 'api-key': '密钥', 'private-key': '私钥', jwt: '令牌', bearer: '令牌', credential: '口令', 'id-card': '身份证', 'bank-card': '银行卡', phone: '手机号', email: '邮箱', custom: '敏感词', domain: '域名不在白名单', 'network-off': '联网已关闭' };
   const channels: Record<string, string> = { chat: '聊天', initiative: '主动开口', background: '后台整理', executor: '执行器', 'executor-fetch': '执行器联网', tts: '语音', fetch: '联网' };
-  for (const e of v.recent.slice(0, 12)) { const row = el('div', 'list-row compact'); row.append(el('small', '', clockText(e.at)), el('span', '', `${channels[e.channel] || e.channel} · ${e.action === 'blocked' ? '拦截' : '隐藏'} ${e.kinds.map(k => names[k] || k).join('、')} ×${e.count}`)); audit.append(row); }
-  const row = el('div', 'row'); row.append(button('清空记录', () => void command({ type: 'privacy.clearAudit' }), 'btn ghost small'), button('🔒 一键隐私锁定', async () => { const r = await command({ type: 'privacy.lockdown' }); if (r.ok) toast('已停止观察、中止任务并切换到严格沙箱。'); }, 'btn danger small'));
-  audit.append(row);
+  for (const e of v.recent.slice(0, 12)) { const row = el('div', 'list-row compact'); row.append(el('time', '', clockText(e.at)), el('span', `pill ${e.action === 'blocked' ? 'warn' : 'accent'}`, e.action === 'blocked' ? '拦截' : '隐藏'), el('span', 'spacer', `${channels[e.channel] || e.channel} · ${e.kinds.map(k => names[k] || k).join('、')} ×${e.count}`)); audit.append(row); }
+  if (v.recent.length) { const row = el('div', 'row'); row.append(button('清空记录', () => void command({ type: 'privacy.clearAudit' }), 'btn ghost small')); audit.append(row); }
   root.append(level, out, eyes, audit);
 }
 
 function renderMemories(root: HTMLElement, s: AppSnapshot) {
+  const add = section('让 TA 记住一件事', '写下来的事会成为 TA 的长期记忆；不确定的事 TA 不会当真。');
   const form = el('form', 'inline-form'); const area = el('textarea'); area.rows = 2; area.maxLength = 1500; area.placeholder = '有一件事，希望 TA 记住…'; const save = el('button', 'btn primary', '记住'); save.type = 'submit'; form.append(area, save);
   form.onsubmit = async event => { event.preventDefault(); if (area.value.trim() && (await command({ type: 'memory.remember', text: area.value.trim() })).ok) area.value = ''; };
-  root.append(form);
+  add.append(form);
   const items = s.memories.filter(x => x.valid);
-  if (!items.length) root.append(emptyPet(s, '还没有记忆。慢慢来，我们有时间。', 'think'));
-  const list = el('div', 'memory-list');
+  const list = section('TA 记住的事', items.length ? `共 ${items.length} 条，新的在前` : '');
+  if (!items.length) list.append(emptyPet(s, '还没有记忆。慢慢来，我们有时间。', 'think'));
   for (const item of [...items].reverse()) {
-    const card = el('article', 'card memory');
-    const head = el('div', 'row'); head.append(el('span', 'pill', ({ fact: '事实', episode: '共同经历', reflection: '感受' })[item.kind]), ...(item.importance && item.importance >= 4 ? [el('span', 'pill on', '重要')] : []), el('small', 'spacer', new Date(item.createdAt).toLocaleDateString('zh-CN')));
-    const text = el('p', '', item.text);
-    const actions = el('div', 'row');
-    actions.append(button('纠正', () => { const editor = el('textarea'); editor.value = item.text; editor.maxLength = 1500; const ok = button('保存', async () => { if (editor.value.trim()) await command({ type: 'memory.correct', id: item.id, text: editor.value.trim() }); }, 'btn primary small'); text.replaceWith(editor); actions.replaceChildren(ok, button('取消', () => { editor.replaceWith(text); actions.replaceChildren(); }, 'btn ghost small')); editor.focus(); }, 'btn ghost small'),
-      button('删除', async () => { if (confirm('这条记忆、来源消息、同源记忆和相关札记会一起删除。确定吗？')) await command({ type: 'memory.delete', id: item.id }); }, 'btn ghost small danger'));
-    card.append(head, text, actions); list.append(card);
+    const row = el('div', 'list-row'), main = el('div', 'row-main'), meta = el('div', 'row-meta');
+    meta.append(el('span', 'pill', ({ fact: '事实', episode: '共同经历', reflection: '感受' })[item.kind]), ...(item.importance && item.importance >= 4 ? [el('span', 'pill accent', '重要')] : []), el('span', '', new Date(item.createdAt).toLocaleDateString('zh-CN')));
+    const text = el('p', '', item.text); main.append(text, meta);
+    const actions = el('div', 'row-actions');
+    const restore = () => actions.replaceChildren(fix, remove);
+    const fix = button('纠正', () => {
+      const editor = el('textarea'); editor.value = item.text; editor.maxLength = 1500; editor.rows = 2;
+      const ok = button('保存', async () => { if (editor.value.trim()) await command({ type: 'memory.correct', id: item.id, text: editor.value.trim() }); }, 'btn primary small');
+      text.replaceWith(editor); actions.replaceChildren(ok, button('取消', () => { editor.replaceWith(text); restore(); }, 'btn ghost small')); editor.focus();
+    }, 'btn ghost small');
+    const remove = button('删除', async () => { if (confirm('这条记忆、来源消息、同源记忆和相关札记会一起删除。确定吗？')) await command({ type: 'memory.delete', id: item.id }); }, 'btn danger small');
+    restore(); row.append(main, actions); list.append(row);
   }
-  root.append(list);
+  root.append(add, list);
 }
 
 function renderDiary(root: HTMLElement, s: AppSnapshot) {
@@ -607,36 +581,32 @@ function renderDiary(root: HTMLElement, s: AppSnapshot) {
     const r = await command({ type: 'archive.rebuild', day }); if (r.ok) toast('已开始重新整理，完成后这里会自动更新。');
   };
   // Status line: when the nightly fold runs and whether anything is waiting or failed.
-  const status = el('div', 'journal-status');
-  const parts = ['每天 0 点整理前一天的对话，写成一份档案'];
-  if (j?.nextRunAt) parts.push(`下次整理 ${clockText(j.nextRunAt)}（${relativeTime(j.nextRunAt)}）`);
+  const parts = ['每天 0 点整理前一天的对话'];
+  if (j?.nextRunAt) parts.push(`下次 ${clockText(j.nextRunAt)}（${relativeTime(j.nextRunAt)}）`);
   if (j?.lastDay) parts.push(`最近一份：${dayLabel(j.lastDay)}`);
   if (j?.pendingDays.length) parts.push(`还有 ${j.pendingDays.length} 天等待整理`);
-  status.append(el('span', `journal-dot${j?.pendingDays.length ? ' busy' : ''}`), el('span', '', parts.join(' · ')));
-  root.append(status);
-  for (const day of (j?.failedDays || []).filter(d => !archives.some(a => a.day === d))) {
-    const row = el('div', 'banner row'); row.append(el('span', 'spacer', `${dayLabel(day)} 的档案没有整理成功。`), button('重新整理', rebuild(day), 'btn ghost small')); root.append(row);
-  }
-  if (!archives.length && !s.diary.length) { root.append(emptyPet(s, '第一页还空着。今天聊过的话，会在明天 0 点变成第一份档案。', 'doodle')); return; }
+  root.append(notice(parts.join(' · '), '', undefined, j?.pendingDays.length ? 'warn busy' : 'ok'));
+  for (const day of (j?.failedDays || []).filter(d => !archives.some(a => a.day === d))) root.append(notice(`${dayLabel(day)} 的档案没有整理成功。`, 'warn', button('重新整理', rebuild(day), 'btn ghost small'), 'warn'));
+  if (!archives.length && !s.diary.length) { const box = section('第一页'); box.append(emptyPet(s, '第一页还空着。今天聊过的话，会在明天 0 点变成第一份档案。', 'doodle')); root.append(box); return; }
   const list = el('div', 'archive-list');
   archives.forEach((a, i) => {
-    const card = el('details', 'card archive'); card.open = i < 2;
+    const card = el('details', 'card flush archive'); card.open = i < 2;
     const d = new Date(`${a.day}T12:00:00`), head = el('summary', 'archive-head');
     const date = el('div', 'archive-date'); date.append(el('strong', '', Number.isNaN(d.getTime()) ? a.day.slice(-2) : String(d.getDate())), el('small', '', Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('zh-CN', { month: 'short', weekday: 'short' })));
     const title = el('div', 'archive-title'); title.append(el('strong', '', a.title || dayLabel(a.day)));
-    const meta = el('div', 'archive-meta'); if (a.mood) meta.append(el('span', 'pill on', a.mood)); meta.append(el('span', 'pill', `💬 ${a.messageCount} 条`)); title.append(meta);
+    const meta = el('div', 'archive-meta'); if (a.mood) meta.append(el('span', 'pill accent', a.mood)); meta.append(el('span', 'pill', `${a.messageCount} 条消息`)); title.append(meta);
     // Inside <summary>: stop the click from also toggling the card.
     const redo = tip(el('button', 'btn ghost small', '重新整理'), '按原始聊天记录重写这一天的档案', 'top'); redo.type = 'button';
     redo.onclick = event => { event.preventDefault(); event.stopPropagation(); void rebuild(a.day)(); };
     head.append(date, title, redo, el('span', 'archive-chevron', '›'));
     const body = el('div', 'archive-body');
-    if (a.summary) body.append(el('p', 'archive-summary', a.summary));
-    if (a.diary) { const diary = el('blockquote', 'archive-diary'); diary.append(el('small', '', `${s.identity.name || 'TA'} 的日记`), el('p', '', a.diary)); body.append(diary); }
-    if (a.topics.length) { const chips = el('div', 'topic-chips'); for (const t of a.topics) chips.append(el('span', 'topic', `# ${t}`)); body.append(chips); }
+    if (a.summary) body.append(el('p', '', a.summary));
+    if (a.diary) { const diary = el('blockquote', 'tile diary-note'); diary.append(el('small', '', `${s.identity.name || 'TA'} 的日记`), el('p', '', a.diary)); body.append(diary); }
+    if (a.topics.length) { const chips = el('div', 'chips'); for (const t of a.topics) chips.append(el('span', 'pill', `# ${t}`)); body.append(chips); }
     const cols = el('div', 'archive-cols');
-    for (const [heading, items, cls] of [['✦ 今天的高光', a.highlights, 'highlights'], ['⋯ 未完待续', a.openThreads, 'threads']] as const) {
+    for (const [heading, items, tone] of [['今天的高光', a.highlights, 'pink'], ['未完待续', a.openThreads, 'warn']] as const) {
       if (!items.length) continue;
-      const col = el('div', `archive-col ${cls}`), ul = el('ul'); col.append(el('h4', '', heading)); for (const item of items) ul.append(el('li', '', item)); col.append(ul); cols.append(col);
+      const col = el('div', 'tile'), h = el('h4'), ul = el('ul'); h.append(el('i', `dot ${tone}`), heading); col.append(h); for (const item of items) ul.append(el('li', '', item)); col.append(ul); cols.append(col);
     }
     if (cols.childElementCount) body.append(cols);
     card.append(head, body); list.append(card);
@@ -646,7 +616,7 @@ function renderDiary(root: HTMLElement, s: AppSnapshot) {
     const notes = section('随手札记', '更早的小日记：每 10 次相处写一篇。');
     const items = el('div', 'diary-list');
     for (const entry of [...s.diary].reverse()) {
-      const card = el('article', `diary${entry.kind === 'journal' ? ' journal' : ''}`);
+      const card = el('article', 'tile');
       card.append(el('time', '', new Date(entry.createdAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' }) + (entry.title ? ` ·《${entry.title}》` : '')), el('p', '', entry.text), el('small', 'hint', `引用 ${entry.sourceIds.length} 条真实相处记录`));
       items.append(card);
     }
@@ -658,13 +628,13 @@ function renderAchievements(root: HTMLElement, s: AppSnapshot) {
   const bond = s.bond, name = s.identity.name || s.persona?.active.name || 'TA';
   const list = bond?.achievements?.length ? bond.achievements : achievementDefs.map(({ id, icon, title, description, hidden }) => ({ id, icon, title, description, hidden, unlockedAt: undefined as string | undefined }));
   const unlocked = list.filter(a => a.unlockedAt).length;
-  const hero = el('section', 'card bond-hero');
+  const hero = el('section', 'card feature bond-hero');
   const info = el('div', 'bond-hero-info');
   const met = bond?.firstMetAt ? new Date(bond.firstMetAt) : undefined;
   info.append(el('h3', '', met ? `和${name}相识于 ${met.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}` : `和${name}的故事刚刚开始`), el('p', 'hint', bond ? '每天来打个招呼，连续天数就会增长；断了也没关系，TA 会一直在。' : '相处数据还在加载，稍后就会出现。'));
   const stats = el('div', 'bond-stats');
   for (const [value, label, icon] of [[bond?.daysTogether, '陪伴天数', '🌱'], [bond?.streakDays, '连续打卡', '🔥'], [bond?.activeDays, '相处过的日子', '📅'], [bond?.todayChats, '今天聊了', '💬']] as const) {
-    const stat = el('div', 'stat'); stat.append(el('span', 'stat-icon', icon), el('strong', '', value === undefined ? '—' : String(value)), el('small', '', label)); stats.append(stat);
+    const stat = el('div', 'tile stat'); stat.append(iconBadge(icon, 'sm'), el('strong', '', value === undefined ? '—' : String(value)), el('small', '', label)); stats.append(stat);
   }
   info.append(stats);
   hero.append(miniPet(s, unlocked ? 'celebrate' : 'wave', 'pleased', 'bond-hero-pet'), info);
@@ -673,17 +643,17 @@ function renderAchievements(root: HTMLElement, s: AppSnapshot) {
   const grid = el('div', 'trophy-grid');
   for (const a of list) {
     const def = achievementDefs.find(d => d.id === a.id), secret = !a.unlockedAt && (a.hidden ?? def?.hidden);
-    const tile = el('article', `trophy${a.unlockedAt ? ' unlocked' : ' locked'}${secret ? ' secret' : ''}`);
-    tile.append(el('span', 'trophy-badge', secret ? '？' : a.icon), el('strong', '', secret ? '？？？' : a.title), el('small', '', secret ? '隐藏成就，相处中自然会遇到' : a.description));
-    tile.append(el('span', 'trophy-foot', a.unlockedAt ? `✓ ${new Date(a.unlockedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 解锁` : def?.client ? '桌宠互动' : '相处中解锁'));
+    const tile = el('article', `tile trophy${a.unlockedAt ? ' unlocked' : ' locked'}${secret ? ' secret' : ''}`);
+    tile.append(iconBadge(secret ? '？' : a.icon, 'lg'), el('strong', '', secret ? '？？？' : a.title), el('small', '', secret ? '隐藏成就，相处中自然会遇到' : a.description));
+    tile.append(el('span', 'trophy-foot', a.unlockedAt ? `${new Date(a.unlockedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 解锁` : def?.client ? '桌宠互动' : '相处中解锁'));
     if (a.unlockedAt) tip(tile, `${a.title} · ${clockText(a.unlockedAt)}`, 'top');
     grid.append(tile);
   }
   badges.append(grid);
   const how = section('和小人玩耍', '这些都只在本机发生，不会调用模型。');
-  const tips = el('div', 'play-tips');
+  const tips = el('div', 'tile-grid');
   for (const [icon, title, text] of [['🤲', '摸摸头', '鼠标在小人头上来回轻扫'], ['⚡', '蓄力跳', '按住小人一秒多，看到发光再松手'], ['🪁', '甩出去', '拖着小人快速一甩再松手'], ['👉', '戳一戳', '连续轻点小人'], ['😵', '晃一晃', '拖着小人左右快速摇晃'], ['⌨️', 'Ctrl+K', '在这里打开快捷操作']] as const) {
-    const t = el('div', 'play-tip'); t.append(el('span', 'play-icon', icon), el('strong', '', title), el('small', '', text)); tips.append(t);
+    const t = el('div', 'tile play-tip'); t.append(iconBadge(icon), el('strong', '', title), el('small', '', text)); tips.append(t);
   }
   how.append(tips);
   root.append(hero, badges, how);
@@ -697,9 +667,10 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const name = el('input'); name.value = s.provider.model; name.required = true; name.spellcheck = false;
   const key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.placeholder = s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key';
   form.append(field('接入方式', mode), field('API 地址', url), field('模型', name), field('API Key', key));
-  const presets = el('div', 'row wrap wide');
+  const presets = el('div', 'row wrap');
+  presets.append(el('small', 'hint', '快速填入：'));
   for (const [label, m, u, n] of [['Mira 本地反代', 'mira-proxy', 'http://127.0.0.1:18890/v1', 'kimi-code/k3'], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
-    presets.append(button(label, () => { mode.value = m; url.value = u; name.value = n; }, 'chip'));
+    presets.append(button(label, () => { mode.value = m; url.value = u; name.value = n; }, 'chip small'));
   const save = el('button', 'btn primary', '保存连接'); save.type = 'submit';
   form.append(presets, save);
   form.onsubmit = async event => { event.preventDefault(); const k = key.value; key.value = ''; const r = await command({ type: 'config.save', baseUrl: url.value.trim(), model: name.value.trim(), mode: mode.value as 'mira-proxy' | 'native-api', ...(k ? { apiKey: k } : {}) }); if (r.ok) toast('连接已保存，回到聊天打个招呼吧。'); };
@@ -713,7 +684,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   let speed = s.settings.ttsSpeed || 1;
   tform.append(field('启用自动朗读', toggle(!!s.settings.ttsEnabled, v => void command({ type: 'tts.configure', ttsEnabled: v }))), field('TTS 地址', tUrl), field('模型', tModel), field('音色', tVoice), field('语速', numberInput(speed, v => { speed = v; }, { step: 0.1, unit: '倍' })), field('TTS Key', tKey));
   const tsave = el('button', 'btn primary', '保存语音'); tsave.type = 'submit';
-  const row = el('div', 'row wide'); row.append(tsave, button('试听', async () => { const p = s.persona?.active; const r = await command({ type: 'tts.speak', text: p?.greeting || '你好，很高兴认识你。' }); if (r.ok) toast('正在试听…'); }, 'btn ghost'));
+  const row = el('div', 'row'); row.append(tsave, button('试听', async () => { const p = s.persona?.active; const r = await command({ type: 'tts.speak', text: p?.greeting || '你好，很高兴认识你。' }); if (r.ok) toast('正在试听…'); }, 'btn ghost'));
   tform.append(row);
   tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
@@ -723,14 +694,14 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const task = el('textarea'); task.rows = 3; task.maxLength = 12000; task.placeholder = '要执行的任务，例如：统计这个文件夹里有多少张图片';
   const run = el('button', 'btn primary', '开始执行'); run.type = 'submit';
   const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : s.agent?.lastResult ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[s.agent.lastResult.status]} · ${s.agent.lastResult.toolCount} 次工具调用` : '待命');
-  const cwdRow = el('div', 'row wide'); cwdRow.append(cwd, button('保存目录', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
-  aform.append(field('工作目录', cwdRow, '沙箱的“工作目录”指这里', 'field wide'), field('任务', task, '', 'field wide'), el('div', 'row wide'), status);
-  aform.children[2].append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'));
+  const cwdRow = el('div', 'row'); cwdRow.append(cwd, button('保存目录', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
+  const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), el('span', 'spacer'), status);
+  aform.append(field('工作目录', cwdRow, '沙箱的“工作目录”指这里', 'field wide'), field('任务', task, '', 'field wide'), runRow);
   aform.onsubmit = async event => { event.preventDefault(); if (task.value.trim() && (await command({ type: 'agent.run', task: task.value.trim() })).ok) toast('任务已交给执行器，结果会回到聊天里。'); };
   agent.append(aform);
-  const archive = section('存档');
+  const archive = section('存档', '存档包含聊天、记忆、日记、自定义角色卡与提醒，不包含任何密钥。');
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
-  archive.append(arow, el('p', 'hint', '存档包含聊天、记忆、日记、自定义角色卡与提醒，不包含任何密钥。'));
-  const thanks = section('致谢'); thanks.append(el('p', 'hint', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra'));
+  archive.append(arow);
+  const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
   root.append(model, tts, agent, archive, thanks);
 }

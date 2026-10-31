@@ -4,6 +4,7 @@ import sunnyGirl from './sunny-girl.json';
 import scholarBoy from './scholar-boy.json';
 import peachTwintail from './peach-twintail.json';
 import starWitch from './star-witch.json';
+import kimiStar from './kimi-star.json';
 import mochiCat from './mochi-cat.json';
 import foxKit from './fox-kit.json';
 import puffBunny from './puff-bunny.json';
@@ -20,6 +21,7 @@ const raw: unknown[] = [
   scholarBoy,
   peachTwintail,
   starWitch,
+  kimiStar,
   mochiCat,
   foxKit,
   puffBunny,

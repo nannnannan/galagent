@@ -1,5 +1,12 @@
 # GalAgent 当前续接
 
+## 最新交付 · TAVERN-KIMI-20261031 · Kimi 可选、酒馆写法角色卡、界面统一、桌宠菜单按钮
+
+- Kimi 角色卡 `builtin:kimi`（`runtime/shared/personas.ts`，非默认）与小人 `kimi-star`（`scripts/pixel-pet/generate-builtins.mjs` 生成）。
+- 角色卡结构化部分 `PersonaProfile.card`（基本信息 / 外貌 / 调色盘与衍生 / 语料 / 三面性 / 二次解释 / 按相处天数的多阶段 / NPC）；写法与参考见 `skills/galagent-persona/`；编辑器 `runtime/renderer/persona-editor.ts`。
+- 界面统一与桌宠菜单按钮停留：`runtime/renderer/style.css`、`pet-view.ts`（`pixel-pet.ts` 新增 `restBox()`）。
+- 验证：typecheck、build、177 项测试通过；截图 `docs/evidence/ui/editor-*.png`、`pet-handle*.png`。仍未在 Windows 实机验收。
+
 ## 最新交付 · AGENT-MEMORY-20261029 · 主代理工具 / 并发与重试 / 每日档案 / 彩蛋与成就
 
 1. **定时改为主代理工具调用**：`runtime/core/main-tools.ts`；`companion.ts` 的 `request()` 加入最多 3 轮工具循环（助手工具轮原样回放，含思考字段）；`scheduler.ts` 支持 cron；执行器 `CronCreate/List/Delete` 经 `mainCron` 钩子唤醒主角色。

@@ -213,7 +213,7 @@ test('K3 sends supported low-reasoning parameters and replays the complete priva
 });
 test('raw thinking tokens consume context allowance and pairs are omitted whole rather than truncated', async () => {
     const contexts:any[]=[];let turn=0;
-    const raw={role:'assistant',content:JSON.stringify({text:'可见短句',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'星'.repeat(15000),opaque_field:'untouched'};
+    const raw={role:'assistant',content:JSON.stringify({text:'可见短句',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'星'.repeat(30000),opaque_field:'untouched'};
     const {core,cleanup}=await setup(async(_url,init)=>{const body=JSON.parse(String(init?.body));if(String(body.messages[0].content).includes('facts每项'))return new Response(JSON.stringify({choices:[{message:{content:'{"facts":[],"diary":""}'}}]}));contexts.push(body.messages);return new Response(JSON.stringify({choices:[{message:++turn===1?raw:{...raw,reasoning_content:'small'}}]}));});
     await core.handle({type:'chat.send',text:'必须整对裁剪的原问题'});await core.waitForBackground();await core.handle({type:'chat.send',text:'第二问'});await core.waitForBackground();
     assert.equal(contexts[1].filter((m:any)=>m.role==='assistant').length,0);assert.equal(contexts[1].filter((m:any)=>m.role==='user').length,1);assert.equal(JSON.stringify(contexts[1]).includes('星'.repeat(100)),false);assert.ok(core.getSnapshot().status.contextTokens<=CONTEXT_BUDGET);

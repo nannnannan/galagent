@@ -2,7 +2,7 @@
 // Everything here is pointer-events: none and never takes part in the pet's hit-testing.
 import type { BondView } from '../shared/contracts';
 import type { Season } from './fun';
-import { el } from './ui';
+import { el, iconBadge } from './ui';
 
 const reduced = () => document.body.classList.contains('reduced-motion') || matchMedia('(prefers-reduced-motion: reduce)').matches;
 const COLORS = ['#7c5cff', '#ff8fb1', '#ffd75e', '#5fd4a8', '#6fb8ff', '#ff9f5a'];
@@ -26,7 +26,7 @@ export function confetti(origin?: { x: number; y: number }, count = 36, spread =
 type Achievement = BondView['achievements'][number];
 const queue: Achievement[] = [];
 let showing = false;
-/** Notebook-style toast: "🏆 解锁成就：xxx", one at a time, with confetti. */
+/** Notebook-style toast: "解锁成就 · xxx", one at a time, with confetti. */
 export function trophyToast(item: Achievement) {
   queue.push(item);
   if (!showing) next();
@@ -36,8 +36,8 @@ function next() {
   if (!item) { showing = false; return; }
   showing = true;
   const box = el('div', 'trophy-toast'); box.setAttribute('role', 'status');
-  const text = el('div', 'trophy-text'); text.append(el('small', '', '🏆 解锁成就'), el('strong', '', item.title), el('span', '', item.description));
-  box.append(el('span', 'trophy-icon', item.icon || '🏆'), text);
+  const text = el('div', 'trophy-text'); text.append(el('small', '', '解锁成就'), el('strong', '', item.title), el('span', '', item.description));
+  box.append(iconBadge(item.icon || '🏆', 'lg gold'), text);
   document.body.append(box);
   requestAnimationFrame(() => box.classList.add('visible'));
   const rect = () => box.getBoundingClientRect();

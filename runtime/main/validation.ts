@@ -106,7 +106,7 @@ export function validateCommand(value: unknown): AppCommand {
       if (!id(command.id)) throw new Error('角色卡标识无效。'); break;
     case 'persona.save':
       if (command.id !== undefined && !id(command.id)) throw new Error('角色卡标识无效。');
-      if (!plain(command.persona) || JSON.stringify(command.persona).length > 20000) throw new Error('角色卡格式无效。'); break;
+      if (!plain(command.persona) || JSON.stringify(command.persona).length > 26000) throw new Error('角色卡格式无效。'); break;
     case 'persona.import':
       if (!bounded(command.text, 64000) || !command.text.trim()) throw new Error('角色卡文件为空或过大。'); break;
     case 'persona.generate':

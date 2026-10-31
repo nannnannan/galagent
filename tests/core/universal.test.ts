@@ -11,10 +11,15 @@ import { builtinPersonas, buildPersonaPrompt, parsePersonaFile, personaFile, nor
 
 async function store() { const dir = await mkdtemp(join(tmpdir(), 'galagent-universal-')); return { store: new Store(dir), cleanup: () => rm(dir, { recursive: true, force: true }) }; }
 
-test('built-in character cards are generic, valid and free of the old hard-coded persona', () => {
+test('built-in character cards are valid; only the opt-in Kimi card carries the Kimi persona', () => {
+  const kimi = builtinPersonas.find(p => p.id === 'builtin:kimi')!;
+  assert.doesNotThrow(() => normalizePersona(kimi));
+  assert.notEqual(builtinPersonas[0].id, kimi.id, 'Kimi is selectable, never the default');
+  const kimiPrompt = buildPersonaPrompt(kimi);
+  assert.ok(kimiPrompt.includes('底色：亲近') && kimiPrompt.includes('亲近衍生一：平时你不理她') && kimiPrompt.includes('关于作者原话'));
   assert.ok(builtinPersonas.length >= 6);
   assert.equal(new Set(builtinPersonas.map(p => p.id)).size, builtinPersonas.length);
-  for (const p of builtinPersonas) {
+  for (const p of builtinPersonas.filter(p => p.id !== 'builtin:kimi')) {
     assert.doesNotThrow(() => normalizePersona(p));
     const prompt = buildPersonaPrompt(p);
     assert.ok(prompt.includes(p.name));
@@ -152,4 +157,20 @@ test('forgetting curve: a recalled memory outranks an equally old one that was n
   const now = Date.parse('2026-10-29T00:00:00Z'), old = '2026-08-01T00:00:00Z';
   const base = { id: 'a', kind: 'fact' as const, text: 'x', sourceId: 's', createdAt: old, valid: true };
   assert.ok(memoryBoost({ ...base, recalls: 2, lastRecalledAt: '2026-10-28T00:00:00Z' }, now) > memoryBoost(base, now));
+});
+
+test('tavern-card structure: validated, phase picked by days together, rendered into the prompt; the skill example imports', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const doc = await readFile(join(process.cwd(), 'skills/galagent-persona/SKILL.md'), 'utf8');
+  const example = doc.match(/```json\n([\s\S]*?)\n```/)![1];
+  const parsed = parsePersonaFile(example);
+  assert.equal(parsed.card!.base, '叛逆');
+  const card = { ...parsed.card!, phases: [{ name: '初识', fromDays: 0, main: [], accents: [], derivations: [], notes: [] }, { name: '依赖', fromDays: 30, main: ['依赖'], accents: [], derivations: [{ trait: '依赖', text: '睡觉时会抓住<user>的衣角' }], notes: [] }] };
+  const p = { ...parsed, userTitle: '阿青', card: normalizePersona({ ...parsed, card }).card };
+  assert.match(buildPersonaPrompt(p, 3), /当前阶段：初识/);
+  const later = buildPersonaPrompt(p, 45);
+  assert.match(later, /主色调：依赖/);
+  assert.match(later, /睡觉时会抓住阿青的衣角/, '<user> becomes the user title');
+  assert.throws(() => normalizePersona({ name: 'x', card: { derivations: 'oops' } }), /衍生/);
+  assert.equal(normalizePersona({ name: 'x', card: {} }).card, undefined, 'an empty structured card is dropped');
 });
