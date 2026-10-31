@@ -55,7 +55,7 @@ test('main character uses K3 thinking budget for every K3.1 alias and preserves 
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
-test('executor keeps K3.1 thinking and 25 tools, while explicit native API still omits private fields', async () => {
+test('executor keeps K3.1 thinking and 26 tools, while explicit native API still omits private fields', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'galagent-k31-tools-'));
   try {
     for (const mode of [undefined, 'mira-proxy', 'native-api'] as const) {
@@ -63,7 +63,7 @@ test('executor keeps K3.1 thinking and 25 tools, while explicit native API still
       const agent = new OpenAIToolAgent({ provider: () => ({ baseUrl: 'https://example.com/v1', model: MIRA_DEFAULT_MODEL, mode }), credentials, ask: async () => ({}), fetch: async (_url, init) => { request = JSON.parse(String(init?.body)); return json('完成'); } });
       try {
         assert.equal((await agent.run('say hello', dir, new AbortController().signal)).stopReason, 'end_turn');
-        assert.equal(request.model, MIRA_DEFAULT_MODEL); assert.equal(request.tools.length, 25); assert.equal(request.stream, true);
+        assert.equal(request.model, MIRA_DEFAULT_MODEL); assert.equal(request.tools.length, 26); assert.equal(request.stream, true);
         if (mode === 'native-api') { assert.equal(request.thinking, undefined); assert.equal(request.max_completion_tokens, undefined); }
         else { assert.deepEqual(request.thinking, { type: 'enabled', keep: 'all' }); assert.equal(request.max_completion_tokens, 4096); }
       } finally { agent.close(); }

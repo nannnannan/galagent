@@ -6,7 +6,8 @@ import { builtinPixelPets } from '../shared/pixel-pets';
 import { PixelPet } from './pixel-pet';
 import { SpeechPlayback } from './speech-playback';
 import { VoicePlayer } from './voice';
-import { AchievementWatcher, Mischief, Petting, konami, patLines } from './fun';
+import { typingDelay } from '../shared/reply';
+import { AchievementWatcher, Mischief, Petting, busyLabeler, chatReaction, konami, patLines } from './fun';
 import { renderMarkdown } from './markdown';
 import { confetti, trophyToast } from './effects';
 import { openPalette, type PaletteAction } from './palette';
@@ -50,7 +51,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   app.innerHTML = `<main class="notebook">
     <aside class="sidebar">
       <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面陪伴 · 养成 · 助手</small></span></div>
-      <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span></div></div>
+      <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span><small id="portrait-mood" class="portrait-mood"></small></div></div>
       <button id="bond-card" class="bond-card" type="button">
         <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="pill gold" id="bond-trophies"></span></span>
         <span class="bond-chips"><span id="bond-streak"></span><span aria-hidden="true">·</span><span id="bond-today"></span></span>
@@ -68,7 +69,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
           <div id="runtime-error" class="notice warn" hidden></div>
           <div class="composer-box"><textarea id="input" rows="1" maxlength="12000" placeholder="说点什么…  (Enter 发送，Shift+Enter 换行，/任务 xxx 交给执行器)"></textarea>
           <button id="send" class="btn primary round" type="submit" aria-label="发送">↑</button></div>
-          <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> 正在想</span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
+          <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> <span id="thinking-text">正在想</span></span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
         </form>
       </div>
       <div id="content-page" class="content-page" hidden></div>
@@ -128,7 +129,20 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   const portraitStatus = app.querySelector<HTMLElement>('#portrait-status')!;
   let statusLine: { text: string; until: number } | undefined;
   const sidebarSay = (text: string, ms = 2600) => { statusLine = { text, until: Date.now() + ms }; renderStatus(); setTimeout(renderStatus, ms + 30); };
-  function renderStatus() { const own = statusLine && Date.now() < statusLine.until; portraitStatus.textContent = own ? statusLine!.text : snapshot.activity?.label || ''; portraitStatus.dataset.kind = own ? 'fun' : snapshot.activity?.kind || 'idle'; }
+  // Rotating Claude-Code-style words while busy, shared by the portrait pill and the composer's "正在想".
+  const busyText = busyLabeler(), thinkingText = app.querySelector<HTMLElement>('#thinking-text')!, statusText = el('span');
+  let busyTimer: ReturnType<typeof setInterval> | undefined;
+  function renderStatus() {
+    const own = statusLine && Date.now() < statusLine.until, fun = snapshot.settings.funCaptions !== false;
+    const busy = busyText(snapshot.activity, snapshot.persona?.active.thinkingLines || []);
+    if (busy !== undefined && !busyTimer) busyTimer = setInterval(() => { if (!document.hidden) renderStatus(); }, 500);
+    if (busy === undefined && busyTimer) { clearInterval(busyTimer); busyTimer = undefined; }
+    const label = busy !== undefined && fun ? busy : snapshot.activity?.label || '';
+    const sparkle = !own && busy !== undefined && fun;
+    if (statusText.parentElement !== portraitStatus) portraitStatus.replaceChildren(statusText);
+    statusText.textContent = own ? statusLine!.text : label; statusText.classList.toggle('spark-text', sparkle); portraitStatus.dataset.kind = own ? 'fun' : snapshot.activity?.kind || 'idle';
+    thinkingText.textContent = busy !== undefined && fun ? busy : '正在想'; thinkingText.classList.toggle('spark-text', busy !== undefined && fun);
+  }
   const overPortraitHead = (x: number, y: number) => { const a = portrait.headAnchor(), r = portraitHost.getBoundingClientRect(); return Math.abs(x - a.x) < r.width * 0.28 && y >= a.y - 8 && y <= a.y + (r.bottom - a.y) * 0.5; };
   portraitHost.addEventListener('pointermove', event => {
     if (event.buttons) { portraitPetting.reset(); return; }
@@ -202,11 +216,16 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       const row = el('article', `message ${message.role}${message.source === 'scene' ? ' system' : ''}${fresh ? ' fresh' : ''}`);
       const who = message.role === 'user' ? '你' : message.speaker || snapshot.identity.name || 'TA';
       const meta = el('div', 'message-meta');
-      meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}`));
+      meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}${message.afterthought ? ' · 补了一句' : ''}`));
       const copy = tip(button('⧉', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
       copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
       let body: HTMLElement;
-      if (message.role === 'assistant') { body = el('div', 'message-text md'); body.innerHTML = renderMarkdown(message.text); }
+      if (message.role === 'assistant' && message.parts && message.parts.length > 1) {
+        // Sent as several short messages: each part is its own bubble, typed out one after another when new.
+        body = el('div', 'message-parts'); let delay = 0;
+        for (const part of message.parts) { const bubble = el('div', 'message-text md part'); bubble.innerHTML = renderMarkdown(part); if (fresh) { bubble.style.setProperty('--delay', `${delay}ms`); delay += typingDelay(part); } body.append(bubble); }
+      }
+      else if (message.role === 'assistant') { body = el('div', 'message-text md'); body.innerHTML = renderMarkdown(message.text); }
       else body = el('p', 'message-text', message.text);
       row.append(meta, body);
       appendFeedback(row, message); box.append(row);
@@ -293,7 +312,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     if (key === portraitKey) return; portraitKey = key; trackPet(id, snapshot);
     const spec = await loadPet(id, snapshot.pets?.revision || 0); if (spec !== portraitSpec) { portraitSpec = spec; portrait.setSpec(spec); }
   }
-  let lastVisual = -1;
+  let lastVisual = -1, lastUserMessage = initial.messages.filter(m => m.role === 'user').at(-1)?.id || '';
   function renderBond(next: AppSnapshot) {
     const bond = next.bond, list = bond?.achievements?.length ? bond.achievements : achievementDefs, unlocked = bond?.achievements.filter(a => a.unlockedAt).length || 0;
     app.querySelector('#bond-days')!.textContent = String(Math.max(1, bond?.daysTogether || 1));
@@ -313,6 +332,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const p = next.persona?.active;
     app.querySelector('#portrait-name')!.textContent = next.identity.name || p?.name || 'TA';
     app.querySelector('#portrait-tagline')!.textContent = p?.tagline || '';
+    const mood = app.querySelector<HTMLElement>('#portrait-mood')!; mood.textContent = next.vitality ? `心情：${next.vitality.label}` : ''; mood.dataset.tone = next.vitality?.tone || '';
     renderStatus(); renderBond(next);
     app.querySelector('#foot-stats')!.textContent = `${next.stats.memories} 件记忆 · ${next.stats.conversations} 次相处`;
     const current = pages.find(x => x.id === page)!;
@@ -324,6 +344,12 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const quiet = app.querySelector<HTMLElement>('#quiet')!; quiet.textContent = next.settings.quietUntil > Date.now() ? '恢复主动' : '安静一会'; quiet.classList.toggle('on', next.settings.quietUntil > Date.now());
     const signature = JSON.stringify([next.messages.map(m => m.id + m.text.length), next.companionship?.ratings, p?.id, next.status.busy, next.identity.name]);
     if (signature !== lastMessages) { lastMessages = signature; renderMessages(); }
+    const newest = next.messages.filter(m => m.role === 'user').at(-1);
+    if (newest && newest.id !== lastUserMessage) {
+      lastUserMessage = newest.id;
+      const reaction = next.settings.funCaptions !== false ? chatReaction(newest.text) : undefined;
+      if (reaction) { portraitEffect(reaction.action, 1800); portrait.impulse(reaction.effect === 'confetti' ? 'sparkles' : reaction.effect, 1); sidebarSay(reaction.line, 2400); }
+    }
     renderQuestions();
     if (page === 'chat') return;
     // Forms keep their DOM (and the user's half-typed text) until the page's own data changes.
@@ -466,6 +492,18 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
     field('自动朗读', toggle(!!st.ttsEnabled, v => void settings({ ttsEnabled: v })), '需在「连接」页配置语音'),
     deskActions,
   );
+  const bedtime = el('input'); bedtime.type = 'time'; bedtime.value = st.goodnightAt || '23:30'; bedtime.onchange = () => void settings({ goodnightAt: bedtime.value });
+  const lively = section('像真人一样', '这些都受上面的节奏、免打扰时段和陪伴模式约束；分享、早晚安和旧事重提也可以在下面的话题里单独关掉。');
+  lively.append(
+    field('分几条发消息', toggle(st.splitReplies !== false, v => void settings({ splitReplies: v })), '闲聊时一段话拆成 2–3 条，像在打字'),
+    field('偶尔补一句', toggle(st.afterthoughts !== false, v => void settings({ afterthoughts: v })), '回复后一两分钟“啊对了…”；你先开口就不补'),
+    field('心情与精力', toggle(st.moodEnabled !== false, v => void settings({ moodEnabled: v })), '深夜会困、被冷落会委屈，摸摸头就好'),
+    field('自己的小日程', toggle(st.routineEnabled !== false, v => void settings({ routineEnabled: v })), '头顶显示 TA 在做什么，可在角色卡里自定义'),
+    field('头顶小嘀咕', toggle(st.murmursEnabled !== false, v => void settings({ murmursEnabled: v })), '按前台应用类型冒一句，不进聊天记录（需开启桌面观察）'),
+    field('每天分享新鲜事', numberInput(st.shareDailyLimit ?? 1, v => void settings({ shareDailyLimit: v }), { step: 1, unit: '次' }), '会上网查你感兴趣的东西；0 = 不分享'),
+    field('旧事重提', numberInput(st.recallEveryDays ?? 3, v => void settings({ recallEveryDays: v }), { unit: '天一次' }), '冷不丁问起你几天前说过的事；0 = 关闭'),
+    field('道晚安的时间', bedtime, '过了这个点你还在，TA 会说晚安然后睡着'),
+  );
   const watch = section('TA 在留意的事', '告诉 TA 一件事，TA 会在合适的时候帮你看一眼。');
   const items = s.watches || [];
   if (!items.length) watch.append(emptyPet(s, '现在没有在留意的事。', 'idle', undefined, true));
@@ -473,7 +511,7 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
   const form = el('form', 'inline-form'); const input = el('input'); input.placeholder = '比如：下午那个快递到了没'; input.maxLength = 120; const add = el('button', 'btn primary', '添加'); add.type = 'submit'; form.append(input, add);
   form.onsubmit = async event => { event.preventDefault(); if (input.value.trim() && (await command({ type: 'watch.add', title: input.value.trim() })).ok) input.value = ''; };
   watch.append(form);
-  root.append(modes, pace, quiet, topics, desk, watch);
+  root.append(modes, pace, lively, quiet, topics, desk, watch);
 }
 
 const repeatText = (minutes: number) => minutes >= 1440 && minutes % 1440 === 0 ? `每 ${minutes / 1440} 天` : minutes >= 60 && minutes % 60 === 0 ? `每 ${minutes / 60} 小时` : `每 ${minutes} 分钟`;
@@ -512,13 +550,14 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
   const box = s.settings.sandbox!;
   const level = section('执行器沙箱级别', 'GalAgent 的本机工具（读写文件、Shell、联网）受这里约束。这是应用内保护，不等同于操作系统沙箱。');
   const seg = el('div', 'segmented'); seg.setAttribute('role', 'radiogroup');
-  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '工作目录内读写 · 无 Shell · 仅公网'], ['open', '宽松', '全盘读写（受保护目录除外）· 允许 Shell']] as const) {
+  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '全盘可读 · 只在工作目录写 · 命令先问你 · 公网搜索'], ['open', '宽松', '全盘读写（受保护目录除外）· 命令不再询问']] as const) {
     const b = button('', () => void sandbox(s, { level: value }), 'segment selectable'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
   }
   level.append(seg,
-    field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
-    field('允许 Shell 命令', toggle(box.shell, v => void sandbox(s, { shell: v })), '脚本可以绕过文件检查，开启前请确认'),
-    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '只能访问公网，本机与局域网地址始终拒绝'),
+    field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['read-anywhere', '任意位置可读，只在工作目录写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
+    field('允许 Shell 命令', toggle(box.shell, v => void sandbox(s, { shell: v })), '脚本可以绕过文件检查'),
+    field('运行命令前问我', toggle(box.shellConfirm !== false, v => void sandbox(s, { shellConfirm: v })), '每条命令先在聊天页给你看，可选“本任务都允许”'),
+    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '网页搜索与读网页；只能访问公网，本机与局域网地址始终拒绝'),
     field('只允许访问这些域名', linesArea(box.allowedDomains, v => void sandbox(s, { allowedDomains: v }), 3, '每行一个，如 github.com；留空不限'), '', 'field wide'),
     field('禁止访问的文件夹', linesArea(s.settings.forbiddenPaths || [], v => void settings({ forbiddenPaths: v }), 3, '每行一个路径'), '设置后 Shell 自动停用；修改会中止进行中的任务', 'field wide'),
   );
@@ -689,7 +728,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   tform.append(row);
   tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
-  const agent = section('本机执行器', `25 个本地工具（文件、搜索、Shell、联网、子代理）。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
+  const agent = section('本机执行器', `26 个本地工具（文件、搜索、Shell、网页搜索与读网页、子代理）。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
   const task = el('textarea'); task.rows = 3; task.maxLength = 12000; task.placeholder = '要执行的任务，例如：统计这个文件夹里有多少张图片';

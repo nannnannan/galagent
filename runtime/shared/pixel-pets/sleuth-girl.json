@@ -1,0 +1,213 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "sleuth-girl",
+  "name": "小探",
+  "description": "戴着格纹猎鹿帽、穿驼色风衣的小侦探，举着放大镜到处找线索，最擅长帮你找回“刚才还在这儿”的东西。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "侦探",
+    "推理"
+  ],
+  "size": [32, 35],
+  "palette": {
+    "o": "#3a2a1e",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#f2c76b",
+    "H": "#c99a40",
+    "L": "#fff0b8",
+    "c": "#c08a52",
+    "C": "#94653a",
+    "t": "#8a6a4a",
+    "T": "#6b4f35",
+    "u": "#b8946a",
+    "d": "#ffffff",
+    "g": "#7a5a30",
+    "l": "#cfeaff",
+    "n": "#4a3a50",
+    "b": "#4a3428",
+    "k": "#2d1b2e",
+    "e": "#3f6a52",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "...............oo...............",
+    "..............oTTo..............",
+    "..........ooootTTtoooo..........",
+    "........oouuuuuuuuuuuuoo........",
+    "......oottuttuttuttuttutoo......",
+    ".....otuttuttuttuttuttuttuo.....",
+    "....ouuuuuuuuuuuuuuuuuuuuuuo....",
+    "....ottuttuttuttuttuttuttuto....",
+    "....ottuttuttuttuttuttuttuto....",
+    ".....oohhhhTTTTTTTTTThhhhoo.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhHhhhHHHHhhhHhhhhho....",
+    "....ohhhhHSHhHSSSSHhHSHhhhho....",
+    "....ohhhHSsSHSssssSHSsSHhhho....",
+    "....ohhHSsssSssssssSsssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhHssssssssssssssHhhho....",
+    "....oHHHoHssssssssssssHoHHHo....",
+    ".....ooo.oossssssssssoo.ooo.....",
+    "........oo.oodssssdoo.oo........",
+    ".......occooccddddccoocco.......",
+    ".......oCCoCccCccCccCoCCo.......",
+    ".......oCCoCccccccccCoCCo.......",
+    ".......ossCCCCCCCCCCCCsso.......",
+    "........ooCccccccccccCoo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 16],
+    "mouth": [14, 22],
+    "blush": [8, 21],
+    "feet": [0, 31]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..nn.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..nn.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............nn..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "magnifier",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [22, 18],
+      "frames": [
+        [
+          "...oooo..",
+          "..oggggo.",
+          ".oggllggo",
+          ".ogldllgo",
+          ".ogllllgo",
+          ".oggllggo",
+          "..oggggo.",
+          "..ogooo..",
+          ".ogo.....",
+          "ogo......",
+          ".o......."
+        ]
+      ]
+    }
+  ]
+}

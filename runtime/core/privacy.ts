@@ -6,9 +6,9 @@ import type { PrivacyEvent, PrivacyView, SandboxLevel, SandboxSettings } from '.
 import type { Store } from './store';
 
 export const SANDBOX_PRESETS: Record<SandboxLevel, Omit<SandboxSettings, 'level' | 'allowedDomains' | 'sensitiveWords'>> = {
-  strict: { fileScope: 'workspace-read', shell: false, network: false, redactSecrets: true, redactPersonal: true },
-  standard: { fileScope: 'workspace', shell: false, network: true, redactSecrets: true, redactPersonal: false },
-  open: { fileScope: 'anywhere', shell: true, network: true, redactSecrets: true, redactPersonal: false },
+  strict: { fileScope: 'workspace-read', shell: false, shellConfirm: true, network: false, redactSecrets: true, redactPersonal: true },
+  standard: { fileScope: 'read-anywhere', shell: true, shellConfirm: true, network: true, redactSecrets: true, redactPersonal: false },
+  open: { fileScope: 'anywhere', shell: true, shellConfirm: false, network: true, redactSecrets: true, redactPersonal: false },
 };
 export const DEFAULT_SANDBOX: SandboxSettings = { level: 'standard', ...SANDBOX_PRESETS.standard, allowedDomains: [], sensitiveWords: [] };
 
@@ -27,8 +27,10 @@ export function normalizeSandbox(raw: unknown, previous: SandboxSettings = DEFAU
   if (!['strict', 'standard', 'open'].includes(level)) throw new Error('沙箱级别无效');
   const base: SandboxSettings = level !== previous.level ? { ...previous, level, ...SANDBOX_PRESETS[level] } : { ...previous };
   const out: SandboxSettings = { ...base };
-  if (r.fileScope !== undefined) { if (!['workspace-read', 'workspace', 'anywhere'].includes(r.fileScope)) throw new Error('文件范围无效'); out.fileScope = r.fileScope; }
-  for (const key of ['shell', 'network', 'redactSecrets', 'redactPersonal'] as const) if (r[key] !== undefined) { if (typeof r[key] !== 'boolean') throw new Error('沙箱开关格式无效'); out[key] = r[key]; }
+  if (r.fileScope !== undefined) { if (!['workspace-read', 'workspace', 'read-anywhere', 'anywhere'].includes(r.fileScope)) throw new Error('文件范围无效'); out.fileScope = r.fileScope; }
+  // Settings saved before shellConfirm existed: keep asking unless the level is open.
+  if (typeof out.shellConfirm !== 'boolean') out.shellConfirm = out.level !== 'open';
+  for (const key of ['shell', 'shellConfirm', 'network', 'redactSecrets', 'redactPersonal'] as const) if (r[key] !== undefined) { if (typeof r[key] !== 'boolean') throw new Error('沙箱开关格式无效'); out[key] = r[key]; }
   out.allowedDomains = list(r.allowedDomains, base.allowedDomains, 100, 200).map(d => d.toLowerCase().replace(/^\*\./, '').replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(d => /^[a-z0-9.-]+$/.test(d));
   out.sensitiveWords = list(r.sensitiveWords, base.sensitiveWords, 200, 100);
   return out;

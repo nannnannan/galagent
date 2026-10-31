@@ -34,9 +34,10 @@ const kiri: PersonaProfile = {
 const snapshot: AppSnapshot = structuredClone(previewSnapshot);
 snapshot.persona = { active: builtinPersonas[0], list: [...builtinPersonas, kiri], greeted: true };
 Object.assign(snapshot, {
-  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 25 },
+  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 26 },
   status: { ...snapshot.status, online: true, busy, embedding: 'ready', contextTokens: 3120, journal: { lastDay: day(-1), pendingDays: [], failedDays: [day(-4)], nextRunAt: new Date(new Date(now).setHours(24, 0, 30, 0)).toISOString() } },
-  activity: busy ? { kind: 'thinking', label: '思考中…' } : params.get('sleep') === '1' ? { kind: 'sleeping', label: '你不在，先眯一会儿' } : { kind: 'idle', label: '星野在这里' },
+  activity: busy ? { kind: 'thinking', label: '思考中…' } : params.get('sleep') === '1' ? { kind: 'sleeping', label: '你不在，先眯一会儿' } : { kind: 'idle', label: '星野 · 星空时间', routine: '星空时间' },
+  vitality: { energy: 46, mood: 81, tone: 'tired', label: '有点困' },
   pets: { catalog: builtinPixelPets.map(p => ({ id: p.id, name: p.name, description: p.description, builtin: true })), revision: 1 },
   settings: { ...snapshot.settings, petId: params.get('pet') || '' },
   visual: { expression: 'pleased', action: params.get('action') || 'wave', bubble: params.get('bubble') ?? '嘿！今天也一起加油吧～要不要先喝口水？', revision: 1, intensity: 0.85 },
@@ -46,6 +47,9 @@ Object.assign(snapshot, {
     { id: 'a', role: 'user', text: '我一会儿要去面试，有点紧张', createdAt: iso(-3600_000), source: 'chat' },
     { id: 'b', role: 'assistant', text: '欸！加油加油～深呼吸三次，把准备好的内容想一遍就好。\n\n**出门前检查一下：**\n- 简历打印 *两份*\n- 作品集链接：[我的作品集](https://example.com/portfolio)\n- 提前 `15 分钟` 到\n\n一小时后我来问你结果哦！', createdAt: iso(-3590_000), source: 'chat', speaker: '星野', personaId: 'builtin:xingye' },
     { id: 'c', role: 'assistant', text: '面试怎么样啦？我一直在等你的好消息～', createdAt: iso(-60_000), source: 'initiative', initiativeTopics: ['schedule'], speaker: '星野', personaId: 'builtin:xingye' },
+    { id: 'c2', role: 'user', text: '还在等通知……', createdAt: iso(-50_000), source: 'chat' },
+    { id: 'c3', role: 'assistant', text: '欸，那就是在认真考虑你！\n\n先别想啦，去吃点好吃的？', parts: ['欸，那就是在认真考虑你！', '先别想啦，去吃点好吃的？'], createdAt: iso(-45_000), source: 'chat', speaker: '星野', personaId: 'builtin:xingye' },
+    { id: 'c4', role: 'assistant', text: '啊对了，结果出来第一个告诉我哦', afterthought: true, createdAt: iso(-20_000), source: 'chat', speaker: '星野', personaId: 'builtin:xingye' },
     ...(busy ? [{ id: 'd', role: 'user', text: '过啦！！下周入职，帮我写个入职准备清单？', createdAt: iso(-5_000), source: 'chat' }] : []),
   ],
   schedules: emptyState ? [] : [
