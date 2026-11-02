@@ -92,7 +92,8 @@ test('context is bounded independently of archive size', async () => {
         await core.handle({ type: 'memory.remember', text: `记录${i}：` + '星'.repeat(100) });
     await core.waitForBackground();
     await core.handle({ type: 'chat.send', text: '你好' });
-    assert.ok(core.getSnapshot().status.contextTokens <= 6000);
+    // Static prompt (~5.9k) plus the 活人感 state and protocol lines (~0.2k); the point is that it does not grow with the archive.
+    assert.ok(core.getSnapshot().status.contextTokens <= 6500);
     assert.ok(contexts[0].length < core.exportArchive().length);
     await core.waitForBackground();
     await cleanup();

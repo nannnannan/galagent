@@ -21,6 +21,10 @@ export const achievements: AchievementDef[] = [
   { id: 'charge', icon: '⚡', title: '蓄力跳', description: '按住小人蓄满力再松手', client: true },
   { id: 'midnight', icon: '🌙', title: '零点见', description: '在零点整和小人互动', client: true, hidden: true },
   { id: 'konami', icon: '🕹️', title: '老玩家', description: '输入了那串神秘按键', client: true, hidden: true },
+  { id: 'tickle', icon: '🦶', title: '挠痒痒', description: '戳了小人的脚心', client: true },
+  { id: 'stare', icon: '👀', title: '深情对视', description: '把鼠标停在小人身上，静静看了一会儿', client: true, hidden: true },
+  { id: 'orbit', icon: '🌀', title: '转圈圈', description: '用鼠标绕着小人画了两圈', client: true, hidden: true },
+  { id: 'chat-react', icon: '💌', title: '心有灵犀', description: '说了一句让小人当场有反应的话', client: true, hidden: true },
   { id: 'collector', icon: '🧸', title: '收藏家', description: '换过 5 个不同的小人', client: true },
   { id: 'secret-word', icon: '🔮', title: '咒语', description: '对 TA 说出了隐藏咒语', hidden: true },
 ];

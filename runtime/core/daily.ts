@@ -24,6 +24,7 @@ export const dayDigest = (messages: Message[]) => createHash('sha256').update(JS
 
 export const dailyPrompt = `现在是本地午夜之后，请把“这一天”与用户的真实对话整理成一份每日档案，并以你自己的身份写一篇当天的日记。
 规则：只依据 messages 中真实出现的内容，不编造；用户说的事实用中性客观的语气写进 summary；你的感受只写进 diary。messages 中带 omitted 的记录只是摘录，不要猜测省略部分。
+myMoodTonight（可选）是你此刻的心情，写日记时可以参考。
 previousPortrait 是你此前对用户的整体印象，请结合今天真正得到的新信息更新它（没有新信息就原样返回），不要写入猜测、敏感信息或一次性的小事。
 返回严格 JSON：{"title":"≤12字的当天标题","summary":"≤400字的客观摘要，含发生的事、用户提到的计划与偏好变化","diary":"≤500字第一人称日记，用角色自己的口吻","mood":"≤8字当天整体氛围","topics":["≤6个话题词"],"highlights":["≤5个值得记住的瞬间"],"openThreads":["≤5个之后可以接着聊或该回访的事"],"portrait":"≤300字更新后的用户整体印象"}`;
 

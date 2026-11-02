@@ -1,0 +1,186 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "sporty-kid",
+  "name": "阿跑",
+  "description": "戴红色棒球帽、穿 7 号球衣的运动少年，精力多到用不完，看你久坐就拉你起来伸伸腰。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "运动",
+    "棒球帽"
+  ],
+  "size": [32, 34],
+  "palette": {
+    "o": "#2a2020",
+    "s": "#e0a57c",
+    "S": "#c4865c",
+    "h": "#2a2222",
+    "H": "#1a1414",
+    "L": "#5a4a4a",
+    "c": "#3f7be0",
+    "C": "#2c5cb0",
+    "t": "#e5484d",
+    "T": "#b8333a",
+    "d": "#ffffff",
+    "n": "#2c3a5a",
+    "b": "#ffffff",
+    "k": "#2d1b2e",
+    "e": "#3a2a20",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "..............oooo..............",
+    "..........oooottTtoooo..........",
+    "........oottttttttttttoo........",
+    ".......ottttddttttddtttto.......",
+    "......ottttdttttttttdtttto......",
+    ".....otttttttttttttttttttto.....",
+    "....ottttttttttttttttttttttoo...",
+    "....otttttttttttttttttttTTTTToo.",
+    "....oTTTTTTTTTTTTTTTTTTTTTTTTTTo",
+    "....ohhhhhHHhhHHHHhhHHhhhTTTTTo.",
+    "....ohhhHHSSHHSSSSHHSSHHhhhooo..",
+    "....ohhhSSssSSssssSSssSShhho....",
+    "....ohhHssssssssssssssssHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....oHHhsssssssssssssssshHHo....",
+    ".....ooHssssssssssssssssHoo.....",
+    ".......oHssssssssssssssHo.......",
+    "........oHssssssssssssHo........",
+    ".........oossssssssssoo.........",
+    "........oo.oocsssscoo.oo........",
+    ".......occooccdddcccoocco.......",
+    ".......oCCoCcccCdCccCoCCo.......",
+    ".......oCCoCccCdCcccCoCCo.......",
+    ".......ossoCCCCdCCCCCosso.......",
+    "........oonnnnnnnnnnnnoo........",
+    ".........onnnnnnnnnnnno.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 15],
+    "mouth": [14, 21],
+    "blush": [8, 20],
+    "feet": [0, 30]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..ss.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..ss.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............ss..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ]
+}

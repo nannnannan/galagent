@@ -4,8 +4,8 @@ import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {realpath,stat} from 'node:fs/promises';
 
-export type AgentResult={summary:string;stopReason:string;sessionId:string;tools:{id:string;title:string;status:string}[]};
-export type AgentRunner={run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void):Promise<AgentResult>;probe():Promise<{name:string;version:string}>;close():void;tick?(now?:number):void;cancelAll?():void};
+export type AgentResult={summary:string;stopReason:string;sessionId:string;tools:{id:string;title:string;status:string}[];/** Files the run changed through checked writes (undoable). */changedFiles?:string[];runId?:string};
+export type AgentRunner={run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void):Promise<AgentResult>;undoLast?():Promise<{runId:string;label:string;restored:string[];conflicts:string[];skipped:string[]}>;probe():Promise<{name:string;version:string}>;close():void;tick?(now?:number):void;cancelAll?():void};
 export class KimiCodeAgent implements AgentRunner {
   readonly executable:string;
   private child?:ChildProcessWithoutNullStreams;

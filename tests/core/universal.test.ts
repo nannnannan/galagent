@@ -117,9 +117,11 @@ test('privacy guard redacts secrets and chosen words, blocks exfiltration URLs, 
 
 test('sandbox presets and always-blocked credential paths', () => {
   assert.equal(DEFAULT_SANDBOX.level, 'standard');
-  assert.equal(DEFAULT_SANDBOX.shell, false);
+  assert.deepEqual([DEFAULT_SANDBOX.fileScope, DEFAULT_SANDBOX.shell, DEFAULT_SANDBOX.shellConfirm, DEFAULT_SANDBOX.network], ['read-anywhere', true, true, true], 'standard: read anywhere, Shell only with confirmation');
   const open = normalizeSandbox({ level: 'open' });
-  assert.equal(open.shell, true);
+  assert.equal(open.shell, true); assert.equal(open.shellConfirm, false);
+  assert.equal(normalizeSandbox({ level: 'strict' }).shell, false);
+  assert.equal(normalizeSandbox({ fileScope: 'workspace', shell: false, level: 'standard' } as never, { level: 'open', fileScope: 'anywhere', shell: true, network: true, allowedDomains: [], redactSecrets: true, redactPersonal: false, sensitiveWords: [] } as never).shellConfirm, true, 'old settings without shellConfirm keep asking');
   assert.equal(normalizeSandbox({ shell: false }, open).shell, false, 'switches override the preset');
   assert.throws(() => normalizeSandbox({ level: 'root' }));
   for (const file of ['C:/Users/a/.ssh/id_rsa', '/home/a/.aws/credentials', 'D:/vault/me.kdbx', 'C:/Users/a/AppData/Roaming/GalAgent/provider-key.bin', '/p/.env.local', '/srv/site.pem']) assert.ok(sensitivePath(file), file);

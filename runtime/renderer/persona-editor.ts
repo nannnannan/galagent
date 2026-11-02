@@ -1,6 +1,7 @@
 // Character-card editor for the 角色 page: 「简单写法」 (plain fields) and 「酒馆写法」 (structured card:
 // palette, derivations, dialogue samples, facets, author's notes, phases, NPCs). Both modes edit one draft,
 // so switching never loses text. The editor owns its DOM; the notebook only mounts it.
+import { parseRoutineLines, routineLines } from '../shared/routine';
 import type { AppSnapshot, PersonaDraft, PersonaProfile } from '../shared/contracts';
 import { activePhase, blankPersona, CARD_LIMITS, emptyCard, PERSONA_LIMITS, type PersonaCard, type PersonaDerivation, type PersonaFacet, type PersonaNote, type PersonaNpc, type PersonaPhase } from '../shared/personas';
 import { builtinPixelPets } from '../shared/pixel-pets';
@@ -219,7 +220,12 @@ export function openPersonaEditor(root: HTMLElement, s: AppSnapshot, base?: Pers
   for (const [key, label, hint, max, rows] of simpleDefs) simple.append(field(label, bind(key, max, hint, rows), '', rows ? 'field wide' : 'field'));
   const idle = el('textarea'); idle.rows = 2; idle.placeholder = '每行一个，10 字以内，会偶尔显示在小人头顶'; idle.oninput = () => { draft.idleLines = idle.value.split('\n').map(x => x.trim()).filter(Boolean); };
   simple.append(field('发呆小词条', idle, '', 'field wide'));
-  const fill = () => { for (const [key, control] of inputs) control.value = String((draft as Record<string, unknown>)[key] ?? ''); idle.value = (draft.idleLines || []).join('\n'); avatar.value = draft.avatar || ''; };
+  const thinking = el('textarea'); thinking.rows = 2; thinking.placeholder = '每行一个，6 字左右，例如：咬笔头、翻小本本。回复时在小人头顶轮换显示，会自动加“…”和计时'; thinking.oninput = () => { draft.thinkingLines = thinking.value.split('\n').map(x => x.trim()).filter(Boolean); };
+  simple.append(field('思考小词条', thinking, '留空则只用通用词条', 'field wide'));
+  const routine = el('textarea'); routine.rows = 4; routine.placeholder = `每行一个：时间 + 在做什么，例如\n07:30 起床\n12:40 午睡\n20:00 练琴\n留空则按“喜好”自动安排`;
+  routine.onchange = () => { try { draft.routine = parseRoutineLines(routine.value); routine.setCustomValidity(''); } catch (error) { routine.setCustomValidity(error instanceof Error ? error.message : '日程格式无效'); routine.reportValidity(); } };
+  simple.append(field('自己的小日程', routine, '小人头顶会显示 TA 正在做什么；需在「陪伴」页开启', 'field wide'));
+  const fill = () => { for (const [key, control] of inputs) control.value = String((draft as Record<string, unknown>)[key] ?? ''); idle.value = (draft.idleLines || []).join('\n'); thinking.value = (draft.thinkingLines || []).join('\n'); routine.value = routineLines(draft.routine || []); avatar.value = draft.avatar || ''; };
   fill();
 
   const simpleHost = el('div');

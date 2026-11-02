@@ -6,7 +6,8 @@ import { builtinPixelPets } from '../shared/pixel-pets';
 import { PixelPet } from './pixel-pet';
 import { SpeechPlayback } from './speech-playback';
 import { VoicePlayer } from './voice';
-import { AchievementWatcher, Mischief, Petting, konami, patLines } from './fun';
+import { typingDelay } from '../shared/reply';
+import { AchievementWatcher, Mischief, Petting, busyLabeler, chatReaction, konami, patLines } from './fun';
 import { renderMarkdown } from './markdown';
 import { confetti, trophyToast } from './effects';
 import { openPalette, type PaletteAction } from './palette';
@@ -50,7 +51,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   app.innerHTML = `<main class="notebook">
     <aside class="sidebar">
       <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面陪伴 · 养成 · 助手</small></span></div>
-      <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span></div></div>
+      <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span><small id="portrait-mood" class="portrait-mood"></small></div></div>
       <button id="bond-card" class="bond-card" type="button">
         <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="pill gold" id="bond-trophies"></span></span>
         <span class="bond-chips"><span id="bond-streak"></span><span aria-hidden="true">·</span><span id="bond-today"></span></span>
@@ -68,7 +69,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
           <div id="runtime-error" class="notice warn" hidden></div>
           <div class="composer-box"><textarea id="input" rows="1" maxlength="12000" placeholder="说点什么…  (Enter 发送，Shift+Enter 换行，/任务 xxx 交给执行器)"></textarea>
           <button id="send" class="btn primary round" type="submit" aria-label="发送">↑</button></div>
-          <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> 正在想</span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
+          <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> <span id="thinking-text">正在想</span></span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
         </form>
       </div>
       <div id="content-page" class="content-page" hidden></div>
@@ -128,7 +129,20 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   const portraitStatus = app.querySelector<HTMLElement>('#portrait-status')!;
   let statusLine: { text: string; until: number } | undefined;
   const sidebarSay = (text: string, ms = 2600) => { statusLine = { text, until: Date.now() + ms }; renderStatus(); setTimeout(renderStatus, ms + 30); };
-  function renderStatus() { const own = statusLine && Date.now() < statusLine.until; portraitStatus.textContent = own ? statusLine!.text : snapshot.activity?.label || ''; portraitStatus.dataset.kind = own ? 'fun' : snapshot.activity?.kind || 'idle'; }
+  // Rotating Claude-Code-style words while busy, shared by the portrait pill and the composer's "正在想".
+  const busyText = busyLabeler(), thinkingText = app.querySelector<HTMLElement>('#thinking-text')!, statusText = el('span');
+  let busyTimer: ReturnType<typeof setInterval> | undefined;
+  function renderStatus() {
+    const own = statusLine && Date.now() < statusLine.until, fun = snapshot.settings.funCaptions !== false;
+    const busy = busyText(snapshot.activity, snapshot.persona?.active.thinkingLines || []);
+    if (busy !== undefined && !busyTimer) busyTimer = setInterval(() => { if (!document.hidden) renderStatus(); }, 500);
+    if (busy === undefined && busyTimer) { clearInterval(busyTimer); busyTimer = undefined; }
+    const label = busy !== undefined && fun ? busy : snapshot.activity?.label || '';
+    const sparkle = !own && busy !== undefined && fun;
+    if (statusText.parentElement !== portraitStatus) portraitStatus.replaceChildren(statusText);
+    statusText.textContent = own ? statusLine!.text : label; statusText.classList.toggle('spark-text', sparkle); portraitStatus.dataset.kind = own ? 'fun' : snapshot.activity?.kind || 'idle';
+    thinkingText.textContent = busy !== undefined && fun ? busy : '正在想'; thinkingText.classList.toggle('spark-text', busy !== undefined && fun);
+  }
   const overPortraitHead = (x: number, y: number) => { const a = portrait.headAnchor(), r = portraitHost.getBoundingClientRect(); return Math.abs(x - a.x) < r.width * 0.28 && y >= a.y - 8 && y <= a.y + (r.bottom - a.y) * 0.5; };
   portraitHost.addEventListener('pointermove', event => {
     if (event.buttons) { portraitPetting.reset(); return; }
@@ -202,11 +216,16 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       const row = el('article', `message ${message.role}${message.source === 'scene' ? ' system' : ''}${fresh ? ' fresh' : ''}`);
       const who = message.role === 'user' ? '你' : message.speaker || snapshot.identity.name || 'TA';
       const meta = el('div', 'message-meta');
-      meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}`));
+      meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}${message.afterthought ? ' · 补了一句' : ''}`));
       const copy = tip(button('⧉', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
       copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
       let body: HTMLElement;
-      if (message.role === 'assistant') { body = el('div', 'message-text md'); body.innerHTML = renderMarkdown(message.text); }
+      if (message.role === 'assistant' && message.parts && message.parts.length > 1) {
+        // Sent as several short messages: each part is its own bubble, typed out one after another when new.
+        body = el('div', 'message-parts'); let delay = 0;
+        for (const part of message.parts) { const bubble = el('div', 'message-text md part'); bubble.innerHTML = renderMarkdown(part); if (fresh) { bubble.style.setProperty('--delay', `${delay}ms`); delay += typingDelay(part); } body.append(bubble); }
+      }
+      else if (message.role === 'assistant') { body = el('div', 'message-text md'); body.innerHTML = renderMarkdown(message.text); }
       else body = el('p', 'message-text', message.text);
       row.append(meta, body);
       appendFeedback(row, message); box.append(row);
@@ -293,7 +312,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     if (key === portraitKey) return; portraitKey = key; trackPet(id, snapshot);
     const spec = await loadPet(id, snapshot.pets?.revision || 0); if (spec !== portraitSpec) { portraitSpec = spec; portrait.setSpec(spec); }
   }
-  let lastVisual = -1;
+  let lastVisual = -1, lastUserMessage = initial.messages.filter(m => m.role === 'user').at(-1)?.id || '';
   function renderBond(next: AppSnapshot) {
     const bond = next.bond, list = bond?.achievements?.length ? bond.achievements : achievementDefs, unlocked = bond?.achievements.filter(a => a.unlockedAt).length || 0;
     app.querySelector('#bond-days')!.textContent = String(Math.max(1, bond?.daysTogether || 1));
@@ -313,6 +332,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const p = next.persona?.active;
     app.querySelector('#portrait-name')!.textContent = next.identity.name || p?.name || 'TA';
     app.querySelector('#portrait-tagline')!.textContent = p?.tagline || '';
+    const mood = app.querySelector<HTMLElement>('#portrait-mood')!; mood.textContent = next.vitality ? `心情：${next.vitality.label}` : ''; mood.dataset.tone = next.vitality?.tone || '';
     renderStatus(); renderBond(next);
     app.querySelector('#foot-stats')!.textContent = `${next.stats.memories} 件记忆 · ${next.stats.conversations} 次相处`;
     const current = pages.find(x => x.id === page)!;
@@ -324,6 +344,12 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const quiet = app.querySelector<HTMLElement>('#quiet')!; quiet.textContent = next.settings.quietUntil > Date.now() ? '恢复主动' : '安静一会'; quiet.classList.toggle('on', next.settings.quietUntil > Date.now());
     const signature = JSON.stringify([next.messages.map(m => m.id + m.text.length), next.companionship?.ratings, p?.id, next.status.busy, next.identity.name]);
     if (signature !== lastMessages) { lastMessages = signature; renderMessages(); }
+    const newest = next.messages.filter(m => m.role === 'user').at(-1);
+    if (newest && newest.id !== lastUserMessage) {
+      lastUserMessage = newest.id;
+      const reaction = next.settings.funCaptions !== false ? chatReaction(newest.text) : undefined;
+      if (reaction) { portraitEffect(reaction.action, 1800); portrait.impulse(reaction.effect === 'confetti' ? 'sparkles' : reaction.effect, 1); sidebarSay(reaction.line, 2400); }
+    }
     renderQuestions();
     if (page === 'chat') return;
     // Forms keep their DOM (and the user's half-typed text) until the page's own data changes.
@@ -466,6 +492,18 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
     field('自动朗读', toggle(!!st.ttsEnabled, v => void settings({ ttsEnabled: v })), '需在「连接」页配置语音'),
     deskActions,
   );
+  const bedtime = el('input'); bedtime.type = 'time'; bedtime.value = st.goodnightAt || '23:30'; bedtime.onchange = () => void settings({ goodnightAt: bedtime.value });
+  const lively = section('像真人一样', '这些都受上面的节奏、免打扰时段和陪伴模式约束；分享、早晚安和旧事重提也可以在下面的话题里单独关掉。');
+  lively.append(
+    field('分几条发消息', toggle(st.splitReplies !== false, v => void settings({ splitReplies: v })), '闲聊时一段话拆成 2–3 条，像在打字'),
+    field('偶尔补一句', toggle(st.afterthoughts !== false, v => void settings({ afterthoughts: v })), '回复后一两分钟“啊对了…”；你先开口就不补'),
+    field('心情与精力', toggle(st.moodEnabled !== false, v => void settings({ moodEnabled: v })), '深夜会困、被冷落会委屈，摸摸头就好'),
+    field('自己的小日程', toggle(st.routineEnabled !== false, v => void settings({ routineEnabled: v })), '头顶显示 TA 在做什么，可在角色卡里自定义'),
+    field('头顶小嘀咕', toggle(st.murmursEnabled !== false, v => void settings({ murmursEnabled: v })), '按前台应用类型冒一句，不进聊天记录（需开启桌面观察）'),
+    field('每天分享新鲜事', numberInput(st.shareDailyLimit ?? 1, v => void settings({ shareDailyLimit: v }), { step: 1, unit: '次' }), '会上网查你感兴趣的东西；0 = 不分享'),
+    field('旧事重提', numberInput(st.recallEveryDays ?? 3, v => void settings({ recallEveryDays: v }), { unit: '天一次' }), '冷不丁问起你几天前说过的事；0 = 关闭'),
+    field('道晚安的时间', bedtime, '过了这个点你还在，TA 会说晚安然后睡着'),
+  );
   const watch = section('TA 在留意的事', '告诉 TA 一件事，TA 会在合适的时候帮你看一眼。');
   const items = s.watches || [];
   if (!items.length) watch.append(emptyPet(s, '现在没有在留意的事。', 'idle', undefined, true));
@@ -473,7 +511,7 @@ function renderCompanion(root: HTMLElement, s: AppSnapshot) {
   const form = el('form', 'inline-form'); const input = el('input'); input.placeholder = '比如：下午那个快递到了没'; input.maxLength = 120; const add = el('button', 'btn primary', '添加'); add.type = 'submit'; form.append(input, add);
   form.onsubmit = async event => { event.preventDefault(); if (input.value.trim() && (await command({ type: 'watch.add', title: input.value.trim() })).ok) input.value = ''; };
   watch.append(form);
-  root.append(modes, pace, quiet, topics, desk, watch);
+  root.append(modes, pace, lively, quiet, topics, desk, watch);
 }
 
 const repeatText = (minutes: number) => minutes >= 1440 && minutes % 1440 === 0 ? `每 ${minutes / 1440} 天` : minutes >= 60 && minutes % 60 === 0 ? `每 ${minutes / 60} 小时` : `每 ${minutes} 分钟`;
@@ -512,13 +550,16 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
   const box = s.settings.sandbox!;
   const level = section('执行器沙箱级别', 'GalAgent 的本机工具（读写文件、Shell、联网）受这里约束。这是应用内保护，不等同于操作系统沙箱。');
   const seg = el('div', 'segmented'); seg.setAttribute('role', 'radiogroup');
-  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '工作目录内读写 · 无 Shell · 仅公网'], ['open', '宽松', '全盘读写（受保护目录除外）· 允许 Shell']] as const) {
-    const b = button('', () => void sandbox(s, { level: value }), 'segment selectable'); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
+  for (const [value, title, text] of [['strict', '严格', '只读工作目录 · 无 Shell · 无联网 · 隐藏个人信息'], ['standard', '标准（推荐）', '全盘可读 · 只在工作目录写 · 命令先问你 · 公网搜索'], ['open', '宽松', '全盘读写（受保护目录除外）· 命令不再询问'], ['full', '完全放开', '最高权限：再加内网访问、可读凭据文件、MCP 免询问']] as const) {
+    const b = button('', () => { if (value === 'full' && box.level !== 'full' && !confirm('完全放开后，执行器可以不经询问运行任何命令、读写任何文件（包括 .ssh、.env 等凭据）、访问内网和本机服务。\n\n网页或文件里的恶意指令也可能借此操作你的电脑。只在你信任当前任务时使用，用完可一键切回。\n\n确定切换？')) return; void sandbox(s, { level: value }); }, `segment selectable${value === 'full' ? ' danger' : ''}`); b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(box.level === value)); b.append(el('strong', '', title), el('small', '', text)); seg.append(b);
   }
   level.append(seg,
-    field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
-    field('允许 Shell 命令', toggle(box.shell, v => void sandbox(s, { shell: v })), '脚本可以绕过文件检查，开启前请确认'),
-    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '只能访问公网，本机与局域网地址始终拒绝'),
+    field('文件范围', select(box.fileScope, [['workspace-read', '只读工作目录'], ['workspace', '工作目录内读写'], ['read-anywhere', '任意位置可读，只在工作目录写'], ['anywhere', '不限制（受保护目录除外）']], v => void sandbox(s, { fileScope: v }))),
+    field('允许 Shell 命令', toggle(box.shell, v => void sandbox(s, { shell: v })), '脚本可以绕过文件检查'),
+    field('运行命令前问我', toggle(box.shellConfirm !== false, v => void sandbox(s, { shellConfirm: v })), '每条命令先在聊天页给你看，可选“本任务都允许”'),
+    field('允许联网工具', toggle(box.network, v => void sandbox(s, { network: v })), '网页搜索与读网页'),
+    field('允许访问内网和本机服务', toggle(!!box.lanAccess, v => void sandbox(s, { lanAccess: v })), '路由器、NAS、localhost 开发服务等；默认拒绝'),
+    field('允许读写凭据文件', toggle(!!box.credentialFiles, v => void sandbox(s, { credentialFiles: v })), '.ssh、.env、密钥文件等；GalAgent 自己的密钥始终不可读'),
     field('只允许访问这些域名', linesArea(box.allowedDomains, v => void sandbox(s, { allowedDomains: v }), 3, '每行一个，如 github.com；留空不限'), '', 'field wide'),
     field('禁止访问的文件夹', linesArea(s.settings.forbiddenPaths || [], v => void settings({ forbiddenPaths: v }), 3, '每行一个路径'), '设置后 Shell 自动停用；修改会中止进行中的任务', 'field wide'),
   );
@@ -527,7 +568,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
     field('隐藏密钥、令牌与密码', toggle(box.redactSecrets, v => void sandbox(s, { redactSecrets: v })), 'API Key、私钥、JWT、“密码：xxx” 等'),
     field('隐藏个人信息', toggle(box.redactPersonal, v => void sandbox(s, { redactPersonal: v })), '身份证号、银行卡号、手机号、邮箱'),
     field('自定义敏感词', linesArea(box.sensitiveWords, v => void sandbox(s, { sensitiveWords: v }), 3, '每行一个：项目代号、客户名、地址…'), '出现即替换为〔已隐藏〕', 'field wide'),
-    el('p', 'hint', '凭据文件（.ssh、.aws、.env、*.pem、*.kdbx、浏览器登录数据、GalAgent 自己的密钥）永远不会被工具读取；带敏感内容的网址会被直接拦截。'),
+    el('p', 'hint', box.credentialFiles ? '已允许工具读写凭据文件（.ssh、.env、密钥等）；GalAgent 自己的密钥与数据目录始终不可访问；带敏感内容的网址仍会被拦截。' : '凭据文件（.ssh、.aws、.env、*.pem、*.kdbx、浏览器登录数据）不会被工具读取，GalAgent 自己的密钥任何档位都不可访问；带敏感内容的网址会被直接拦截。'),
   );
   const eyes = section('桌面观察', '默认全部关闭。截图原图不落盘，只保留文字摘要；黑名单应用在前台时不截屏。');
   eyes.append(
@@ -689,20 +730,64 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   tform.append(row);
   tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
-  const agent = section('本机执行器', `25 个本地工具（文件、搜索、Shell、联网、子代理）。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
+  const agent = section('本机执行器', `${27 + (s.agent?.mcp || []).reduce((n, m) => n + m.tools, 0)} 个工具：文件读写与多文件补丁、搜索、Shell、网页搜索与读网页、子代理${s.agent?.mcp?.length ? '、MCP' : ''}；会读取工作目录里的 AGENTS.md，长任务自动压缩上下文，改动可撤销。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松', full: '完全放开' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
   const task = el('textarea'); task.rows = 3; task.maxLength = 12000; task.placeholder = '要执行的任务，例如：统计这个文件夹里有多少张图片';
   const run = el('button', 'btn primary', '开始执行'); run.type = 'submit';
-  const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : s.agent?.lastResult ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[s.agent.lastResult.status]} · ${s.agent.lastResult.toolCount} 次工具调用` : '待命');
+  const last = s.agent?.lastResult;
+  const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : last ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[last.status]} · ${last.toolCount} 次工具调用${last.changedFiles ? ` · 改了 ${last.changedFiles} 个文件${last.undone ? '（已撤销）' : ''}` : ''}` : '待命');
   const cwdRow = el('div', 'row'); cwdRow.append(cwd, button('保存目录', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
-  const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), el('span', 'spacer'), status);
+  const undo = button('撤销上次改动', async () => { if (!confirm(`把上次任务改过的 ${last?.changedFiles ?? ''} 个文件恢复原样？之后又被改过的文件不会动。`)) return; const r = await command({ type: 'agent.undo' }); if (r.ok) toast('已撤销，详情见聊天记录。'); }, 'btn ghost');
+  undo.hidden = !last?.changedFiles || !!last.undone || !!s.agent?.busy;
+  const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), undo, el('span', 'spacer'), status);
   aform.append(field('工作目录', cwdRow, '沙箱的“工作目录”指这里', 'field wide'), field('任务', task, '', 'field wide'), runRow);
   aform.onsubmit = async event => { event.preventDefault(); if (task.value.trim() && (await command({ type: 'agent.run', task: task.value.trim() })).ok) toast('任务已交给执行器，结果会回到聊天里。'); };
   agent.append(aform);
+  // Executor model and budget (Codex-style: a stronger coding model for tasks, the chat model for talking).
+  const ex = s.settings.executor || {};
+  const exModel = el('input'); exModel.value = ex.model || ''; exModel.placeholder = `留空 = 用聊天模型（${s.provider.model}）`; exModel.onchange = () => void settings({ executor: { model: exModel.value.trim() } });
+  agent.append(el('div', 'form-grid'));
+  agent.lastElementChild!.append(
+    field('执行器模型', exModel, '同一个 API 地址下的另一个模型，例如更擅长编程的那个', 'field wide'),
+    field('单次输出上限', numberInput(ex.maxOutputTokens ?? 8192, v => void settings({ executor: { maxOutputTokens: v } }), { step: 1024, unit: 'tokens' }), '模型不支持时会报错，调小即可'),
+    field('每个任务最多回合', numberInput(ex.maxTurns ?? 200, v => void settings({ executor: { maxTurns: v } }), { step: 10, unit: '轮' })),
+  );
+  // MCP servers: local programs (stdio) or remote URLs (Streamable HTTP), like Codex CLI / Kimi Code.
+  const mcp = section('MCP 工具服务', '接入 Model Context Protocol 服务给执行器加工具（浏览器自动化、GitHub、数据库、Figma…）。本地命令需要沙箱允许 Shell，远程网址需要允许联网；标准档下每个任务第一次使用前会问你，宽松/完全放开不再询问。密钥用系统加密保存，界面只显示名称。');
+  const servers = s.settings.mcpServers || [], states = new Map((s.agent?.mcp || []).map(m => [m.name, m]));
+  const saveServers = (next: typeof servers) => void settings({ mcpServers: next });
+  if (!servers.length) mcp.append(el('p', 'hint', '还没有接入。例子：本地 playwright → 命令 npx，参数 -y @playwright/mcp@latest；远程 GitHub → 网址 https://api.githubcopilot.com/mcp/，密钥里填 Authorization=Bearer 你的令牌。'));
+  for (const [i, server] of servers.entries()) {
+    const row = el('div', 'list-row'), main = el('div', 'row-main'), st = states.get(server.name), remote = !!server.url;
+    const keys = [...(server.envKeys || []), ...(server.headerKeys || [])];
+    main.append(el('strong', '', `${server.name}${remote ? ' · 远程' : ' · 本地'}`), el('small', 'row-meta', (server.url || `${server.command} ${(server.args || []).join(' ')}`).slice(0, 160)),
+      el('small', 'row-meta', `${!server.enabled ? '已停用' : st?.state === 'ready' ? `已连接 · ${st.tools} 个工具` : st?.state === 'failed' ? `连接失败：${st.error || ''}` : st?.state === 'starting' ? '连接中…' : '首次执行任务时启动'}${keys.length ? ` · 密钥：${keys.join('、')}` : ''}`));
+    const secretFold = el('details', 'fold'); const sum = el('summary', '', keys.length ? '更新密钥' : '设置密钥'); const body = el('div', 'fold-body');
+    const area = el('textarea'); area.rows = 3; area.placeholder = remote ? '每行一个请求头：Authorization=Bearer xxx' : '每行一个环境变量：GITHUB_TOKEN=xxx'; area.autocomplete = 'off'; area.spellcheck = false;
+    const saveKey = button('保存（覆盖原有）', async () => {
+      let map: Record<string, string>;
+      try { map = Object.fromEntries(area.value.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const k = l.indexOf('='); if (k <= 0) throw new Error(`每行写成 名称=值：${l.slice(0, 20)}`); return [l.slice(0, k).trim(), l.slice(k + 1).trim()]; })); } catch (error) { toast(error instanceof Error ? error.message : '格式不对', 'error'); return; }
+      const r = await command({ type: 'mcp.secret', server: server.name, ...(remote ? { headers: map } : { env: map }) }); area.value = ''; if (r.ok) toast(Object.keys(map).length ? '密钥已加密保存。' : '密钥已清除。');
+    }, 'btn primary small');
+    body.append(area, saveKey); secretFold.append(sum, body); main.append(secretFold);
+    row.append(iconBadge(remote ? '🌐' : '🧩', 'accent'), main, toggle(server.enabled, v => saveServers(servers.map((x, j) => j === i ? { ...x, enabled: v } : x)), `启用 ${server.name}`), button('删除', () => { if (keys.length) void command({ type: 'mcp.secret', server: server.name }, true); saveServers(servers.filter((_, j) => j !== i)); }, 'btn ghost small'));
+    mcp.append(row);
+  }
+  const mform = el('form', 'inline-form'), mName = el('input'), mTarget = el('input'), mArgs = el('input');
+  mName.placeholder = '名称'; mName.maxLength = 32; mTarget.placeholder = '命令（如 npx）或网址（https://…）'; mArgs.placeholder = '命令参数，空格分隔';
+  mTarget.oninput = () => { mArgs.disabled = /^https?:\/\//i.test(mTarget.value.trim()); };
+  const mAdd = el('button', 'btn primary', '添加'); mAdd.type = 'submit'; mform.append(mName, mTarget, mArgs, mAdd);
+  mform.onsubmit = async event => {
+    event.preventDefault(); const name = mName.value.trim(), target = mTarget.value.trim(); if (!name || !target) { toast('名称和命令/网址都要填', 'error'); return; }
+    const entry = /^https?:\/\//i.test(target) ? { name, url: target, enabled: true } : { name, command: target, args: mArgs.value.trim() ? mArgs.value.trim().split(/\s+/) : [], enabled: true };
+    const r = await settings({ mcpServers: [...servers, entry] }); if (r.ok) { mName.value = mTarget.value = mArgs.value = ''; }
+  };
+  const mRow = el('div', 'row wrap'); mRow.append(button('现在连接 / 重连', async () => { if ((await command({ type: 'mcp.restart' })).ok) toast('正在连接，稍后看状态。'); }, 'btn ghost small'));
+  mcp.append(mform, mRow);
   const archive = section('存档', '存档包含聊天、记忆、日记、自定义角色卡与提醒，不包含任何密钥。');
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
   archive.append(arow);
   const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
-  root.append(model, tts, agent, archive, thanks);
+  root.append(model, tts, agent, mcp, archive, thanks);
 }

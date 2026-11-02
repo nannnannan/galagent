@@ -745,7 +745,7 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
         assert.equal(nativeSnap.provider.mode, 'native-api');
         assert.equal(nativeSnap.provider.baseUrl, 'https://api.moonshot.cn/v1');
         assert.equal(nativeSnap.provider.model, 'kimi-k2.5');
-        assert.equal(nativeSnap.provider.toolCount, 25);
+        assert.equal(nativeSnap.provider.toolCount, 27);
 
         const { OpenAIToolAgent } = await import('../../runtime/core/openai-agent');
         let capturedNativeToolBody: any = null;
@@ -767,10 +767,10 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
         const nativeRun = await nativeAgent.run('测试原生API本地工具绑定', f.dir, new AbortController().signal);
         nativeAgent.close();
         assert.equal(nativeRun.stopReason, 'end_turn');
-        assert.equal(capturedNativeToolBody.tools.length, 25);
+        assert.equal(capturedNativeToolBody.tools.length, 27);
         assert.equal('thinking' in capturedNativeToolBody, false);
-        assert.equal(capturedNativeToolBody.max_tokens, 4096);
-        assert.ok(String(capturedNativeToolBody.messages[0].content).includes('25个本地工具'));
+        assert.equal(capturedNativeToolBody.max_tokens, 8192);
+        assert.ok(String(capturedNativeToolBody.messages[0].content).includes('27个工具'));
     } finally {
         await f.core.close();
         await rm(f.dir, { recursive: true, force: true });

@@ -6,7 +6,7 @@
 import type { Store } from './store';
 import type { ClipboardEntry, ScreenDecision, ScreenShot } from '../desktop/perception';
 
-export type AttentionEventKind = 'task' | 'window' | 'browser' | 'clipboard' | 'reunion' | 'unanswered' | 'watch' | 'system' | 'schedule';
+export type AttentionEventKind = 'task' | 'window' | 'browser' | 'clipboard' | 'reunion' | 'unanswered' | 'watch' | 'system' | 'schedule' | 'greeting' | 'share' | 'recall';
 export type AttentionEvent = { id: string; kind: AttentionEventKind; at: number; important: boolean; summary: string; expiresAt: number; data?: Record<string, unknown> };
 export type WatchItem = { id: string; title: string; condition?: string; createdAt: number; nextCheckAt: number; expiresAt: number; status: 'active' | 'done' | 'cancelled' | 'expired'; dedupeKey: string; lastResult?: string };
 export type AttentionDecision = { decision: 'silent' | 'observe' | 'schedule' | 'wake'; reason: string; evidence: string[]; nextCheck: string | null; wakeHint?: string; screenSummary?: string; watch?: { title: string; condition?: string }; completeWatchIds?: string[] };

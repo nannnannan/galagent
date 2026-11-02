@@ -1,0 +1,212 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "astro-kid",
+  "name": "星航",
+  "description": "穿白色航天服的小宇航员，头盔面窗里露出好奇的脸，天线灯一闪一闪，梦想是带你去看地球升起。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "宇航员",
+    "太空"
+  ],
+  "size": [32, 34],
+  "palette": {
+    "o": "#2b3350",
+    "s": "#f1c29b",
+    "S": "#d6a07c",
+    "h": "#f4f6fb",
+    "H": "#c5cde0",
+    "L": "#ffffff",
+    "c": "#f4f6fb",
+    "C": "#c5cde0",
+    "v": "#7fb8ff",
+    "n": "#5a3a2a",
+    "r": "#ff8a3d",
+    "q": "#3d6fd8",
+    "b": "#5a6378",
+    "k": "#2d1b2e",
+    "e": "#4a3a2a",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "................................",
+    "................................",
+    "................................",
+    "............oooooooo............",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohhhhhhhhhhhhhhhhhho......",
+    ".....ohhhhhhhhhhhhhhhhhhhho.....",
+    ".....ohhhhHHHHHHHHHHHHhhhho.....",
+    "....ohhhhHvvvvvvvvvvvvHhhhho....",
+    "....ohhhHvnnnnnnnnnnnnvHhhho....",
+    "....ohhhvnnssnnssnnssnnvhhho....",
+    "....ohhHvssssssssssssssvHhho....",
+    "....ohhvssssssssssssssssvhho....",
+    "....ohhvssssssssssssssssvhho....",
+    "....ohhvssssssssssssssssvhho....",
+    "....oHHhvssssssssssssssvhHHo....",
+    ".....ooHvssssssssssssssvHoo.....",
+    ".......oHvssssssssssssvHo.......",
+    "........oHvssssssssssvHo........",
+    ".........oossssssssssoo.........",
+    "........oo.oCCssssCCo.oo........",
+    ".......occoocCccccccoocco.......",
+    ".......oCCoCCqCcccccCoCCo.......",
+    ".......oCCoCqqqCccccCoCCo.......",
+    ".......ossoCCqCCCCCCCosso.......",
+    "........oorrrrrrrrrrrroo........",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 15],
+    "mouth": [14, 21],
+    "blush": [8, 20],
+    "feet": [0, 30]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..CC.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "antenna",
+      "kind": "accessory",
+      "layer": "back",
+      "at": [22, 0],
+      "frames": [
+        [
+          "oqo",
+          "oHo",
+          "oHo",
+          "oHo",
+          "oHo",
+          ".o."
+        ],
+        [
+          "oro",
+          "oHo",
+          "oHo",
+          "oHo",
+          "oHo",
+          ".o."
+        ]
+      ]
+    }
+  ]
+}

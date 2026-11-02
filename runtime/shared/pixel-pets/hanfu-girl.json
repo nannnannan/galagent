@@ -1,0 +1,239 @@
+{
+  "format": "galagent-pixel-pet@1",
+  "id": "hanfu-girl",
+  "name": "青禾",
+  "description": "穿薄荷绿交领襦裙的古风少女，发髻上插着金簪，流苏随步子轻轻摇，说话慢慢的，喜欢陪你读诗喝茶。",
+  "author": "GalAgent",
+  "tags": [
+    "人类",
+    "古风",
+    "汉服",
+    "长发"
+  ],
+  "size": [32, 36],
+  "palette": {
+    "o": "#2a2230",
+    "s": "#ffe6d5",
+    "S": "#f6bfa6",
+    "h": "#2b2233",
+    "H": "#1b1520",
+    "L": "#5e4e70",
+    "c": "#bfe3d0",
+    "C": "#8fc4ab",
+    "d": "#ffffff",
+    "r": "#d9485b",
+    "g": "#e7b84a",
+    "q": "#ff8fa3",
+    "b": "#7a5a4a",
+    "k": "#2d1b2e",
+    "e": "#5a3a2a",
+    "w": "#ffffff",
+    "p": "#ff9eb0",
+    "m": "#c4475f"
+  },
+  "base": [
+    "............oohhhhoo............",
+    "...........ohhhhhhhho...........",
+    ".........g.ohhhhhhhho...........",
+    "..........gggghhhhhhho..........",
+    "..........oHhhhhhhhhHo..........",
+    "...........ohhLhhLhho...........",
+    "..........oohhhhhhhhoo..........",
+    "........oohhhhhhhhhhhhoo........",
+    ".......ohhLLLhhhhhhLLLhho.......",
+    "......ohhLhhhhhhhhhhhhLhho......",
+    "......ohqhhhhhhhhhhhhhhhho......",
+    ".....ohqgqhhhhhhhhhhhhhhhho.....",
+    ".....ohhqhhhhhhhhhhhhhhhhho.....",
+    "....ohhhhhHHHhhhhhhHHHhhhhho....",
+    "....ohhhhHSSSHHHHHHSSSHhhhho....",
+    "....ohhhHSsssSSSSSSsssSHhhho....",
+    "....ohhHSssssssssssssssSHhho....",
+    "....ohhSssssssssssssssssShho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhsssssssssssssssssshho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhsssssssssssssssshhho....",
+    "....ohhhhsssssssssssssshhhho....",
+    "....oHHhhhsssssssssssshhhHHo....",
+    ".....oohhhhsssssssssshhhhoo.....",
+    "......oHHHhhHdssssdHhhHHHo......",
+    "......occchHccdCcdccHhccco......",
+    "......oCcCHCccCdCcccCHCcCo......",
+    "......oCCCoCCCCCdCCCCoCCCo......",
+    "......oCssrrrrrrrrrrrrssCo......",
+    ".......oooCccccccccccCooo.......",
+    ".........oCCCCCCCCCCCCo.........",
+    "..........oooooooooooo..........",
+    "................................",
+    "................................",
+    "................................"
+  ],
+  "anchors": {
+    "eyes": [10, 17],
+    "mouth": [14, 23],
+    "blush": [8, 22],
+    "feet": [0, 32]
+  },
+  "eyes": {
+    "neutral": [
+      "kkk......kkk",
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "curious": [
+      "kwk......kwk",
+      "kek......kek",
+      "kkk......kkk",
+      "............"
+    ],
+    "pleased": [
+      "............",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "flustered": [
+      "k..........k",
+      ".kk......kk.",
+      "k..........k",
+      "............"
+    ],
+    "annoyed": [
+      "k..........k",
+      "kkk......kkk",
+      "kek......kek",
+      "............"
+    ],
+    "softened": [
+      "............",
+      "kkk......kkk",
+      "kek......kek",
+      "kkk......kkk"
+    ],
+    "blink": [
+      "............",
+      "............",
+      "k.k......k.k",
+      ".k........k."
+    ],
+    "sleep": [
+      "............",
+      "............",
+      "kkk......kkk",
+      "............"
+    ],
+    "dizzy": [
+      "k.k......k.k",
+      ".k........k.",
+      "k.k......k.k",
+      "............"
+    ],
+    "love": [
+      "p.p......p.p",
+      "ppp......ppp",
+      ".p........p.",
+      "............"
+    ]
+  },
+  "mouth": {
+    "closed": [
+      ".kk.",
+      "...."
+    ],
+    "open": [
+      ".kk.",
+      "kmmk",
+      ".kk."
+    ],
+    "smile": [
+      "k..k",
+      ".kk."
+    ],
+    "pout": [
+      "....",
+      ".kk.",
+      "k..k"
+    ]
+  },
+  "blush": [
+    "pp............pp"
+  ],
+  "legs": [
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      "............bbb..CC.............",
+      "............ooo.obbbo...........",
+      ".................ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..CC.............",
+      "...........obbboobbbo...........",
+      "............ooo..ooo............",
+      "................................"
+    ],
+    [
+      ".............CC..bbb............",
+      "...........obbbo.ooo............",
+      "............ooo.................",
+      "................................"
+    ]
+  ],
+  "extras": [
+    {
+      "id": "tassel",
+      "kind": "accessory",
+      "layer": "front",
+      "at": [18, 4],
+      "frames": [
+        [
+          "..o..",
+          ".ogo.",
+          ".ogo.",
+          ".ogo.",
+          ".oqo.",
+          ".oqo.",
+          ".oqo.",
+          "..o.."
+        ],
+        [
+          "..o..",
+          ".ogo.",
+          ".ogo.",
+          ".ogo.",
+          "..oqo",
+          "..oqo",
+          "..oqo",
+          "...o."
+        ],
+        [
+          "..o..",
+          ".ogo.",
+          ".ogo.",
+          ".ogo.",
+          ".oqo.",
+          ".oqo.",
+          ".oqo.",
+          "..o.."
+        ],
+        [
+          "..o..",
+          ".ogo.",
+          ".ogo.",
+          ".ogo.",
+          "oqo..",
+          "oqo..",
+          "oqo..",
+          ".o..."
+        ]
+      ]
+    }
+  ]
+}

@@ -7,7 +7,8 @@ export const companionModes: { value: CompanionMode; label: string; description:
 ];
 export const topicLabels: Record<InitiativeTopic, string> = {
   window: '桌面动向', clipboard: '剪贴板', browser: '浏览的内容', task: '任务结果',
-  watch: '关注事项', reunion: '重逢', unanswered: '久未回应', system: '连接状态', screen: '屏幕变化', schedule: '定时提醒',
+  watch: '关注事项', reunion: '重逢', unanswered: '久未回应', system: '连接状态', screen: '屏幕变化', schedule: '定时提醒与回访',
+  greeting: '早安与晚安', share: '分享新鲜事', recall: '旧事重提',
 };
 export const validMode = (value: unknown): value is CompanionMode => companionModes.some(mode => mode.value === value);
 export const validTopic = (value: unknown): value is InitiativeTopic => typeof value === 'string' && Object.hasOwn(topicLabels, value);
