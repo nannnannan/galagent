@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "version": "0.4.0",
+  "chat": 2,
+  "executor": 2,
+  "read": true,
+  "k31": true,
+  "contextBudget": 1000000,
+  "isolatedProfile": true
+}

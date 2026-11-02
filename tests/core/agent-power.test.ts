@@ -143,7 +143,7 @@ test('MCP: stdio server tools appear as mcp__server__tool, validate arguments, n
     box = normalizeSandbox({ shell: false });
     assert.ok(!host.definitions.some(d => d.function.name === name), 'hidden without Shell');
     assert.match((await host.execute(session, name, { text: 'x' }, signal())).content, /Shell is off/);
-  } finally { host.close(); hub.close(); await rm(dir, { recursive: true, force: true }); }
+  } finally { host.close(); hub.close(); await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 }); }
 });
 
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });

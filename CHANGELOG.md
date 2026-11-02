@@ -1,3 +1,11 @@
+## v0.4.0 · P2 Windows 发布 · 2026-11-02
+
+- 拉取 main 的 P2 合并提交 092f8ed（执行器增强、MCP、联网搜索、思考词条与新增人形小人）。保留 K3.1 适配、主角色百万上下文预算、NSIS 保留存档配置。
+- Windows 适配：MCP 测试关闭子进程后，目录清理允许有限重试，避免异步退出导致 EBUSY；未改变生产 MCP 权限或执行行为。
+- 验证：typecheck、232/232 测试、build 通过；新增 tests/e2e/windows-release.mjs 在独立存档和本地模拟上游下验证打包版聊天、K3.1 请求、执行器 Read 往返与上下文预算，结果见 docs/evidence/windows/v0.4.0-smoke.json。
+- 旧 dual-core.mjs 仍断言“十轮日记”，与现有每日档案设计不符，本次由上述打包验收替代，未声称旧探针通过。真实 Mira 聊天、外部 MCP、安装/卸载完整流程未验收。
+- 发布 v0.4.0；启动前备份原存档，再使用普通入口启动，不清空存档。上游自带的设置迁移仍可能在程序启动时运行。
+
 ## 未发布 · 执行器强化（分支 feat/agent-power）· 2026-10-31
 
 - 对标 Codex CLI / Kimi Code / DeepSeek Harness（设计见 `docs/执行器强化-v1.md`）：新增第 27 个工具 `ApplyPatch`（多文件原子补丁）；读取项目 AGENTS.md 与 `~/.galagent/AGENTS.md`；系统提示加入工作区概况与工作方法；历史超 48k 自动压缩为交接摘要；连续相同工具调用 3 轮提醒、5 轮停止；Write/Edit/ApplyPatch 改动按任务快照，「连接」页可一键撤销（之后被改过的文件不动）；stdio MCP 客户端，「连接」页可添加服务；长工具输出保留头尾。

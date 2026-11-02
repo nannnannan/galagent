@@ -2,7 +2,7 @@
 
 ## Windows 安装版
 
-在 GitHub Releases 下载 `GalAgent-Setup-0.3.0-x64.exe`，运行安装向导。升级沿用 `%APPDATA%/GalAgent` 存档，卸载默认保留数据。建议升级前备份存档。安装包未做可信发布者证书签名。
+在 GitHub Releases 下载 `GalAgent-Setup-0.4.0-x64.exe`，运行安装向导。升级沿用 `%APPDATA%/GalAgent` 存档，卸载默认保留数据。建议升级前备份存档。安装包未做可信发布者证书签名。
 
 Mira K3.1 Pro 需要用户自行安装并登录 Mira、运行兼容本地反代；安装包不含账号、密钥或个人存档。也可在设置中连接自己的 OpenAI 兼容接口。
 
