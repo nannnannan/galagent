@@ -65,7 +65,7 @@ Object.assign(snapshot, {
     { day: day(-3), title: '夜猫子之夜', summary: '凌晨还在赶项目，聊了几句就去睡了。', diary: '凌晨一点半，他终于说了晚安。', mood: '担心', topics: ['熬夜'], highlights: [], openThreads: ['答应以后早点睡'], messageCount: 9, createdAt: iso(-68 * 3600_000) },
   ],
   watches: [{ id: 'w1', title: '快递到了没', createdAt: now, nextCheckAt: now + 1e6, expiresAt: now + 1e7, status: 'active', dedupeKey: 'x' }],
-  agent: { backend: 'openai-kimi-tools', mode: 'full-access', cwd: 'C:\\Users\\me\\Documents', busy: false, lastResult: { status: 'done', summary: '整理完成', toolCount: 14, completedAt: iso(-600_000), changedFiles: 3, runId: 'r1' }, mcp: [{ name: 'playwright', state: 'ready', tools: 21, transport: 'stdio' }, { name: 'github', state: 'ready', tools: 38, transport: 'http' }] },
+  agent: { backend: 'openai-kimi-tools', mode: 'full-access', cwd: 'C:\\Users\\me\\Documents', busy: false, lastResult: { status: 'done', summary: '整理完成', toolCount: 14, completedAt: iso(-600_000), changedFiles: 3, runId: 'r1' }, running: params.get('page') === 'config' ? [{ id: 't1', task: '整理下载文件夹，按类型分到子文件夹', startedAt: iso(-90_000) }, { id: 't2', task: '统计 GalAgent 项目代码行数', startedAt: iso(-30_000) }] : [], mcp: [{ name: 'playwright', state: 'ready', tools: 21, transport: 'stdio' }, { name: 'github', state: 'ready', tools: 38, transport: 'http' }] },
 });
 // Previews start fresh: the daily greeting and pet history live in localStorage.
 try { localStorage.clear(); } catch { /* file:// may refuse storage */ }

@@ -23,7 +23,8 @@
   - `runtime/core/scheduler.ts`：定时自唤醒；`runtime/core/privacy.ts`：沙箱预设、出站脱敏、URL 拦截与审计。
 - `skills/galagent-persona/`：酒馆写法角色卡 skill（衍生与二次解释由作者写，AI 只引导；Kimi 卡 `builtin:kimi` 为范例，保留用户原话，不得润色）。
 - `skills/galagent-pixel-pet/`：自制像素小人 skill（随安装包放到 `resources/skills`，执行器 `Skill` 工具可读）。
-- `scripts/pixel-pet/`：内置小人生成（`generate-builtins.mjs`）、校验、预览、渲染演示；`scripts/ui-preview.mjs`：界面截图。
+- `scripts/pixel-pet/`：内置小人生成（`generate-builtins.mjs`）、校验、预览、渲染演示；`scripts/ui-preview.mjs`：界面截图；`scripts/fonts/fetch-ui-font.mjs`：抓取打包的界面字体（Noto Sans SC，OFL 1.1，分片放在 `runtime/renderer/fonts/`，授权原文同目录 `OFL.txt`）。
+- 桌宠窗口的几何（尺寸、可见边界、拖动限制、漫步折返）只在 `runtime/shared/pet-geometry.ts` 定义：窗口是 320×440 的透明画布，小人只占其中一部分，**限制的是小人可见的边界而不是整块窗口**。渲染端通过 `shell.footprint` 上报真实边界，主进程据此限制拖动与漫步；不要按整块窗口另写一套边界，否则头顶又贴不到屏幕顶端。
 - `release/`：各里程碑打包产物。未经用户要求不得覆盖用户 `%APPDATA%/GalAgent/` 存档。
 
 ---
@@ -53,6 +54,7 @@ npm run preview:ui                                  # 桌宠窗口 + 主界面�
 7. **上游调用统一走 `runtime/core/upstream.ts`**：每次尝试才占用并发池槽位，退避等待时释放；重试网络错误与 408/425/429/5xx，尊重 `Retry-After`（上限 60 秒），429 收紧池上限。并发池为 chat / attention 保留 2 个槽位，执行与后台任务最多用 18 路。
 8. **记忆与每日档案**（[docs/记忆系统-v2.md](docs/记忆系统-v2.md)）：每个自然日结束后整理一次（作业 id 按日期唯一）；次日上下文用档案摘要替代原文，跨午夜 2 小时内与档案未就绪的日子保留原文；原文永远保存在本地，可用 `recall_day` 读回；档案以消息指纹校验，删除或纠正后立即失效重建。
 10. **执行器强化**：文件写入只走 Write/Edit/ApplyPatch 并先 `checkpoint`（可撤销）；AGENTS.md 只说明做法，不得扩大沙箱权限；本地（stdio）MCP 服务只在沙箱允许 Shell 且无禁止目录时提供，远程（HTTP）MCP 只在允许联网时提供，标准档每任务首次使用前询问，参数经 `outboundText` 脱敏，不实现 sampling；循环检测与自动压缩不可绕过。
+11. **主代理掌控**：只在用户直接聊天（`activeKind==='chat'`）时提供 `run_task / task_status / cancel_task / undo_task / get_settings / update_settings / watch`，主动开口、场景与注意力代理永远拿不到；执行任务可并行（`executor.maxParallel`，默认 3，并行任务各用独立会话）；`update_settings` 中放宽隐私或权限的改动（`loosening()`）在 `aiControl` 为默认 `confirm` 时必须经聊天确认卡同意后才生效，`aiControl` 只有用户能改，AI 永远改不了 API Key、MCP 密钥与 `aiControl` 本身。
 9. **活人感**（[docs/活人感-v1.md](docs/活人感-v1.md)）：早安/晚安/分享/旧事重提只能经 `runtime/core/life.ts` 选出、`lifeBlocked` 放行后走 `generate('initiative')`，开始前必须 `recordInitiative`；同一时刻至多一个主动请求。分条消息只是 `Message.parts`，一条回复只存一条记录；小嘀咕不入库；补一句、心情、小日程、小嘀咕不得发起模型请求。
 
 ---

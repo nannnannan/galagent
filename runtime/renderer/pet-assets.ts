@@ -21,3 +21,7 @@ export async function loadPet(id: string, revision = 0): Promise<PixelPetSpec> {
   if (result.ok && result.data) { const spec = result.data as PixelPetSpec; custom.set(id, { revision, spec }); return spec; }
   return builtinPixelPets[0];
 }
+/** A built-in sprite by id only (persona faces): undefined for custom or unknown ids, so callers can fall back. */
+export function builtinPet(id?: string): PixelPetSpec | undefined {
+  return id ? builtinPixelPets.find(p => p.id === id) : undefined;
+}

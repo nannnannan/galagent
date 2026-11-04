@@ -12,6 +12,9 @@ import { builtinPixelPets } from '../shared/pixel-pets';
 
 const pickOne = <T,>(items: readonly T[]) => items[Math.floor(Math.random() * items.length)];
 const seasons: Season[] = ['snow', 'petals', 'fireflies', 'leaves', 'none'];
+/** Where the sprite stands inside the desktop window (fractions). The rest of the window is empty sky:
+ *  bobs, sway, sparkles and the speech bubble all draw there instead of being clipped by a sprite-sized box. */
+const PET_ZONE = { left: 0.19, top: 0.42, right: 0.81, bottom: 0.99 };
 
 export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   document.body.classList.add('pet-view');
@@ -33,7 +36,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   let snapshot = initial, petId = '', loading = 0, stateRevision = 0, lastVisual = -1, firstSnapshot = true, lastSpoken = -1;
   let localAction: { action: PetAction; until: number } | undefined;
   let shownSpec = builtinPixelPets[0];
-  const pet = new PixelPet(host, shownSpec);
+  const pet = new PixelPet(host, shownSpec, PET_ZONE);
   const mischief = new Mischief(), petting = new Petting(), watcher = new AchievementWatcher(), stare = new Stare(4000), orbit = new Orbit();
   let lastInteraction = Date.now(), lastUserMessage = initial.messages.filter(m => m.role === 'user').at(-1)?.id || '', lastActivity = initial.activity;
   const touched = () => { lastInteraction = Date.now(); };
@@ -148,10 +151,22 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     const line = chimeCaption(now); if (line) say(line, 6000);
   }, 15_000);
   // The overhead follows the sprite's head so jumps and bobs carry the bubble along.
+  // The sprite's real box goes to the desktop shell so the drag clamp keeps the pet — not the empty canvas —
+  // inside the work area. Re-sent only when it changes (window resize, pet swap, scale change).
+  let reported = '';
+  const reportFootprint = () => {
+    const box = pet.footprint(), key = [box.left, box.top, box.right, box.bottom].map(v => v.toFixed(3)).join(' ');
+    if (key === reported) return;
+    reported = key;
+    void command({ type: 'shell.footprint', box }, true);
+  };
   const follow = () => {
     const anchor = pet.headAnchor(), rect = stage.getBoundingClientRect();
     overhead.style.setProperty('--head-x', `${Math.round(anchor.x - rect.left)}px`); overhead.style.setProperty('--head-y', `${Math.round(anchor.y - rect.top)}px`);
+    // No room for a bubble above the head (the pet can now touch the top of the screen): flip it below.
+    stage.classList.toggle('bubble-below', window.screenY + anchor.y < ((window.screen as Screen & { availTop?: number }).availTop ?? 0) + 150);
     if (handleOn()) placeHandle();
+    reportFootprint();
   };
   setInterval(() => { if (canAnimate()) follow(); }, 50);
 
@@ -197,8 +212,8 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   // ---- gestures: pat (hover strokes over the head), hold-to-charge, fling, taps ----
   let hold: { start: number; raf: number; charged: boolean; nagged?: boolean } | undefined, fling: { sim: Fling; raf: number } | undefined, samples: MoveSample[] = [];
   const overHead = (x: number, y: number) => {
-    const a = pet.headAnchor(), r = body.getBoundingClientRect(), height = r.bottom - 4 - a.y;
-    return height > 0 && Math.abs(x - a.x) < r.width * 0.32 && y >= a.y - 8 && y <= a.y + height * 0.5;
+    const a = pet.headAnchor(), box = pet.restBox(), height = box.bottom - 4 - a.y;
+    return height > 0 && Math.abs(x - a.x) < Math.max(12, (box.right - box.left) * 0.34) && y >= a.y - 8 && y <= a.y + height * 0.5;
   };
   /** Midnight and first-of-the-day lines take precedence over a gesture's own caption. */
   const noteInteraction = (): string | undefined => {
@@ -251,11 +266,14 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
       if (!fling || fling.sim !== sim) return;
       const r = sim.step(ts - last); last = ts;
       // Soft bounce off the work-area edges so the throw feels physical; the main process clamps anyway.
+      // Bounds use the sprite box, not the window: the empty sky around the pet may leave the desk.
       const sc = window.screen as Screen & { availLeft?: number; availTop?: number }, left = sc.availLeft ?? 0, top = sc.availTop ?? 0;
+      const fp = pet.footprint(), w = window.outerWidth, h = window.outerHeight;
       let { dx, dy } = r;
-      const nx = window.screenX + dx, ny = window.screenY + dy;
-      if ((dx < 0 && nx < left) || (dx > 0 && nx + window.outerWidth > left + sc.availWidth)) { sim.bounce('x'); dx = 0; bump(); }
-      if ((dy < 0 && ny < top) || (dy > 0 && ny + window.outerHeight > top + sc.availHeight)) { sim.bounce('y'); dy = 0; bump(); }
+      const boxL = window.screenX + dx + fp.left * w, boxR = window.screenX + dx + fp.right * w;
+      const boxT = window.screenY + dy + fp.top * h, boxB = window.screenY + dy + fp.bottom * h;
+      if (boxL < left || boxR > left + sc.availWidth) { sim.bounce('x'); dx = 0; bump(); }
+      if (boxT < top || boxB > top + sc.availHeight) { sim.bounce('y'); dy = 0; bump(); }
       if (dx || dy) void command({ type: 'shell.drag', dx, dy }, true);
       if (r.done) stopFling(false); else fling.raf = requestAnimationFrame(step);
     };

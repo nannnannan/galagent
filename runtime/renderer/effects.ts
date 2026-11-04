@@ -37,7 +37,7 @@ function next() {
   showing = true;
   const box = el('div', 'trophy-toast'); box.setAttribute('role', 'status');
   const text = el('div', 'trophy-text'); text.append(el('small', '', '解锁成就'), el('strong', '', item.title), el('span', '', item.description));
-  box.append(iconBadge(item.icon || '🏆', 'lg gold'), text);
+  box.append(iconBadge(item.icon || '🏆', 'lg gold emoji'), text);
   document.body.append(box);
   requestAnimationFrame(() => box.classList.add('visible'));
   const rect = () => box.getBoundingClientRect();

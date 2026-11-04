@@ -1,6 +1,7 @@
 import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
 import type { AppCommand, AppSnapshot, CommandResult, GalAgentBridge } from '../shared/contracts';
 import { builtinPersonas } from '../shared/personas';
+import { svgIcon } from './icons';
 
 /** Browser preview (vite dev without Electron) renders the UI against a static snapshot. */
 const previewPersona = builtinPersonas[0];
@@ -23,7 +24,12 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = ''
 }
 export function button(text: string, action: () => void, className = 'btn') { const b = el('button', className, text); b.type = 'button'; b.onclick = action; return b; }
 /** The one way an emoji/illustration icon is shown: a rounded square badge. Sizes: '' | 'sm' | 'lg'; tones: accent, solid, gold, danger. */
-export const iconBadge = (icon: string, variant = '') => { const b = el('span', `icon-badge${variant ? ' ' + variant : ''}`, icon); b.setAttribute('aria-hidden', 'true'); return b; };
+export const iconBadge = (icon: string, variant = '') => {
+  // 'emoji' keeps collectible content (achievement badges) as its own emoji.
+  const svg = /\bemoji\b/.test(variant) ? undefined : svgIcon(icon, /\blg\b/.test(variant) ? 22 : /\bsm\b/.test(variant) ? 16 : 18);
+  const b = el('span', `icon-badge${variant ? ' ' + variant : ''}${svg ? ' glyph' : ''}`, svg ? '' : icon); if (svg) b.append(svg);
+  b.setAttribute('aria-hidden', 'true'); return b;
+};
 /** Card with the shared header pattern: title, optional hint, optional trailing actions. */
 export function section(title: string, hint = '', ...actions: HTMLElement[]) {
   const box = el('section', 'card'), head = el('header', 'card-head'), text = el('div');
