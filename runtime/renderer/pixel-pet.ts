@@ -56,6 +56,9 @@ function stepSpring(s: Spring, target: number, dt: number, k: number, d: number)
 }
 
 export class PixelPet {
+  /** Where inside the host the sprite lives (fractions). The canvas spans the whole host, so the space
+   *  around the zone stays drawable: bobs, sway and particles are no longer clipped by the sprite box. */
+  readonly zone: { left: number; top: number; right: number; bottom: number };
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null;
   private sprite: HTMLCanvasElement;
@@ -114,7 +117,8 @@ export class PixelPet {
   private readonly onMedia = () => this.updateLoop();
   private readonly onVisibility = () => this.updateLoop();
 
-  constructor(private host: HTMLElement, spec: PixelPetSpec) {
+  constructor(private host: HTMLElement, spec: PixelPetSpec, zone?: { left: number; top: number; right: number; bottom: number }) {
+    this.zone = zone ?? { left: 0, top: 0, right: 1, bottom: 1 };
     this.spec = spec;
     this.bounds = opaqueBounds(spec);
     this.canvas = document.createElement('canvas');
@@ -275,6 +279,16 @@ export class PixelPet {
     const kx = rect.width / (L.width || 1), ky = rect.height / (L.height || 1), u = L.unit;
     const cx = rect.left + L.footX * kx, foot = rect.top + L.footY * ky, half = (this.bounds.width * u * kx) / 2;
     return { left: cx - half, right: cx + half, top: foot - this.bounds.height * u * ky, bottom: foot };
+  }
+
+  /** The sprite box as fractions of the canvas — reported to the desktop shell so only the visible pet is
+   *  kept on screen (the empty sky around it may hang off the display edges). */
+  footprint(): { left: number; top: number; right: number; bottom: number } {
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { left: 0.25, top: 0.58, right: 0.75, bottom: 0.96 };
+    const box = this.restBox();
+    const f = (v: number, origin: number, size: number) => Math.min(1, Math.max(0, (v - origin) / size));
+    return { left: f(box.left, rect.left, rect.width), top: f(box.top, rect.top, rect.height), right: f(box.right, rect.left, rect.width), bottom: f(box.bottom, rect.top, rect.height) };
   }
 
   headAnchor(): { x: number; y: number } {
@@ -578,9 +592,12 @@ export class PixelPet {
     const width = Math.max(1, Math.round(cssW * dpr)), height = Math.max(1, Math.round(cssH * dpr));
     // 以 32 像素为基准统一像素大小，较高的角色（带帽子等）只在放不下时才缩小
     const [w, h] = this.spec.size;
-    let unit = Math.max(1, Math.floor(Math.min(width * 0.84, height * 0.8) / 32));
-    while (unit > 1 && (h * unit > height * 0.92 || w * unit > width * 0.96)) unit--;
-    return { width, height, unit, footX: width / 2, footY: height - Math.max(2, Math.round(unit * 2.5)), dpr };
+    const z = this.zone;
+    const zoneW = Math.max(1, (z.right - z.left) * width), zoneH = Math.max(1, (z.bottom - z.top) * height);
+    let unit = Math.max(1, Math.floor(Math.min(zoneW * 0.84, zoneH * 0.8) / 32));
+    while (unit > 1 && (h * unit > zoneH * 0.92 || w * unit > zoneW * 0.96)) unit--;
+    const footY = Math.round(z.bottom * height) - Math.max(2, Math.round(unit * 2.5));
+    return { width, height, unit, footX: Math.round(((z.left + z.right) / 2) * width), footY, dpr };
   }
 
   private draw(staticFrame = false) {

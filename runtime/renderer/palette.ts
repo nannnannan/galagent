@@ -1,4 +1,5 @@
 // ⌘K / Ctrl+K command palette for the notebook: a filterable list of quick actions.
+import { svgIcon } from './icons';
 import { el, iconBadge } from './ui';
 
 export type PaletteAction = { id: string; title: string; icon: string; group: string; hint?: string; keywords?: string; shortcut?: string; run: () => void };
@@ -16,7 +17,7 @@ export function openPalette(actions: PaletteAction[], onClose?: () => void) {
   box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', '快捷操作');
   const search = el('div', 'palette-search'), input = el('input');
   input.placeholder = '搜索操作、页面、角色、小人…'; input.setAttribute('aria-label', '搜索快捷操作'); input.setAttribute('role', 'combobox'); input.setAttribute('aria-controls', 'palette-list'); input.spellcheck = false;
-  search.append(el('span', 'palette-glass', '⌕'), input, el('kbd', '', 'Esc'));
+  const glass = el('span', 'palette-glass'); glass.append(svgIcon('search', 18)!); search.append(glass, input, el('kbd', '', 'Esc'));
   const list = el('div', 'palette-list'); list.id = 'palette-list'; list.setAttribute('role', 'listbox');
   const foot = el('div', 'palette-foot'); foot.append(el('span', '', '↑↓ 选择'), el('span', '', '↵ 执行'), el('span', '', 'Ctrl+1…0 切换页面'), el('span', '', '/ 聚焦输入框'));
   box.append(search, list, foot); backdrop.append(box); document.body.append(backdrop);

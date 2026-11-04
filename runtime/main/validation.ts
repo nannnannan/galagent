@@ -25,7 +25,8 @@ export function validateCommand(value: unknown): AppCommand {
       if(!bounded(command.task,12000)||!command.task.trim())throw new Error('任务为空或过长。');break;
     case 'agent.configure':
       if(!bounded(command.cwd,1000)||!command.cwd.trim())throw new Error('工作目录无效。');break;
-    case 'agent.cancel':case 'agent.undo':case 'mcp.restart':break;
+    case 'agent.cancel':if(command.id!==undefined&&!id(command.id))throw new Error('任务标识无效。');break;
+    case 'agent.undo':case 'mcp.restart':case 'agent.pickCwd':break;
     case 'mcp.secret':
       if (!bounded(command.server, 32) || [command.env, command.headers].some(m => m !== undefined && (!plain(m) || Object.keys(m).length > 30 || Object.entries(m).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000)))) throw new Error('MCP 密钥格式不正确。'); break;
     case 'agent.answer':
@@ -88,8 +89,9 @@ export function validateCommand(value: unknown): AppCommand {
         else if (key === 'captureBlocklist') { if (!Array.isArray(val) || val.length > 80 || val.some(item => !bounded(item, 80))) throw new Error('截屏黑名单格式不正确。'); }
         else if (key === 'forbiddenPaths') { if (!Array.isArray(val) || val.length > 200 || val.some(item => !bounded(item, 500) || item.includes('\0'))) throw new Error('禁止访问目录列表格式不正确。'); }
         else if (settingNumbers.has(key)) { if (typeof val !== 'number' || !Number.isFinite(val)) throw new Error('请输入有效的数字。'); }
+        else if (key === 'aiControl') { if (val !== 'confirm' && val !== 'full') throw new Error('AI 管理权限无效。'); }
         else if (key === 'mcpServers') { if (!Array.isArray(val) || val.length > 20 || val.some(v => !plain(v) || !bounded(v.name, 32) || typeof v.enabled !== 'boolean' || (v.url !== undefined ? !bounded(v.url, 1000) : !bounded(v.command, 500)) || (v.args !== undefined && (!Array.isArray(v.args) || v.args.length > 60 || v.args.some((x: unknown) => typeof x !== 'string' || x.length > 2000))) || [v.envKeys, v.headerKeys].some(k => k !== undefined && (!Array.isArray(k) || k.length > 30 || k.some((x: unknown) => !bounded(x, 100)))))) throw new Error('MCP 服务配置格式不正确。'); }
-        else if (key === 'executor') { if (!plain(val) || (val.model !== undefined && typeof val.model !== 'string') || (typeof val.model === 'string' && val.model.length > 120) || [val.maxOutputTokens, val.maxTurns].some(n => n !== undefined && (typeof n !== 'number' || !Number.isFinite(n)))) throw new Error('执行器设置格式不正确。'); }
+        else if (key === 'executor') { if (!plain(val) || (val.model !== undefined && typeof val.model !== 'string') || (typeof val.model === 'string' && val.model.length > 120) || [val.maxOutputTokens, val.maxTurns, val.maxParallel].some(n => n !== undefined && (typeof n !== 'number' || !Number.isFinite(n)))) throw new Error('执行器设置格式不正确。'); }
         else if (key === 'petId') { if (val !== '' && !slug(val)) throw new Error('小人形象无效。'); }
         else if (key === 'quietHours') { if (!plain(val) || (val.enabled !== undefined && typeof val.enabled !== 'boolean') || (val.start !== undefined && !bounded(val.start, 5)) || (val.end !== undefined && !bounded(val.end, 5))) throw new Error('免打扰时段格式无效。'); }
         else if (key === 'sandbox') {
@@ -137,6 +139,10 @@ export function validateCommand(value: unknown): AppCommand {
       if (![command.dx, command.dy].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 1000)) throw new Error('无效移动。'); break;
     case 'shell.pointer':
       if (typeof command.interactive !== 'boolean') throw new Error('无效指针设置。'); break;
+    case 'shell.footprint': {
+      const box = command.box as Record<string, unknown> | undefined;
+      if (!box || typeof box !== 'object' || !['left', 'top', 'right', 'bottom'].every(k => typeof box[k] === 'number' && Number.isFinite(box[k]))) throw new Error('无效的桌宠边界。'); break;
+    }
     case 'shell.chat':
       if (command.open !== undefined && typeof command.open !== 'boolean') throw new Error('无效窗口设置。'); break;
     case 'shell.input':

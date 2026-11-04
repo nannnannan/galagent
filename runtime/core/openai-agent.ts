@@ -140,7 +140,7 @@ export class OpenAIToolAgent implements AgentRunner {
   }return{summary:'执行达到单次回合上限，工作可能未完成；可发送新消息继续同一会话。',stopReason:'turn_limit',sessionId:session.id,tools:trace};
   }finally{signal.removeEventListener('abort',abort);this.controllers.delete(session.id);this.active.delete(session.id);this.host.save(session);if(this.queued.has(session.id))this.schedule(session);}
  }
- async run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void){cwd=await realpath(cwd);if(!(await stat(cwd)).isDirectory())throw new Error('任务工作目录无效');const provider=this.options.provider();const session=[...this.host.sessions.values()].filter(s=>!s.parentId&&s.cwd===cwd&&(s.provider?s.provider.baseUrl===provider.baseUrl&&s.provider.model===provider.model:s.messages.length===0)).at(-1)||this.host.session(cwd);
+ async run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void,options:{fresh?:boolean}={}){cwd=await realpath(cwd);if(!(await stat(cwd)).isDirectory())throw new Error('任务工作目录无效');const provider=this.options.provider();const session=options.fresh?this.host.session(cwd):[...this.host.sessions.values()].filter(s=>!s.parentId&&s.cwd===cwd&&(s.provider?s.provider.baseUrl===provider.baseUrl&&s.provider.model===provider.model:s.messages.length===0)).at(-1)||this.host.session(cwd);
   // One run per user task: its file changes are checkpointed together and can be undone as a unit.
   session.runId=randomUUID();session.runLabel=task.slice(0,80);this.host.save(session);
   const result=await this.loop(session,task,signal,onProgress);

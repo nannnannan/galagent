@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const out = resolve(process.argv[2] || join(root, 'docs/evidence/ui'));
 const dir = mkdtempSync(join(tmpdir(), 'galagent-ui-'));
-await build({ entryPoints: [join(root, 'scripts/ui-preview/entry.ts')], bundle: true, outfile: join(dir, 'app.js'), format: 'esm', target: 'es2022', loader: { '.json': 'json' }, logLevel: 'warning' });
+await build({ entryPoints: [join(root, 'scripts/ui-preview/entry.ts')], bundle: true, outdir: dir, entryNames: 'app', assetNames: 'assets/[name]-[hash]', format: 'esm', target: 'es2022', loader: { '.json': 'json', '.woff2': 'file' }, logLevel: 'warning' });
 // Headless Chrome barely advances CSS transitions/animations under a virtual-time budget, so the
 // preview jumps every finite one to its end state (preview only; the app itself is untouched).
 const settle = '<style>*,*::before,*::after{transition-duration:0s!important;transition-delay:0s!important;animation-delay:-30s!important}</style>';

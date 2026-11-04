@@ -97,7 +97,9 @@ export type Settings = {
   /** MCP servers the executor may use (stdio); local programs, so they need Shell in the sandbox. */
   mcpServers?: { name: string; enabled: boolean; command?: string; args?: string[]; url?: string; /** Names only; values stay encrypted in the desktop shell. */ envKeys?: string[]; headerKeys?: string[] }[];
   /** Executor model and budget (empty model = same as the chat model). */
-  executor?: { model?: string; maxOutputTokens?: number; maxTurns?: number };
+  executor?: { model?: string; maxOutputTokens?: number; maxTurns?: number; /** Executor runs allowed at once (1–6). */ maxParallel?: number };
+  /** What the main character may change in GalAgent: 'confirm' (default) asks the user before anything that widens privacy or permissions; 'full' applies everything directly. Only the user can change this. */
+  aiControl?: 'confirm' | 'full';
   sandbox?: SandboxSettings;
 };
 /** Nested groups may be patched partially; the core merges and validates them. */
@@ -139,7 +141,7 @@ export type StoryScene = { type: 'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06'; 
 export type StoryEpisode = StoryScene & { id: string; createdAt: string; historical?: boolean };
 export type StorySnapshot = { mood: { expression: Expression; strength: number; expiresAt: number }; goals: { position: { placed: boolean; placements: number; lastPlacedAt?: string }; notebook: { entries: number; lastEntryAt?: string } }; recentEpisodes: StoryEpisode[] };
 export type BackgroundTask = { id: string; label: string; state: 'queued' | 'running' | 'done' | 'failed'; detail?: string };
-export type AgentQuestion={id:string;questions:{question:string;options:{label:string;description?:string}[];multi_select?:boolean}[]};
+export type AgentQuestion={id:string;questions:{header?:string;question:string;options:{label:string;description?:string}[];multi_select?:boolean}[]};
 export type PoolView = { limit: number; effectiveLimit: number; inflight: number; queued: number; peak: number };
 export type AttentionView = { enabled: boolean; running: boolean; paused?: string; lastAt?: string; lastDecision?: 'silent' | 'observe' | 'schedule' | 'wake'; lastReason?: string; evaluations: number; skippedHeartbeats: number; wakes: number; pendingEvents: number; activeWatches: number; nextCheckAt?: string; lastScreenAt?: string; lastSkip?: string };
 export type WatchView = { id: string; title: string; condition?: string; createdAt: number; nextCheckAt: number; expiresAt: number; status: 'active' | 'done' | 'cancelled' | 'expired'; dedupeKey: string; lastResult?: string };
@@ -164,7 +166,7 @@ export type AppSnapshot = {
   bond?: BondView;
   privacy?: PrivacyView;
   companionship?: CompanionPreferences;
-  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
+  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];running?:{id:string;task:string;startedAt:string}[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
   variables?: PersonaVariables;
   story?: StorySnapshot;
   watches?: WatchView[];
@@ -203,7 +205,8 @@ export type AppCommand =
   | { type: 'achievement.unlock'; id: string }
   | { type: 'privacy.lockdown' }
   | { type: 'agent.run'; task: string }
-  | { type: 'agent.cancel' }
+  | { type: 'agent.cancel'; id?: string }
+  | { type: 'agent.pickCwd' }
   | { type: 'agent.undo' }
   | { type: 'mcp.restart' }
   | { type: 'mcp.secret'; server: string; env?: Record<string, string>; headers?: Record<string, string> }
@@ -233,6 +236,7 @@ export type AppCommand =
   | { type: 'shell.chat'; open?: boolean }
   | { type: 'shell.input'; open: boolean }
   | { type: 'shell.drag'; dx: number; dy: number }
+  | { type: 'shell.footprint'; box: { left: number; top: number; right: number; bottom: number } }
   | { type: 'shell.pointer'; interactive: boolean }
   | { type: 'shell.menu' }
   | { type: 'shell.resetPosition' }

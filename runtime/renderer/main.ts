@@ -1,3 +1,4 @@
+import './fonts.css';
 import './style.css';
 import type { AppSnapshot } from '../shared/contracts';
 import { bridge, previewSnapshot, toast } from './ui';

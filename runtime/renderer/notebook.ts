@@ -12,8 +12,9 @@ import { renderMarkdown } from './markdown';
 import { confetti, trophyToast } from './effects';
 import { openPalette, type PaletteAction } from './palette';
 import { reportAchievement, trackPet } from './bond';
-import { loadPet, wantedPet } from './pet-assets';
+import { builtinPet, loadPet, wantedPet } from './pet-assets';
 import { guidePanel, openPersonaEditor, personaBadges } from './persona-editor';
+import { svgIcon } from './icons';
 import { bridge, button, clockText, command, el, field, iconBadge, linesArea, notice, numberInput, onCommand, readFileText, relativeTime, section, select, toast, toggle } from './ui';
 
 type Page = { id: string; icon: string; title: string; intro: string; key: (s: AppSnapshot) => unknown; render: (root: HTMLElement, s: AppSnapshot) => void };
@@ -50,25 +51,27 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   let snapshot = initial, page = 'chat', pageKey = '', lastMessages = '', enterTimer: ReturnType<typeof setTimeout> | undefined;
   app.innerHTML = `<main class="notebook">
     <aside class="sidebar">
-      <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面陪伴 · 养成 · 助手</small></span></div>
-      <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span><small id="portrait-mood" class="portrait-mood"></small></div></div>
-      <button id="bond-card" class="bond-card" type="button">
-        <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="pill gold" id="bond-trophies"></span></span>
-        <span class="bond-chips"><span id="bond-streak"></span><span aria-hidden="true">·</span><span id="bond-today"></span></span>
-        <span class="progress" aria-hidden="true"><i id="bond-bar"></i></span>
-      </button>
+      <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面伙伴</small></span></div>
+      <div class="companion">
+        <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span><small id="portrait-mood" class="portrait-mood"></small></div></div>
+        <button id="bond-card" class="bond-card" type="button">
+          <span class="bond-line"><span>陪伴第 <b id="bond-days">1</b> 天</span><span class="pill gold" id="bond-trophies"></span></span>
+          <span class="progress" aria-hidden="true"><i id="bond-bar"></i></span>
+          <span class="bond-chips"><span id="bond-streak"></span><span aria-hidden="true">·</span><span id="bond-today"></span></span>
+        </button>
+      </div>
       <nav class="nav" aria-label="页面"></nav>
       <footer class="sidebar-foot"><span id="foot-stats"></span><button id="pet-return" class="btn ghost small" type="button">回到桌面</button></footer>
     </aside>
     <section class="workspace">
-      <header class="page-head"><div><h1 id="page-title"></h1><p id="page-intro"></p></div><div id="page-tools" class="page-tools"><button id="palette-open" class="btn ghost small" type="button"><span>快捷操作</span><kbd>Ctrl</kbd><kbd>K</kbd></button></div></header>
+      <header class="titlebar"><div class="title"><h1 id="page-title"></h1><p id="page-intro"></p></div><div id="page-tools" class="page-tools"><button id="palette-open" class="btn ghost small" type="button"><span>快捷操作</span><kbd>Ctrl</kbd><kbd>K</kbd></button></div></header>
       <div id="chat-page" class="chat-page">
         <div id="messages" class="messages" aria-live="polite"></div>
         <div id="agent-questions"></div>
         <form id="composer" class="composer">
           <div id="runtime-error" class="notice warn" hidden></div>
           <div class="composer-box"><textarea id="input" rows="1" maxlength="12000" placeholder="说点什么…  (Enter 发送，Shift+Enter 换行，/任务 xxx 交给执行器)"></textarea>
-          <button id="send" class="btn primary round" type="submit" aria-label="发送">↑</button></div>
+          <button id="send" class="btn primary round" type="submit" aria-label="发送"></button></div>
           <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> <span id="thinking-text">正在想</span></span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
         </form>
       </div>
@@ -97,7 +100,10 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   pages.forEach((p, i) => {
     const b = button('', () => go(p.id), 'nav-item'); b.dataset.page = p.id;
     b.append(iconBadge(p.icon, 'sm'), el('span', 'nav-label', p.title), el('kbd', 'nav-key', `${(i + 1) % 10}`));
-    tip(b, `${p.title} · Ctrl+${(i + 1) % 10}`, 'right'); nav.append(b);
+    tip(b, `${p.title} · Ctrl+${(i + 1) % 10}`, 'right');
+    // Groups: talk · who · how TA behaves · records · system.
+    if (['persona', 'companion', 'memory', 'privacy'].includes(p.id)) nav.append(el('div', 'nav-sep'));
+    nav.append(b);
   });
   function go(id: string) {
     page = id; pageKey = '';
@@ -110,6 +116,11 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     else { disposePage(); content.replaceChildren(); } // hidden pages shouldn't keep little pets animating
     render(snapshot, true);
   }
+  app.querySelector('#send')!.append(svgIcon('arrowUp', 18)!);
+  // The title bar gains a hairline once the page scrolls under it.
+  const titlebar = app.querySelector<HTMLElement>('.titlebar')!;
+  const markScroll = (event: Event) => titlebar.classList.toggle('scrolled', (event.target as HTMLElement).scrollTop > 4);
+  content.addEventListener('scroll', markScroll, { passive: true });
   app.querySelector('#pet-return')!.addEventListener('click', () => void command({ type: 'shell.chat', open: false }));
   app.querySelector('#bond-card')!.addEventListener('click', () => go('achievements'));
   tip(app.querySelector<HTMLElement>('#bond-card')!, '查看成就与羁绊', 'right');
@@ -137,7 +148,9 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const busy = busyText(snapshot.activity, snapshot.persona?.active.thinkingLines || []);
     if (busy !== undefined && !busyTimer) busyTimer = setInterval(() => { if (!document.hidden) renderStatus(); }, 500);
     if (busy === undefined && busyTimer) { clearInterval(busyTimer); busyTimer = undefined; }
-    const label = busy !== undefined && fun ? busy : snapshot.activity?.label || '';
+    // The name already heads the card: “星野 · 星空时间” reads as just “星空时间” here.
+    const who = snapshot.identity.name || snapshot.persona?.active.name || '';
+    const label = busy !== undefined && fun ? busy : (snapshot.activity?.label || '').replace(who ? new RegExp(`^${who.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*·\\s*`) : /^$/, '');
     const sparkle = !own && busy !== undefined && fun;
     if (statusText.parentElement !== portraitStatus) portraitStatus.replaceChildren(statusText);
     statusText.textContent = own ? statusLine!.text : label; statusText.classList.toggle('spark-text', sparkle); portraitStatus.dataset.kind = own ? 'fun' : snapshot.activity?.kind || 'idle';
@@ -187,6 +200,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   // Messages already on screen never animate again; only genuinely new ones pop in.
   const seen = new Set<string>();
   let firstPaint = true, stickToBottom = true, helloPet: PixelPet | undefined;
+  messagesBox.addEventListener('scroll', markScroll, { passive: true });
   messagesBox.addEventListener('scroll', () => { stickToBottom = messagesBox.scrollHeight - messagesBox.scrollTop - messagesBox.clientHeight < 120; }, { passive: true });
   function renderMessages() {
     helloPet?.destroy(); helloPet = undefined;
@@ -217,8 +231,8 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       const who = message.role === 'user' ? '你' : message.speaker || snapshot.identity.name || 'TA';
       const meta = el('div', 'message-meta');
       meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}${message.afterthought ? ' · 补了一句' : ''}`));
-      const copy = tip(button('⧉', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
-      copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
+      const copy = tip(button('', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
+      copy.append(svgIcon('copy', 14)!); copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
       let body: HTMLElement;
       if (message.role === 'assistant' && message.parts && message.parts.length > 1) {
         // Sent as several short messages: each part is its own bubble, typed out one after another when new.
@@ -257,7 +271,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const requests = snapshot.agent?.questions || [], signature = JSON.stringify(requests.map(q => q.id));
     if (host.dataset.signature === signature) return; host.dataset.signature = signature; host.replaceChildren();
     for (const request of requests) {
-      const form = el('form', 'card question'), head = el('header', 'card-head'), title = el('div'); title.append(el('h3', '', '执行任务需要你的选择'), el('p', 'hint', '执行器在等你决定，选一个或写下你的回答。')); head.append(iconBadge('🧭', 'accent'), title); form.append(head);
+      const form = el('form', 'card question'), head = el('header', 'card-head'), title = el('div'); const settingsAsk = request.questions[0]?.header === 'TA 想修改设置'; title.append(el('h3', '', settingsAsk ? 'TA 想帮你改设置' : request.questions[0]?.header === '运行命令' ? '执行器想运行一条命令' : '执行任务需要你的选择'), el('p', 'hint', settingsAsk ? '这些改动会放宽隐私或权限，需要你点一下同意。' : '执行器在等你决定，选一个或写下你的回答。')); head.append(iconBadge('🧭', 'accent'), title); form.append(head);
       const fields: { question: string; choices: HTMLInputElement[]; custom: HTMLInputElement }[] = [];
       for (const [index, q] of request.questions.entries()) {
         const set = el('fieldset'); set.append(el('legend', '', q.question)); const choices: HTMLInputElement[] = [];
@@ -382,14 +396,30 @@ const pages: Page[] = [
   { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled], render: renderConfig },
 ];
 
+/** Face of a persona card: its own pixel pet standing still (it wakes up on hover); a letter badge when the card has no sprite. */
+function personaFace(host: HTMLElement, p: { name: string; avatar?: string }, s: AppSnapshot) {
+  const spec = builtinPet(p.avatar);
+  if (!spec) { host.append(iconBadge(p.name.slice(0, 1), 'lg solid')); return () => {}; }
+  const face = el('div', 'persona-face'), stage = el('div', 'persona-face-pet');
+  face.append(stage); host.append(face);
+  const pet = new PixelPet(stage, spec, { left: 0.08, top: 0.02, right: 0.92, bottom: 0.98 });
+  let revision = 1;
+  const set = (live: boolean) => pet.setState({ expression: live ? 'pleased' : 'neutral', action: live ? 'wave' : 'idle', revision: live ? ++revision : revision, visible: live, reducedMotion: s.settings.reducedMotion, quiet: false });
+  set(false);
+  face.onmouseenter = () => set(true); face.onmouseleave = () => set(false);
+  pageDisposers.push(() => pet.destroy());
+  return () => pet.destroy();
+}
+
 function renderPersonas(root: HTMLElement, s: AppSnapshot) {
   const list = s.persona?.list || [], active = s.persona?.active, days = s.bond?.daysTogether || 0;
   const grid = el('div', 'persona-grid');
   for (const p of list) {
     const card = el('article', 'persona-card selectable'); card.classList.toggle('active', p.id === active?.id); card.dataset.id = p.id;
-    const top = el('div', 'persona-top'), names = el('div', 'persona-names');
+    const top = el('div', 'persona-top'), names = el('div', 'persona-names'), face = el('div', 'persona-face-wrap');
     names.append(el('strong', '', p.name), el('small', '', `${p.pronoun} · ${p.relationship || (p.builtin ? '内置角色' : '自定义角色')}`));
-    top.append(iconBadge(p.name.slice(0, 1), 'lg solid'), names);
+    personaFace(face, p, s);
+    top.append(face, names);
     card.append(top, el('p', 'persona-tagline', p.tagline || '（还没有简介）'));
     const badges = personaBadges(p, days); if (badges.length) { const row = el('div', 'persona-badges'); row.append(...badges); card.append(row); }
     const actions = el('div', 'row');
@@ -563,6 +593,13 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
     field('只允许访问这些域名', linesArea(box.allowedDomains, v => void sandbox(s, { allowedDomains: v }), 3, '每行一个，如 github.com；留空不限'), '', 'field wide'),
     field('禁止访问的文件夹', linesArea(s.settings.forbiddenPaths || [], v => void settings({ forbiddenPaths: v }), 3, '每行一个路径'), '设置后 Shell 自动停用；修改会中止进行中的任务', 'field wide'),
   );
+  const ai = section('AI 管理权限', `${s.persona?.active.name || 'TA'} 可以在聊天里替你改 GalAgent 的设置、派发执行任务、管理要留意的事。这里决定放宽隐私或权限的改动要不要先问你。`);
+  const aiSeg = el('div', 'segmented'); aiSeg.setAttribute('role', 'radiogroup');
+  for (const [value, title, text] of [['confirm', '先问我（推荐）', '普通设置直接改；打开观察、提高沙箱、关闭脱敏、接入 MCP 等放宽的改动，先在聊天里请你点一下同意'], ['full', '完全控制', 'TA 可以直接改全部设置，包括隐私与沙箱；密钥仍只能你自己填']] as const) {
+    const b = button('', () => { const now = s.settings.aiControl || 'confirm'; if (value === now) return; if (value === 'full' && !confirm('完全控制后，TA 可以不经你确认就打开截屏、提高沙箱档位、关闭脱敏等。\n\n聊天里来自网页或文件的内容也可能诱导 TA 这么做。确定吗？')) return; void settings({ aiControl: value }); }, `segment selectable${value === 'full' ? ' danger' : ''}`);
+    b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String((s.settings.aiControl || 'confirm') === value)); b.append(el('strong', '', title), el('small', '', text)); aiSeg.append(b);
+  }
+  ai.append(aiSeg, el('p', 'hint', '这个开关只有你能改，TA 改不了它；API Key、MCP 密钥等也只能你自己填。'));
   const out = section('防外泄', '发给模型、语音服务和联网工具的内容会先经过这里。只在本机替换，不影响本地记录。');
   out.append(
     field('隐藏密钥、令牌与密码', toggle(box.redactSecrets, v => void sandbox(s, { redactSecrets: v })), 'API Key、私钥、JWT、“密码：xxx” 等'),
@@ -588,7 +625,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
   const channels: Record<string, string> = { chat: '聊天', initiative: '主动开口', background: '后台整理', executor: '执行器', 'executor-fetch': '执行器联网', tts: '语音', fetch: '联网' };
   for (const e of v.recent.slice(0, 12)) { const row = el('div', 'list-row compact'); row.append(el('time', '', clockText(e.at)), el('span', `pill ${e.action === 'blocked' ? 'warn' : 'accent'}`, e.action === 'blocked' ? '拦截' : '隐藏'), el('span', 'spacer', `${channels[e.channel] || e.channel} · ${e.kinds.map(k => names[k] || k).join('、')} ×${e.count}`)); audit.append(row); }
   if (v.recent.length) { const row = el('div', 'row'); row.append(button('清空记录', () => void command({ type: 'privacy.clearAudit' }), 'btn ghost small')); audit.append(row); }
-  root.append(level, out, eyes, audit);
+  root.append(level, ai, out, eyes, audit);
 }
 
 function renderMemories(root: HTMLElement, s: AppSnapshot) {
@@ -686,7 +723,7 @@ function renderAchievements(root: HTMLElement, s: AppSnapshot) {
   for (const a of list) {
     const def = achievementDefs.find(d => d.id === a.id), secret = !a.unlockedAt && (a.hidden ?? def?.hidden);
     const tile = el('article', `tile trophy${a.unlockedAt ? ' unlocked' : ' locked'}${secret ? ' secret' : ''}`);
-    tile.append(iconBadge(secret ? '？' : a.icon, 'lg'), el('strong', '', secret ? '？？？' : a.title), el('small', '', secret ? '隐藏成就，相处中自然会遇到' : a.description));
+    tile.append(iconBadge(secret ? '？' : a.icon, 'lg emoji'), el('strong', '', secret ? '？？？' : a.title), el('small', '', secret ? '隐藏成就，相处中自然会遇到' : a.description));
     tile.append(el('span', 'trophy-foot', a.unlockedAt ? `${new Date(a.unlockedAt).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 解锁` : def?.client ? '桌宠互动' : '相处中解锁'));
     if (a.unlockedAt) tip(tile, `${a.title} · ${clockText(a.unlockedAt)}`, 'top');
     grid.append(tile);
@@ -736,14 +773,23 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const task = el('textarea'); task.rows = 3; task.maxLength = 12000; task.placeholder = '要执行的任务，例如：统计这个文件夹里有多少张图片';
   const run = el('button', 'btn primary', '开始执行'); run.type = 'submit';
   const last = s.agent?.lastResult;
-  const status = el('p', 'hint', s.agent?.busy ? '执行中，聊天不受影响。' : last ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[last.status]} · ${last.toolCount} 次工具调用${last.changedFiles ? ` · 改了 ${last.changedFiles} 个文件${last.undone ? '（已撤销）' : ''}` : ''}` : '待命');
-  const cwdRow = el('div', 'row'); cwdRow.append(cwd, button('保存目录', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
+  const running = s.agent?.running || [];
+  const status = el('p', 'hint', running.length ? `${running.length} 个任务执行中，聊天不受影响` : s.agent?.busy ? '执行中，聊天不受影响。' : last ? `上次：${({ done: '完成', failed: '未完成', cancelled: '已取消' })[last.status]} · ${last.toolCount} 次工具调用${last.changedFiles ? ` · 改了 ${last.changedFiles} 个文件${last.undone ? '（已撤销）' : ''}` : ''}` : '待命');
+  const pickCwd = button('选择文件夹…', async () => { const r = await command({ type: 'agent.pickCwd' }); const picked = (r.data as { cwd?: string } | undefined)?.cwd; if (r.ok && picked) { cwd.value = picked; toast('工作目录已更新。'); } }, 'btn primary');
+  pickCwd.prepend(svgIcon('folder', 16)!);
+  cwd.title = cwd.value; cwd.spellcheck = false;
+  const cwdRow = el('div', 'row'); cwdRow.append(cwd, pickCwd, button('保存', async () => { if ((await command({ type: 'agent.configure', cwd: cwd.value.trim() })).ok) toast('工作目录已保存。'); }, 'btn ghost'));
   const undo = button('撤销上次改动', async () => { if (!confirm(`把上次任务改过的 ${last?.changedFiles ?? ''} 个文件恢复原样？之后又被改过的文件不会动。`)) return; const r = await command({ type: 'agent.undo' }); if (r.ok) toast('已撤销，详情见聊天记录。'); }, 'btn ghost');
   undo.hidden = !last?.changedFiles || !!last.undone || !!s.agent?.busy;
   const runRow = el('div', 'row'); runRow.append(run, button('取消执行', () => void command({ type: 'agent.cancel' }), 'btn ghost'), undo, el('span', 'spacer'), status);
   aform.append(field('工作目录', cwdRow, '沙箱的“工作目录”指这里', 'field wide'), field('任务', task, '', 'field wide'), runRow);
   aform.onsubmit = async event => { event.preventDefault(); if (task.value.trim() && (await command({ type: 'agent.run', task: task.value.trim() })).ok) toast('任务已交给执行器，结果会回到聊天里。'); };
   agent.append(aform);
+  if (running.length) {
+    const list = el('div', 'stack');
+    for (const r of running) { const row = el('div', 'list-row'), main = el('div', 'row-main'); main.append(el('strong', '', r.task), el('small', 'row-meta', `开始于 ${clockText(r.startedAt)}`)); row.append(iconBadge('terminal', 'accent'), main, button('取消', () => void command({ type: 'agent.cancel', id: r.id }), 'btn ghost small')); list.append(row); }
+    agent.append(list);
+  }
   // Executor model and budget (Codex-style: a stronger coding model for tasks, the chat model for talking).
   const ex = s.settings.executor || {};
   const exModel = el('input'); exModel.value = ex.model || ''; exModel.placeholder = `留空 = 用聊天模型（${s.provider.model}）`; exModel.onchange = () => void settings({ executor: { model: exModel.value.trim() } });
@@ -752,6 +798,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
     field('执行器模型', exModel, '同一个 API 地址下的另一个模型，例如更擅长编程的那个', 'field wide'),
     field('单次输出上限', numberInput(ex.maxOutputTokens ?? 8192, v => void settings({ executor: { maxOutputTokens: v } }), { step: 1024, unit: 'tokens' }), '模型不支持时会报错，调小即可'),
     field('每个任务最多回合', numberInput(ex.maxTurns ?? 200, v => void settings({ executor: { maxTurns: v } }), { step: 10, unit: '轮' })),
+    field('最多同时执行', numberInput(ex.maxParallel ?? 3, v => void settings({ executor: { maxParallel: v } }), { step: 1, unit: '个任务' }), 'TA 可以把几件事同时交给多个执行代理'),
   );
   // MCP servers: local programs (stdio) or remote URLs (Streamable HTTP), like Codex CLI / Kimi Code.
   const mcp = section('MCP 工具服务', '接入 Model Context Protocol 服务给执行器加工具（浏览器自动化、GitHub、数据库、Figma…）。本地命令需要沙箱允许 Shell，远程网址需要允许联网；标准档下每个任务第一次使用前会问你，宽松/完全放开不再询问。密钥用系统加密保存，界面只显示名称。');

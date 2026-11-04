@@ -1,5 +1,5 @@
 import type { McpSecrets } from '../core/mcp';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, safeStorage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, Tray } from 'electron';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -11,6 +11,7 @@ import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
 import { companionModes } from '../shared/companionship';
+import { PET_SIZE, PET_FOOTPRINT, clampPet, cornerPosition, roamRange, validFootprint, type Footprint } from '../shared/pet-geometry';
 import type { ClipboardRead } from '../desktop/perception';
 
 app.setName('GalAgent');
@@ -18,8 +19,9 @@ const override = process.env.GALAGENT_DATA_DIR;
 if (override) app.setPath('userData', path.resolve(override));
 if (process.env.GALAGENT_DEBUG_PORT && !app.isPackaged) app.commandLine.appendSwitch('remote-debugging-port', process.env.GALAGENT_DEBUG_PORT);
 const rootDir = path.resolve(__dirname, '..');
-/** Pet window at scale 1: room for the sprite, the status caption and a speech bubble above it. */
-const PET_SIZE = { width: 320, height: 440 } as const;
+/** Pet window at scale 1 lives in shared/pet-geometry: it is big on purpose — the empty sky around the
+ *  sprite holds the speech bubble, the sway and the particles, and the clamp keeps the sprite, not the
+ *  canvas, inside the work area. */
 let companion: CompanionService;
 let observer: DesktopObserver;
 let pet: BrowserWindow | undefined;
@@ -44,6 +46,8 @@ let roamAutoPhaseUntil = 0;
 let roamAutoActive = false;
 let lastPublishedRoam = '';
 let lastProxyCheckAt = 0;
+/** The sprite's box inside the window, reported by the renderer once it has laid the pet out. */
+let petFootprint: Footprint = PET_FOOTPRINT;
 const speechRequests = new Map<number, AbortController>();
 let speechPolicy = '';
 function stopSpeech(senderId?: number, notify = true) {
@@ -124,6 +128,8 @@ const mcpSecrets = {
     await atomicWrite(path.join(dataDir, 'mcp-secrets.bin'), safeStorage.encryptString(JSON.stringify(all)));
   },
 };
+/** Title-bar overlay colours = the renderer's --bg / --muted for the current theme (style.css). */
+const chrome = () => nativeTheme.shouldUseDarkColors ? { color: '#111017', symbolColor: '#c9c4da', height: 44 } : { color: '#f5f4f9', symbolColor: '#4f4a62', height: 44 };
 function publishRoamState(active: boolean, direction: -1 | 0 | 1) {
   if (!pet || pet.isDestroyed() || pet.webContents.isDestroyed()) return;
   const sig = `${active}:${direction}`;
@@ -151,8 +157,7 @@ function stepDesktopRoam() {
   }
   const bounds = pet.getBounds();
   const area = screen.getDisplayMatching(bounds).workArea;
-  const minX = area.x + 12;
-  const maxX = Math.max(minX, area.x + area.width - bounds.width - 12);
+  const { min: minX, max: maxX } = roamRange(area, petFootprint, bounds.width);
   const stepPx = Math.max(1, 3.2 * (snap.settings.petScale || 1) * (snap.settings.roamSpeed || 1));
   roamCarry += roamDirection * stepPx;
   const whole = Math.trunc(roamCarry); roamCarry -= whole;
@@ -188,9 +193,7 @@ function sendSnapshot(snapshot: AppSnapshot) {
   if (pet && !pet.isDestroyed()) { pet.setTitle(snapshot.identity.name || 'GalAgent'); const scale = snapshot.settings.petScale; const width = Math.round(PET_SIZE.width * scale), height = Math.round(PET_SIZE.height * scale); const bounds = pet.getBounds(); if (bounds.width !== width || bounds.height !== height) pet.setBounds(clamp({ ...bounds, width, height })); }
 }
 function clamp(bounds: Electron.Rectangle): Electron.Rectangle {
-  const area = screen.getDisplayMatching(bounds).workArea;
-  const width = Math.min(bounds.width, area.width), height = Math.min(bounds.height, area.height);
-  return { width, height, x: Math.max(area.x, Math.min(area.x + area.width - width, bounds.x)), y: Math.max(area.y, Math.min(area.y + area.height - height, bounds.y)) };
+  return clampPet(bounds, petFootprint, screen.getDisplayMatching(bounds).workArea);
 }
 function safeWindow(win: BrowserWindow) {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -205,7 +208,7 @@ function openChat(open = true) {
   if (!chat || chat.isDestroyed()) return;
   if (open) { chat.show(); chat.focus(); } else chat.hide();
 }
-function resetPet() { if (!pet || pet.isDestroyed()) return; const area = screen.getPrimaryDisplay().workArea; const { width, height } = pet.getBounds(); pet.setBounds(clamp({ x: area.x + area.width - width - 36, y: area.y + area.height - height - 24, width, height })); }
+function resetPet() { if (!pet || pet.isDestroyed()) return; const area = screen.getPrimaryDisplay().workArea; const { width, height } = pet.getBounds(); pet.setBounds(clamp(cornerPosition(area, petFootprint, width, height, 30))); }
 function menu() {
   const snapshot = companion.getSnapshot();
   return Menu.buildFromTemplate([
@@ -230,12 +233,14 @@ function menu() {
 }
 async function makeWindows() {
   const area = screen.getPrimaryDisplay().workArea;
-  let position: Electron.Rectangle = { x: area.x + area.width - PET_SIZE.width - 36, y: area.y + area.height - PET_SIZE.height - 24, width: PET_SIZE.width, height: PET_SIZE.height };
+  let position: Electron.Rectangle = cornerPosition(area, petFootprint, PET_SIZE.width, PET_SIZE.height, 30);
   try { const saved = JSON.parse(await readFile(positionFile, 'utf8')); if (['x','y','width','height'].every(key => typeof saved[key] === 'number' && Number.isFinite(saved[key]))) position = clamp(saved); } catch { /* first launch */ }
   const common = { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true };
   pet = new BrowserWindow({ ...position, transparent: true, frame: false, resizable: false, hasShadow: false, focusable: false, skipTaskbar: true, show: false, alwaysOnTop: true, backgroundColor: '#00000000', webPreferences: common });
   pet.setIgnoreMouseEvents(true, { forward: true });
-  chat = new BrowserWindow({ width: 1100, height: 800, minWidth: 860, minHeight: 600, show: false, backgroundColor: '#101b2b', title: 'GalAgent', autoHideMenuBar: true, titleBarStyle: 'hidden', titleBarOverlay: { color: '#101b2b', symbolColor: '#b5c8db', height: 42 }, webPreferences: common });
+  chat = new BrowserWindow({ width: 1100, height: 800, minWidth: 860, minHeight: 600, show: false, backgroundColor: chrome().color, title: 'GalAgent', autoHideMenuBar: true, titleBarStyle: 'hidden', titleBarOverlay: chrome(), webPreferences: common });
+  // Caption buttons sit on the app's own title-bar colour and follow the system theme.
+  nativeTheme.on('updated', () => { if (chat && !chat.isDestroyed()) { try { chat.setTitleBarOverlay(chrome()); chat.setBackgroundColor(chrome().color); } catch { /* platform without overlay */ } } });
   safeWindow(pet); safeWindow(chat);
   wireWindowVisibility(pet);wireWindowVisibility(chat);
   chat.on('close', event => { if (!quitting) { event.preventDefault(); chat?.hide(); } });
@@ -283,6 +288,14 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         return { ok: true };
       }
       case 'shell.pointer': if (pet?.webContents.id !== senderId) return { ok: false }; if(!cursorTimer)setNativeInteractive(command.interactive); return { ok: true };
+      case 'shell.footprint': {
+        if (pet?.webContents.id !== senderId) return { ok: false };
+        const box = validFootprint(command.box);
+        if (!box) return { ok: false, error: '无效的桌宠边界。' };
+        petFootprint = box;
+        if (pet && !pet.isDestroyed()) pet.setBounds(clamp(pet.getBounds()));
+        return { ok: true };
+      }
       case 'shell.drag': {
         if (pet?.webContents.id !== senderId || pet.isDestroyed()) return { ok: false };
         const bounds = pet.getBounds(); pet.setBounds(clamp({ ...bounds, x: Math.round(bounds.x + command.dx), y: Math.round(bounds.y + command.dy) }));
@@ -333,6 +346,14 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         const result = await dialog.showOpenDialog(chat!, { title: '选择相处存档', properties: ['openFile'], filters: [{ name: 'GalAgent 存档', extensions: ['json'] }] });
         if (!result.canceled && result.filePaths[0]) { const answer = await dialog.showMessageBox(chat!, { type: 'question', title: '恢复相处存档', message: '恢复这份相处记录？', detail: '当前设备的删除记录仍会生效。历史存档可能包含旧记忆，请确认来源。', buttons: ['取消', '恢复'], defaultId: 0, cancelId: 0 }); if (answer.response === 1) await companion.importArchive(await readFile(result.filePaths[0], 'utf8')); }
         return { ok: true };
+      }
+      case 'agent.pickCwd': {
+        // Windows Explorer folder picker for the executor's working directory.
+        const current = companion.getSnapshot().agent?.cwd;
+        const result = await dialog.showOpenDialog(chat!, { title: '选择执行器工作目录', defaultPath: current, properties: ['openDirectory', 'createDirectory', 'dontAddToRecent'] });
+        if (result.canceled || !result.filePaths[0]) return { ok: true, data: { canceled: true } };
+        const saved = await companion.handle({ type: 'agent.configure', cwd: result.filePaths[0] });
+        return saved.ok ? { ok: true, data: { cwd: result.filePaths[0] } } : saved;
       }
       case 'app.quit': app.quit(); return { ok: true };
       default: return await companion.handle(command);
