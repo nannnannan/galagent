@@ -347,6 +347,10 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         if (!result.canceled && result.filePaths[0]) { const answer = await dialog.showMessageBox(chat!, { type: 'question', title: '恢复相处存档', message: '恢复这份相处记录？', detail: '当前设备的删除记录仍会生效。历史存档可能包含旧记忆，请确认来源。', buttons: ['取消', '恢复'], defaultId: 0, cancelId: 0 }); if (answer.response === 1) await companion.importArchive(await readFile(result.filePaths[0], 'utf8')); }
         return { ok: true };
       }
+      case 'mcp.pickFolder': {
+        const result = await dialog.showOpenDialog(chat!, { title: '选择要交给 MCP 服务的文件夹', properties: ['openDirectory', 'dontAddToRecent'] });
+        return result.canceled || !result.filePaths[0] ? { ok: true, data: { canceled: true } } : { ok: true, data: { path: result.filePaths[0] } };
+      }
       case 'agent.pickCwd': {
         // Windows Explorer folder picker for the executor's working directory.
         const current = companion.getSnapshot().agent?.cwd;

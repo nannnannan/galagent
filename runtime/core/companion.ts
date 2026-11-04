@@ -33,7 +33,10 @@ import { ClipboardRing, ScreenSampler, DEFAULT_CAPTURE_BLOCKLIST, type Capturer,
 import { BrowserPerception, type BrowserReport, type BrowserHistoryItem, type BrowserBookmarkItem } from '../desktop/browser';
 import { parseExtraction, extractionPrompt, journalPrompt, parseJournal, searchJournals, memoryBoost, coreMemories, JOURNAL_EVERY, type MemoryOp } from './memory-plus';
 import { validMode, validTopic, readPreferences, topicLabels } from '../shared/companionship';
-import type { CompanionPreferences, InitiativeTopic, SandboxSettings, SettingsPatch } from '../shared/contracts';
+import { MCP_PRESETS, mcpPreset, presetSecrets, presetServer } from '../shared/mcp-presets';
+import { galagentSecret } from './privacy';
+import { emptyPacing, noteInitiative, noteUserReply, noteWelcome, pacingView, readPacing, settlePacing, topicPaused, intervalFactor, type PacingLedger } from './pacing';
+import type { CompanionPreferences, InitiativeTopic, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
 import { isKimiK3Model, MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
 export type CompanionOptions = {
     agentRunner?: AgentRunner;
@@ -66,6 +69,11 @@ export type CompanionOptions = {
         close(): Promise<void>;
     };
 };
+const TASK_HISTORY_MAX = 100;
+/** Light list row for the snapshot; the full record is fetched with agent.task. */
+const taskView = (r: TaskRunDetail): TaskRunView => ({ id: r.id, task: r.task.slice(0, 160), status: r.status, startedAt: r.startedAt, completedAt: r.completedAt, durationMs: r.durationMs, toolCount: r.toolCount, changedFiles: r.files.length, undoable: !!r.runId && r.files.length > 0 && !r.undone, ...(r.undone ? { undone: true } : {}) });
+/** Tool calls by name ("Read: a.ts" → Read), so the record keeps what was done without any tool output. */
+const toolCounts = (tools: { title: string }[]) => { const out: Record<string, number> = {}; for (const t of tools) { const name = (t.title || '').split(/[\s:：(（]/)[0].slice(0, 40) || '其他'; out[name] = (out[name] || 0) + 1; } return out; };
 const defaults: Settings = { observationEnabled: false, windowTitlesEnabled: false, initiativeEnabled: true, mischiefEnabled: true, quietUntil: 0, proactiveIntervalMinutes: 5, proactiveHourlyLimit: 2, proactiveDailyLimit: 8, petScale: 1, reducedMotion: false, screenCaptureEnabled: true, clipboardEnabled: true, captureBlocklist: [...DEFAULT_CAPTURE_BLOCKLIST], forbiddenPaths: [], roamingEnabled: true, ttsEnabled: false, ttsBaseUrl: 'https://api.xiaomimimo.com/v1', ttsModel: 'mimo-v2.5-tts', ttsVoice: '冰糖', ttsSpeed: 1, petId: '', heartbeatSeconds: 60, unansweredMinutes: 20, reunionHours: 6, screenIntervalSeconds: 60, idleSleepMinutes: 10, bubbleSeconds: 12, roamSpeed: 1, quietHours: { enabled: false, start: '23:00', end: '08:00' }, funCaptions: true, splitReplies: true, afterthoughts: true, moodEnabled: true, routineEnabled: true, murmursEnabled: true, shareDailyLimit: 1, recallEveryDays: 3, goodnightAt: '23:30', sandbox: { ...DEFAULT_SANDBOX } };
 export const CONTEXT_BUDGET = 1_000_000;
 const MINUTE = 60_000;
@@ -132,7 +140,8 @@ export class CompanionService extends EventEmitter {
     private agent:AgentRunner;
     /** Executor runs in flight (several may run in parallel, each in its own session). */
     private runs=new Map<string,{id:string;task:string;controller:AbortController;startedAt:string;work:Promise<void>}>();
-    private recentRuns:{id:string;task:string;status:string;summary:string;completedAt:string;changedFiles?:number}[]=[];
+    /** 任务历史：本机保存的执行任务记录（最多 100 条，最新在前）。 */
+    private history:TaskRunDetail[]=[];
     private afterReply:(()=>void)[]=[];
     private agentWork:Promise<void>=Promise.resolve();
     private agentQuestions=new Map<string,{resolve:(answers:Record<string,string>)=>void}>();
@@ -178,6 +187,8 @@ export class CompanionService extends EventEmitter {
     private vitality: Vitality = freshVitality(Date.now());
     private vitalitySavedAt = 0;
     private lifeLedger: LifeLedger = emptyLedger();
+    /** 自适应节奏：主动开口有没有被回应（只有时间与话题类别）。 */
+    private pacing: PacingLedger = emptyPacing();
     private lifeRunning = false;
     private afterthoughtTimer?: ReturnType<typeof setTimeout>;
     private mcp!: McpHub;
@@ -227,6 +238,9 @@ export class CompanionService extends EventEmitter {
         this.proactiveTokens = this.store.get<number>('proactive-tokens') || 0;
         const savedVitality = this.store.get<Vitality>('vitality'); if (savedVitality && Number.isFinite(savedVitality.energy) && Number.isFinite(savedVitality.mood)) this.vitality = savedVitality;
         this.lifeLedger = { ...emptyLedger(), ...this.store.get<LifeLedger>('life-ledger') };
+        this.pacing = readPacing(this.store.get('pacing'), validTopic);
+        this.history = this.store.all<TaskRunDetail>('task-run').sort((a, b) => b.completedAt.localeCompare(a.completedAt)).slice(0, TASK_HISTORY_MAX);
+        this.state.taskHistory = this.history.slice(0, 40).map(taskView);
         const previousLifecycle = this.store.get<{ active?: boolean; startedAt?: string; lastSeenAt?: string }>('session-lifecycle');
         this.store.put('state', 'session-lifecycle', { active: true, startedAt: new Date(Date.now()).toISOString(), lastSeenAt: this.state.stats.lastSeenAt });
         this.applyCorrections();
@@ -239,7 +253,7 @@ export class CompanionService extends EventEmitter {
         this.emitSnapshot();
     }
     private refresh() { const dead = this.store.deadIds(); /* one tombstone query instead of one per row */ this.state.messages = this.store.all<Message>('message').filter(m => !dead.has(m.id)).slice(-120); this.state.memories = this.store.all<MemoryItem>('memory').filter(m => m.valid && !dead.has(m.id) && !dead.has(m.sourceId)); this.state.diary = this.store.all<AppSnapshot['diary'][number]>('diary').filter(d => !d.sourceIds.some(id => dead.has(id))).slice(-30); this.state.stats.memories = this.state.memories.length; this.story.reconcile();this.state.story=this.story.snapshot();this.variables.reconcile(this.state.identity);this.variables.syncStage(this.state.identity);this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood); }
-    getSnapshot(): AppSnapshot { if(!this.closed){this.decorateStatus();if(this.state.agent)this.state.agent.mcp=this.state.settings.mcpServers?.length?this.mcp.status():undefined;if(this.state.settings.moodEnabled!==false){this.stepVitality();this.state.vitality=vitalityView(this.vitality);}else delete this.state.vitality;} if(!this.closed&&this.state.story){this.state.story.mood=this.story.moodView();this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood);}return structuredClone(this.state); }
+    getSnapshot(): AppSnapshot { if(!this.closed){this.decorateStatus();if(this.state.agent)this.state.agent.mcp=this.state.settings.mcpServers?.length?this.mcp.status():undefined;if(this.state.settings.moodEnabled!==false){this.stepVitality();this.state.vitality=vitalityView(this.vitality);}else delete this.state.vitality;this.state.pacing=pacingView(this.pacing,this.adaptiveOn(),Date.now());} if(!this.closed&&this.state.story){this.state.story.mood=this.story.moodView();this.state.variables=this.variables.snapshot(this.state.identity,this.state.story.mood);}return structuredClone(this.state); }
     private emitSnapshot() { if (!this.closed) {this.quietWasActive=this.state.settings.quietUntil>Date.now();this.emit('snapshot', this.getSnapshot());} }
     private persist() { this.store.put('state', 'identity', this.state.identity); this.store.put('state', 'settings', this.state.settings); const { configured: _configured, ...provider } = this.state.provider; this.store.put('state', 'provider', provider); this.store.put('state', 'stats', this.state.stats); }
     private cancel() { this.generation++; this.controller?.abort(); this.controller = undefined; this.activeKind = undefined;this.activeScenes=[]; this.state.status.busy = false; }
@@ -355,16 +369,40 @@ export class CompanionService extends EventEmitter {
                     this.state.agent!.cwd=cwd;this.store.put('state','agent-cwd',cwd);break;
                 }
                 case 'agent.cancel':this.cancelRuns(command.id);break;
+                case 'agent.task':{const run=this.history.find(r=>r.id===command.id);if(!run)throw new Error('找不到这个任务记录');return{ok:true,data:structuredClone(run)};}
+                case 'agent.clearHistory':{for(const r of this.history)this.store.remove('task-run:'+r.id);this.history=[];this.state.taskHistory=[];break;}
                 case 'agent.undo':{
                     if(this.state.agent?.busy)throw new Error('执行器正在工作，请等它结束或先取消');
-                    if(!this.agent.undoLast)throw new Error('当前执行器不支持撤销');
-                    const r=await this.agent.undoLast();
+                    if(command.runId&&!this.agent.undoRun)throw new Error('当前执行器不支持按任务撤销');
+                    if(!command.runId&&!this.agent.undoLast)throw new Error('当前执行器不支持撤销');
+                    const r=command.runId?await this.agent.undoRun!(command.runId):await this.agent.undoLast!();
+                    this.markUndone(r);
                     const last=this.state.agent?.lastResult;if(last&&(!last.runId||last.runId===r.runId)){last.undone=true;this.store.put('state','agent-last-result',last);}
                     const text=`[已撤销执行器改动]${r.label?`「${r.label}」`:''}\n恢复 ${r.restored.length} 个文件${r.conflicts.length?`；${r.conflicts.length} 个文件之后又被改过，保持原样：${r.conflicts.slice(0,5).join('、')}`:''}${r.skipped.length?`；${r.skipped.length} 个无法恢复（过大或受保护）`:''}。命令（Bash）造成的改动无法撤销。`;
                     const message:Message={id:randomUUID(),role:'assistant',source:'scene',text,createdAt:new Date(Date.now()).toISOString()};this.store.put('message',message.id,message);this.refresh();
                     this.emitSnapshot();return{ok:true,data:r};
                 }
                 case 'mcp.restart':{this.mcp.restart();const box=this.state.settings.sandbox||DEFAULT_SANDBOX;void this.mcp.ensure({stdio:box.shell&&!(this.state.settings.forbiddenPaths||[]).length,http:box.network});break;}
+                case 'mcp.addPreset':{
+                    // User-initiated from the 连接 page: one click adds the server and hands any key to the encrypted store.
+                    const preset=mcpPreset(command.id);if(!preset)throw new Error('没有这个模板');
+                    let folder=command.folder?.trim();
+                    if(folder){
+                        const real=await realpath(folder).catch(()=>{throw new Error('找不到这个文件夹');});
+                        if(!(await stat(real)).isDirectory())throw new Error('请选择一个文件夹');
+                        const inside=(root:string)=>{const a=real.replace(/\\/g,'/').toLowerCase().replace(/\/$/,''),b=root.replace(/\\/g,'/').toLowerCase().replace(/\/$/,'');return a===b||a.startsWith(b+'/')||b.startsWith(a+'/');};
+                        if(galagentSecret(real)||inside(this.options.dataDir))throw new Error('不能把 GalAgent 自己的数据目录交给 MCP 服务');
+                        if(isForbiddenPath(real,this.state.settings.forbiddenPaths||[]))throw new Error('这个文件夹在你的禁止目录里');
+                        folder=real;
+                    }
+                    const values=presetSecrets(preset,command.secrets||{});
+                    if(Object.keys(values).length&&!this.options.mcpSecrets)throw new Error('当前环境不能保存密钥（需要桌面版的系统加密）');
+                    const servers=this.state.settings.mcpServers||[];
+                    const entry=presetServer(preset,servers.map(s=>s.name),folder);
+                    const saved=await this.handle({type:'settings.update',settings:{mcpServers:[...servers,entry]}});if(!saved.ok)throw new Error(saved.error||'没能加入');
+                    if(Object.keys(values).length){const r=await this.handle({type:'mcp.secret',server:entry.name,...(preset.url?{headers:values}:{env:values})});if(!r.ok)throw new Error(r.error||'密钥没保存');}
+                    return{ok:true,data:{name:entry.name}};
+                }
                 case 'mcp.secret':{
                     // Values go straight to the encrypted store; settings only remember which names are set.
                     if(!this.options.mcpSecrets)throw new Error('当前环境不能保存密钥（需要桌面版的系统加密）');
@@ -514,6 +552,7 @@ export class CompanionService extends EventEmitter {
                 case 'chat.send':
                     if (/^(芝麻开门|open sesame)[!！。.]?$/iu.test(command.text.trim()) && this.unlock('secret-word')) { this.state.visual = { ...this.state.visual, expression: 'pleased', action: 'sparkle', bubble: '🔮 咒语生效！解锁了隐藏成就～', revision: ++this.revision }; this.emitSnapshot(); }
                     this.attention?.invalidate('user-input');
+                    this.setPacing(noteUserReply(this.pacing, Date.now()));
                     if(command.text.trim().startsWith('/任务 ')){this.startAgent(command.text.trim().slice(4));this.emitSnapshot();return{ok:true};}
                     if(command.text.trim()==='/取消任务'){this.cancelRuns();return{ok:true};}
                     if (/^(请)?(安静(一点|一会儿|一会)?|别打扰我|不要主动说话)[。！!]?$/u.test(command.text.trim())) {
@@ -583,6 +622,7 @@ export class CompanionService extends EventEmitter {
                     if (this.store.kind(command.messageId) !== 'message' || this.store.dead(command.messageId) || message?.role !== 'assistant' || message.source !== 'initiative' || !message.initiativeTopics?.length || !['welcome', 'mute'].includes(command.value)) throw new Error('只能反馈有真实来源的主动回应');
                     for (const topic of message.initiativeTopics) if (validTopic(topic)) this.companionship.topics[topic] = command.value;
                     this.companionship.ratings[message.id] = command.value;
+                    if (command.value === 'welcome') this.setPacing(noteWelcome(this.pacing, message.initiativeTopics));
                     this.companionship = readPreferences(this.companionship);
                     this.store.put('state', 'companion-feedback', this.companionship);
                     this.attention?.invalidate('feedback-changed');
@@ -601,8 +641,13 @@ export class CompanionService extends EventEmitter {
                     this.state.visual = { ...this.state.visual, expression: 'pleased', action: quiet ? 'idle' : command.action, bubble: command.bubble ? command.bubble.slice(0, 80) : '', revision: ++this.revision };
                     break;
                 }
+                case 'pacing.reset':
+                    this.setPacing(emptyPacing());
+                    this.attention?.invalidate('feedback-changed');
+                    break;
                 case 'initiative.resetFeedback':
                     this.companionship = readPreferences(undefined);
+                    this.setPacing(emptyPacing());
                     this.store.put('state', 'companion-feedback', this.companionship);
                     this.attention?.invalidate('feedback-changed');
                     break;
@@ -962,6 +1007,7 @@ export class CompanionService extends EventEmitter {
         const parts = this.state.settings.splitReplies !== false && kind !== 'scene' ? splitReply(data.text) : undefined;
         if (parts) assistant.parts = parts;
         if (kind === 'initiative' && this.wakeContext) assistant.initiativeTopics = [...new Set<InitiativeTopic>([...this.wakeContext.events.map(e => e.kind).filter(validTopic), ...(this.wakeContext.screenSummary ? ['screen' as const] : [])])];
+        if (kind === 'initiative' && assistant.text.trim() && assistant.initiativeTopics?.length) this.setPacing(noteInitiative(this.pacing, assistant.initiativeTopics, Date.now()));
         this.store.transaction(() => { if (kind === 'chat')
             this.store.put('message', user.id, user); this.store.put('message', assistant.id, assistant); if (kind === 'chat')
             this.store.put('lineage', 'pair:' + user.id, { sourceId: user.id, assistantId: assistant.id }); if (rawAssistant)
@@ -1069,6 +1115,7 @@ export class CompanionService extends EventEmitter {
         this.awardAchievements();
         await this.deliverSchedules(now);
         this.stepVitality(now);
+        this.setPacing(settlePacing(this.pacing, now));
         await this.lifeStep(now);
         if (this.attention) { this.checkUnanswered(now); await this.attention.tick(now); return; }
         if (this.proactiveTokens >= 20000 || this.state.status.busy || !this.state.provider.configured || this.state.identity.onboarding !== 'ready' || !this.eligible(now) || this.proactiveGate(now)) return;
@@ -1078,11 +1125,16 @@ export class CompanionService extends EventEmitter {
     /** User-chosen pacing for every proactive line: minimum gap, hourly and daily caps. */
     private proactiveGate(now = Date.now()): string | undefined {
         const s = this.state.settings, attempts = this.store.get<number[]>('initiative-times') || [], today = localDay(now);
-        if (now - (attempts.at(-1) || 0) < s.proactiveIntervalMinutes * MINUTE) return 'interval';
+        if (now - (attempts.at(-1) || 0) < s.proactiveIntervalMinutes * MINUTE * this.paceFactor()) return 'interval';
         if (attempts.filter(t => now - t < 3600_000).length >= s.proactiveHourlyLimit) return 'hourly-limit';
         if (attempts.filter(t => localDay(t) === today).length >= s.proactiveDailyLimit) return 'daily-limit';
         return undefined;
     }
+    private adaptiveOn() { return this.state.settings.adaptivePacing !== false; }
+    /** Only ever ≥ 1: adaptive pacing may stretch the user's interval, never shorten it. */
+    private paceFactor() { return this.adaptiveOn() ? intervalFactor(this.pacing).factor : 1; }
+    private topicResting(topic: InitiativeTopic, now = Date.now()) { return this.adaptiveOn() && topicPaused(this.pacing, topic, now); }
+    private setPacing(next: PacingLedger) { if (next === this.pacing) return; this.pacing = next; this.store.put('state', 'pacing', next); }
     private recordInitiative(now = Date.now()) {
         const attempts = [...(this.store.get<number[]>('initiative-times') || []), now].filter(t => now - t < 86400_000);
         this.store.put('state', 'initiative-times', attempts);
@@ -1226,19 +1278,33 @@ export class CompanionService extends EventEmitter {
     private syncRuns(){if(!this.state.agent)return;this.state.agent.busy=this.runs.size>0;this.state.agent.running=[...this.runs.values()].map(r=>({id:r.id,task:r.task.slice(0,160),startedAt:r.startedAt}));}
     private cancelRuns(id?:string){let n=0;for(const r of this.runs.values())if(!id||r.id===id){r.controller.abort();n++;}return n;}
     /** Starts one executor run; the first in-flight run continues the default session, parallel ones get their own. Returns its id. */
+    private recordRun(r:{id:string;task:string;cwd:string;startedAt:string;result:NonNullable<NonNullable<AppSnapshot['agent']>['lastResult']>;tools:Record<string,number>;files:string[]}){
+        const done=Date.parse(r.result.completedAt),start=Date.parse(r.startedAt);
+        const rec:TaskRunDetail={id:r.id,task:r.task.slice(0,4000),cwd:r.cwd,status:r.result.status,summary:r.result.summary.slice(0,8000),startedAt:r.startedAt,completedAt:r.result.completedAt,durationMs:Number.isFinite(done-start)?Math.max(0,done-start):0,toolCount:r.result.toolCount,changedFiles:r.files.length,undoable:!!r.result.runId&&r.files.length>0,tools:r.tools,files:r.files,...(r.result.runId?{runId:r.result.runId}:{})};
+        this.store.put('task-run','task-run:'+rec.id,rec);
+        this.history=[rec,...this.history];
+        for(const old of this.history.slice(TASK_HISTORY_MAX))this.store.remove('task-run:'+old.id);
+        this.history=this.history.slice(0,TASK_HISTORY_MAX);this.state.taskHistory=this.history.slice(0,40).map(taskView);
+    }
+    private markUndone(u:{runId:string;restored:string[];conflicts:string[];skipped:string[]}){
+        const rec=this.history.find(h=>h.runId===u.runId);if(!rec)return;
+        rec.undone=true;rec.undoable=false;rec.undo={at:new Date(Date.now()).toISOString(),restored:u.restored.length,conflicts:u.conflicts.slice(0,50),skipped:u.skipped.length};
+        this.store.put('task-run','task-run:'+rec.id,rec);this.state.taskHistory=this.history.slice(0,40).map(taskView);
+    }
     private startAgent(task:string,cwdOverride?:string){
         task=this.checkText(task,12000);if(this.runs.size>=this.maxParallel())throw new Error(`已有 ${this.runs.size} 个执行任务在运行（上限 ${this.maxParallel()}），可等它们结束或取消后再试`);
-        const controller=new AbortController(),id=randomUUID(),cwd=cwdOverride||this.state.agent!.cwd,fresh=this.runs.size>0||!!cwdOverride;
+        const controller=new AbortController(),id=randomUUID(),cwd=cwdOverride||this.state.agent!.cwd,fresh=this.runs.size>0||!!cwdOverride,startedAt=new Date(Date.now()).toISOString();
         const work=(async()=>{
             let result:NonNullable<AppSnapshot['agent']>['lastResult'];
-            try{const output=await this.agent.run(await this.executorBrief(task),cwd,controller.signal,undefined,{fresh});result={status:output.stopReason==='end_turn'&&output.summary.trim()?'done':output.stopReason==='cancelled'?'cancelled':'failed',summary:output.summary||'执行器没有返回最终摘要',toolCount:output.tools.length,completedAt:new Date(Date.now()).toISOString(),...(output.changedFiles?.length?{changedFiles:output.changedFiles.length,runId:output.runId}:{})};}
+            let tools:Record<string,number>={},files:string[]=[];
+            try{const output=await this.agent.run(await this.executorBrief(task),cwd,controller.signal,undefined,{fresh});tools=toolCounts(output.tools);files=(output.changedFiles||[]).slice(0,200);result={status:output.stopReason==='end_turn'&&output.summary.trim()?'done':output.stopReason==='cancelled'?'cancelled':'failed',summary:output.summary||'执行器没有返回最终摘要',toolCount:output.tools.length,completedAt:new Date(Date.now()).toISOString(),...(output.changedFiles?.length?{changedFiles:output.changedFiles.length,runId:output.runId}:{})};}
             catch(e){result={status:controller.signal.aborted?'cancelled':'failed',summary:controller.signal.aborted?'任务已取消':e instanceof Error?e.message:'执行失败',toolCount:0,completedAt:new Date(Date.now()).toISOString()};}
             this.runs.delete(id);if(this.closed)return;
             this.syncRuns();this.state.agent!.lastResult=result;this.store.put('state','agent-last-result',result);
-            this.recentRuns=[{id,task:task.slice(0,200),status:result.status,summary:result.summary.slice(0,1500),completedAt:result.completedAt,...(result.changedFiles?{changedFiles:result.changedFiles}:{})},...this.recentRuns].slice(0,8);
+            this.recordRun({id,task,cwd,startedAt,result,tools,files});
             const message:Message={id:randomUUID(),role:'assistant',source:'scene',text:`[执行代理${result.status==='done'?'结束':result.status==='cancelled'?'取消':'未完成'}]\n${result.summary}`,createdAt:result.completedAt};this.store.put('message',message.id,message);this.refresh();this.taskEvent(message.id,result,task);this.emitSnapshot();
         })();
-        this.runs.set(id,{id,task,controller,startedAt:new Date(Date.now()).toISOString(),work});this.syncRuns();this.emitSnapshot();
+        this.runs.set(id,{id,task,controller,startedAt,work});this.syncRuns();this.emitSnapshot();
         const previous=this.agentWork;this.agentWork=Promise.all([previous,work]).then(()=>{});
         return id;
     }
@@ -1273,10 +1339,10 @@ export class CompanionService extends EventEmitter {
                 for(const task of tasks){try{started.push({id:this.startAgent(task,dir),task:task.slice(0,80)});}catch(e){rejected.push({task:task.slice(0,80),reason:e instanceof Error?e.message:String(e)});}}
                 return{started,rejected};
             },
-            tasks:()=>({running:[...this.runs.values()].map(r=>({id:r.id,task:r.task.slice(0,200),startedAt:r.startedAt})),maxParallel:this.maxParallel(),recent:this.recentRuns,undoable:!!(this.state.agent?.lastResult?.changedFiles&&!this.state.agent.lastResult.undone),cwd:this.state.agent?.cwd}),
+            tasks:()=>({running:[...this.runs.values()].map(r=>({id:r.id,task:r.task.slice(0,200),startedAt:r.startedAt})),maxParallel:this.maxParallel(),recent:this.history.slice(0,8).map(r=>({id:r.id,task:r.task.slice(0,200),status:r.status,summary:r.summary.slice(0,1500),completedAt:r.completedAt,...(r.files.length?{changedFiles:r.files.length}:{}),...(r.undone?{undone:true}:{})})),undoable:!!(this.state.agent?.lastResult?.changedFiles&&!this.state.agent.lastResult.undone),cwd:this.state.agent?.cwd}),
             cancelTask:id=>this.cancelRuns(id),
             undoLastTask:async()=>{const r=await this.handle({type:'agent.undo'});return r.ok?r.data:{error:r.error};},
-            settingsView:()=>{const {quietUntil:_q,...settings}=this.state.settings;return{settings:{...settings,mcpServers:(settings.mcpServers||[]).map(m=>({...m,secretsSet:[...(m.envKeys||[]),...(m.headerKeys||[])]}))},quietNow:this.state.settings.quietUntil>Date.now()?new Date(this.state.settings.quietUntil).toISOString():null,topics:Object.fromEntries(Object.keys(topicLabels).map(t=>[t,this.companionship.topics[t as InitiativeTopic]!=='mute'])),persona:{active:this.personas.activeId(),list:this.personas.list().map(p=>({id:p.id,name:p.name,tagline:p.tagline}))},pets:this.pets.catalog().map(p=>({id:p.id,name:p.name})),cwd:this.state.agent?.cwd,watches:this.attention?.watches().map(w=>({id:w.id,title:w.title,condition:w.condition}))||[],aiControl:this.state.settings.aiControl||'confirm',note:'quietUntil 用 quietMinutes（分钟，0 表示恢复）来改；aiControl 只有用户能改'};},
+            settingsView:()=>{const {quietUntil:_q,...settings}=this.state.settings;return{settings:{...settings,mcpServers:(settings.mcpServers||[]).map(m=>({...m,secretsSet:[...(m.envKeys||[]),...(m.headerKeys||[])]}))},quietNow:this.state.settings.quietUntil>Date.now()?new Date(this.state.settings.quietUntil).toISOString():null,topics:Object.fromEntries(Object.keys(topicLabels).map(t=>[t,this.companionship.topics[t as InitiativeTopic]!=='mute'])),persona:{active:this.personas.activeId(),list:this.personas.list().map(p=>({id:p.id,name:p.name,tagline:p.tagline}))},pets:this.pets.catalog().map(p=>({id:p.id,name:p.name})),cwd:this.state.agent?.cwd,watches:this.attention?.watches().map(w=>({id:w.id,title:w.title,condition:w.condition}))||[],aiControl:this.state.settings.aiControl||'confirm',mcpPresets:MCP_PRESETS.map(p=>({title:p.title,name:p.name,...(p.url?{url:p.url}:{command:p.command,args:p.args}),needsFolder:!!p.folder,secretNames:(p.secrets||[]).map(x=>x.key)})),note:'mcpPresets 是常用 MCP 模板，可照着加进 mcpServers（需要文件夹的把路径加到 args 末尾）；密钥只能由用户在「连接」页填写，你看不到也设不了。quietUntil 用 quietMinutes（分钟，0 表示恢复）来改；aiControl 只有用户能改'};},
             updateSettings:async(patch,reason)=>{
                 const p={...patch};const applied:string[]=[];const notes:string[]=[];
                 delete (p as Record<string,unknown>).aiControl;
@@ -1359,7 +1425,7 @@ export class CompanionService extends EventEmitter {
             eligible: () => this.attentionBlocked(),
             canWake: () => !this.closed && !this.state.status.busy && !this.proactiveGate(),
             heartbeatMs: () => (this.state.settings.heartbeatSeconds ?? 60) * 1000,
-            accepts: event => !validTopic(event.kind) || this.companionship.topics[event.kind] !== 'mute',
+            accepts: event => !validTopic(event.kind) || (this.companionship.topics[event.kind] !== 'mute' && !this.topicResting(event.kind)),
             wake: request => this.deliverWake(request),
             sampleScreen: () => this.sampleScreen(),
             clipboard: () => this.state.settings.observationEnabled && this.state.settings.companionMode !== 'rest' && this.state.settings.clipboardEnabled ? this.clipboardRing.recent(3) : [],
@@ -1463,7 +1529,7 @@ export class CompanionService extends EventEmitter {
     }
     private async deliverWake(request: WakeRequest): Promise<boolean> {
         if (this.closed || this.state.status.busy || this.attentionBlocked()) return false;
-        if (request.events.some(e => validTopic(e.kind) && this.companionship.topics[e.kind] === 'mute') || (request.screenSummary && this.companionship.topics.screen === 'mute')) return false;
+        if (request.events.some(e => validTopic(e.kind) && (this.companionship.topics[e.kind] === 'mute' || this.topicResting(e.kind))) || (request.screenSummary && (this.companionship.topics.screen === 'mute' || this.topicResting('screen')))) return false;
         this.wakeContext = request;
         try {
             const result = await this.generate('后台注意力代理叫醒了你。依据wake中的真实事件，决定现在怎样回应用户：可以说一句话，也可以只做表情动作（text为空）。', 'initiative');
@@ -1608,7 +1674,7 @@ export class CompanionService extends EventEmitter {
     async lifeStep(now = Date.now()) {
         if (this.lifeBlocked(now)) return;
         const s = this.state.settings, yesterday = localDay(now - 86400_000);
-        const kind = pickLife({ now: new Date(now), ledger: this.lifeLedger, shareDailyLimit: s.shareDailyLimit ?? 1, recallEveryDays: s.recallEveryDays ?? 3, goodnightAt: s.goodnightAt || '23:30', muted: t => this.companionship.topics[t] === 'mute', networkAllowed: this.networkAllowed(), hasRecallCandidate: !!this.recallPick(now), archivePending: this.archiveStatus().pendingDays.includes(yesterday) });
+        const kind = pickLife({ now: new Date(now), ledger: this.lifeLedger, shareDailyLimit: s.shareDailyLimit ?? 1, recallEveryDays: s.recallEveryDays ?? 3, goodnightAt: s.goodnightAt || '23:30', muted: t => this.companionship.topics[t] === 'mute' || this.topicResting(t, now), networkAllowed: this.networkAllowed(), hasRecallCandidate: !!this.recallPick(now), archivePending: this.archiveStatus().pendingDays.includes(yesterday) });
         this.store.put('state', 'life-ledger', this.lifeLedger);
         if (kind) await this.runLife(kind, now);
     }

@@ -7,7 +7,7 @@ const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proac
 const strings = (value: unknown, count: number, width: number) => Array.isArray(value) && value.length <= count && value.every(item => bounded(item, width));
 const slug = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(value);
 const id = (value: unknown) => bounded(value, 100) && !!value.trim();
-const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled']);
+const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled', 'adaptivePacing']);
 // Shared by tts.configure and settings.update so neither path can point TTS at a plaintext or credential-bearing URL.
 function checkTtsUrl(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return;
@@ -26,7 +26,15 @@ export function validateCommand(value: unknown): AppCommand {
     case 'agent.configure':
       if(!bounded(command.cwd,1000)||!command.cwd.trim())throw new Error('工作目录无效。');break;
     case 'agent.cancel':if(command.id!==undefined&&!id(command.id))throw new Error('任务标识无效。');break;
-    case 'agent.undo':case 'mcp.restart':case 'agent.pickCwd':break;
+    case 'agent.undo':if(command.runId!==undefined&&!id(command.runId))throw new Error('任务标识无效。');break;
+    case 'agent.task':if(!id(command.id))throw new Error('任务标识无效。');break;
+    case 'mcp.restart':case 'agent.pickCwd':case 'agent.clearHistory':break;
+    case 'mcp.addPreset':
+      if (!slug(command.id)) throw new Error('模板无效。');
+      if (command.folder !== undefined && (!bounded(command.folder, 1000) || !command.folder.trim())) throw new Error('文件夹无效。');
+      if (command.secrets !== undefined && (!plain(command.secrets) || Object.keys(command.secrets).length > 10 || Object.entries(command.secrets).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000))) throw new Error('密钥格式不正确。');
+      break;
+    case 'mcp.pickFolder': break;
     case 'mcp.secret':
       if (!bounded(command.server, 32) || [command.env, command.headers].some(m => m !== undefined && (!plain(m) || Object.keys(m).length > 30 || Object.entries(m).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000)))) throw new Error('MCP 密钥格式不正确。'); break;
     case 'agent.answer':
@@ -147,7 +155,7 @@ export function validateCommand(value: unknown): AppCommand {
       if (command.open !== undefined && typeof command.open !== 'boolean') throw new Error('无效窗口设置。'); break;
     case 'shell.input':
       if (typeof command.open !== 'boolean') throw new Error('无效输入设置。'); break;
-    case 'chat.cancel': case 'initiative.check': case 'shell.menu': case 'shell.resetPosition': case 'app.export': case 'app.import': case 'app.quit': break;
+    case 'chat.cancel': case 'pacing.reset': case 'initiative.check': case 'shell.menu': case 'shell.resetPosition': case 'app.export': case 'app.import': case 'app.quit': break;
     default: throw new Error('未知操作。');
   }
   return value as AppCommand;

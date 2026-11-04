@@ -30,6 +30,10 @@ export type Observation = {
   error?: string;
 };
 export type VitalityTone = 'asleep' | 'sleepy' | 'tired' | 'sulky' | 'happy' | 'lively' | 'calm';
+/** One executor task, kept locally for the 任务 page (newest first in snapshots). */
+export type TaskRunView = { id: string; task: string; status: 'done' | 'failed' | 'cancelled'; startedAt: string; completedAt: string; durationMs: number; toolCount: number; changedFiles: number; undoable: boolean; undone?: boolean };
+export type TaskRunDetail = TaskRunView & { task: string; cwd: string; summary: string; tools: Record<string, number>; files: string[]; runId?: string; undo?: { at: string; restored: number; conflicts: string[]; skipped: number } };
+export type PacingView = { enabled: boolean; factor: number; ignoreRate: number; samples: number; paused: { topic: InitiativeTopic; until: number; ignored: number }[] };
 export type VitalityView = { energy: number; mood: number; tone: VitalityTone; label: string };
 export type Settings = {
   /** Missing in old saves means daily. Modes never change personality or access permissions. */
@@ -88,6 +92,8 @@ export type Settings = {
   routineEnabled?: boolean;
   /** 活人感: one-line reactions above the pet to the app in front (never stored, never a message). */
   murmursEnabled?: boolean;
+  /** 自适应节奏：被冷落的话题自动退避、整体被冷落时拉长间隔（只会更安静）。缺省为开。 */
+  adaptivePacing?: boolean;
   /** Times a day the character may share something it found online (0 = never). */
   shareDailyLimit?: number;
   /** Bring up something you mentioned days ago at most once every N days (0 = never). */
@@ -175,6 +181,10 @@ export type AppSnapshot = {
   /** Short caption of what the pet is doing right now (computed by the core). */
   /** Energy and mood (活人感); absent when switched off. */
   vitality?: VitalityView;
+  /** 自适应节奏的当前状态（只有类别与时间）。 */
+  pacing?: PacingView;
+  /** Finished executor tasks (newest first, at most 40 here; details via agent.task). */
+  taskHistory?: TaskRunView[];
   activity?: { kind: 'idle' | 'thinking' | 'working' | 'speaking' | 'quiet' | 'sleeping' | 'offline' | 'resting' | 'focus'; label: string; /** What the character is up to in its own routine. */ routine?: string; /** Thinking about opening a conversation on its own rather than answering. */ initiative?: boolean; /** Dozing because the user stepped away (not quiet hours). */ away?: boolean; /** The executor is waiting for the user's answer (e.g. a Shell confirmation). */ waiting?: boolean };
   visual: { expression: Expression; action: PetAction; bubble: string; revision: number; intensity?: number };
   messages: Message[];
@@ -207,8 +217,12 @@ export type AppCommand =
   | { type: 'agent.run'; task: string }
   | { type: 'agent.cancel'; id?: string }
   | { type: 'agent.pickCwd' }
-  | { type: 'agent.undo' }
+  | { type: 'agent.undo'; runId?: string }
+  | { type: 'agent.task'; id: string }
+  | { type: 'agent.clearHistory' }
   | { type: 'mcp.restart' }
+  | { type: 'mcp.addPreset'; id: string; folder?: string; secrets?: Record<string, string> }
+  | { type: 'mcp.pickFolder' }
   | { type: 'mcp.secret'; server: string; env?: Record<string, string>; headers?: Record<string, string> }
   | { type: 'agent.configure'; cwd: string }
   | { type: 'agent.answer'; id:string; answers:Record<string,string> }
@@ -231,6 +245,7 @@ export type AppCommand =
   | { type: 'initiative.check' }
   | { type: 'initiative.feedback'; messageId: string; value: InitiativeFeedback }
   | { type: 'initiative.resetFeedback' }
+  | { type: 'pacing.reset' }
   | { type: 'initiative.topic'; topic: InitiativeTopic; enabled: boolean }
   | { type: 'pet.emote'; action: PetAction; bubble?: string }
   | { type: 'shell.chat'; open?: boolean }

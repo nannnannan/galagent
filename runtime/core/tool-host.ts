@@ -183,6 +183,7 @@ export class ToolHost {
  async undoRun(runId?:string):Promise<{label:string;restored:string[];conflicts:string[];skipped:string[]}>{
   const base=this.hooks.checkpointDir?.();if(!base)throw new Error('Checkpoints are unavailable');
   const manifest=runId?await this.findRun(runId):await this.lastRun();if(!manifest)throw new Error('没有可撤销的文件改动');
+  if(manifest.undoneAt)throw new Error('这个任务的改动已经撤销过了');
   const dir=path.join(base,manifest.sessionId,manifest.runId),restored:string[]=[],conflicts:string[]=[],skipped:string[]=[];
   for(const [file,entry] of Object.entries(manifest.files)){
    try{

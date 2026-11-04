@@ -64,6 +64,12 @@ Object.assign(snapshot, {
     { day: day(-2), title: '下雨的周二', summary: '下了一整天雨。聊了周末想去的展览，顺手定了每小时喝水的提醒。', diary: '雨声很好听。他说下雨天最适合写代码，然后写了一下午 bug。', mood: '平静', topics: ['展览', '喝水'], highlights: ['第一次定下每小时喝水的提醒'], openThreads: [], messageCount: 17, createdAt: iso(-44 * 3600_000) },
     { day: day(-3), title: '夜猫子之夜', summary: '凌晨还在赶项目，聊了几句就去睡了。', diary: '凌晨一点半，他终于说了晚安。', mood: '担心', topics: ['熬夜'], highlights: [], openThreads: ['答应以后早点睡'], messageCount: 9, createdAt: iso(-68 * 3600_000) },
   ],
+  taskHistory: [
+    { id: 'h1', task: '整理下载文件夹，按类型分到子文件夹', status: 'done', startedAt: iso(-700_000), completedAt: iso(-600_000), durationMs: 100_000, toolCount: 14, changedFiles: 3, undoable: true },
+    { id: 'h2', task: '把周报草稿改成要点格式，存到 文档/周报.md', status: 'done', startedAt: iso(-2 * 3600_000 - 40_000), completedAt: iso(-2 * 3600_000), durationMs: 40_000, toolCount: 6, changedFiles: 1, undoable: false, undone: true },
+    { id: 'h3', task: '查一下明天北京的天气，顺便看看周末展览的开放时间', status: 'done', startedAt: iso(-26 * 3600_000), completedAt: iso(-26 * 3600_000 + 55_000), durationMs: 55_000, toolCount: 5, changedFiles: 0, undoable: false },
+    { id: 'h4', task: '运行项目测试并修复失败的用例', status: 'failed', startedAt: iso(-50 * 3600_000), completedAt: iso(-50 * 3600_000 + 420_000), durationMs: 420_000, toolCount: 31, changedFiles: 2, undoable: true },
+  ],
   watches: [{ id: 'w1', title: '快递到了没', createdAt: now, nextCheckAt: now + 1e6, expiresAt: now + 1e7, status: 'active', dedupeKey: 'x' }],
   agent: { backend: 'openai-kimi-tools', mode: 'full-access', cwd: 'C:\\Users\\me\\Documents', busy: false, lastResult: { status: 'done', summary: '整理完成', toolCount: 14, completedAt: iso(-600_000), changedFiles: 3, runId: 'r1' }, running: params.get('page') === 'config' ? [{ id: 't1', task: '整理下载文件夹，按类型分到子文件夹', startedAt: iso(-90_000) }, { id: 't2', task: '统计 GalAgent 项目代码行数', startedAt: iso(-30_000) }] : [], mcp: [{ name: 'playwright', state: 'ready', tools: 21, transport: 'stdio' }, { name: 'github', state: 'ready', tools: 38, transport: 'http' }] },
 });
@@ -74,6 +80,7 @@ const bridge: GalAgentBridge = {
   getSnapshot: async () => snapshot,
   onSnapshot: listener => { listeners.push(listener); return () => {}; },
   dispatch: async (command: AppCommand) => {
+    if (command.type === 'agent.task' && command.id === 'h1') return { ok: true, data: { ...snapshot.taskHistory![0], cwd: 'C:\\Users\\me\\Downloads', runId: 'r1', summary: '已把下载文件夹里的 **42 个文件** 按类型整理好：\n\n- 图片 → `图片/`（18 个）\n- 文档 → `文档/`（15 个）\n- 安装包 → `安装包/`（9 个）\n\n没有删除任何文件；重名的 2 个文件在名字后加了 (2)。', tools: { Bash: 6, Glob: 3, Read: 2, Write: 3 }, files: ['C:\\Users\\me\\Downloads\\整理说明.md', 'C:\\Users\\me\\Downloads\\图片\\README.txt', 'C:\\Users\\me\\Downloads\\文档\\README.txt'] } };
     if (command.type === 'pet.get') return { ok: true, data: builtinPixelPets.find(p => p.id === command.id) };
     if (command.type === 'persona.generate') return { ok: true, data: { name: '阿澄', pronoun: '她', tagline: '会做饭的狼人管家，嘴硬心软。', card: { ...emptyCard(), identity: '狼人管家', base: '责任感', main: ['嘴硬', '会照顾人'], accents: ['怕打雷'] }, questions: ['她被你夸做饭好吃时，第一反应是什么动作？', '“嘴硬”在什么场合会突然失效？', '有没有一件她绝对不会替你做的事？为什么？'] } };
     return { ok: true };

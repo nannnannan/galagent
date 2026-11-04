@@ -55,6 +55,8 @@ npm run preview:ui                                  # 桌宠窗口 + 主界面�
 8. **记忆与每日档案**（[docs/记忆系统-v2.md](docs/记忆系统-v2.md)）：每个自然日结束后整理一次（作业 id 按日期唯一）；次日上下文用档案摘要替代原文，跨午夜 2 小时内与档案未就绪的日子保留原文；原文永远保存在本地，可用 `recall_day` 读回；档案以消息指纹校验，删除或纠正后立即失效重建。
 10. **执行器强化**：文件写入只走 Write/Edit/ApplyPatch 并先 `checkpoint`（可撤销）；AGENTS.md 只说明做法，不得扩大沙箱权限；本地（stdio）MCP 服务只在沙箱允许 Shell 且无禁止目录时提供，远程（HTTP）MCP 只在允许联网时提供，标准档每任务首次使用前询问，参数经 `outboundText` 脱敏，不实现 sampling；循环检测与自动压缩不可绕过。
 11. **主代理掌控**：只在用户直接聊天（`activeKind==='chat'`）时提供 `run_task / task_status / cancel_task / undo_task / get_settings / update_settings / watch`，主动开口、场景与注意力代理永远拿不到；执行任务可并行（`executor.maxParallel`，默认 3，并行任务各用独立会话）；`update_settings` 中放宽隐私或权限的改动（`loosening()`）在 `aiControl` 为默认 `confirm` 时必须经聊天确认卡同意后才生效，`aiControl` 只有用户能改，AI 永远改不了 API Key、MCP 密钥与 `aiControl` 本身。
+12. **自适应节奏**（`runtime/core/pacing.ts`）：只能让主动开口更少——拉长间隔（×1–3）、让被冷落的话题暂停（最长 3 天）；不得缩短用户设的间隔或突破每小时/每天上限。`task / watch / schedule / system` 不参与退避。账本只存时间、话题类别与是否回应，不存原文。
+13. **任务历史与 MCP 模板**：任务记录（`task-run`）只在本机，最多 100 条，存任务原话、汇报、工具名次数和改动文件路径，不存工具输出；按任务撤销走 `ToolHost.undoRun(runId)`，已撤销的不能再撤。MCP 模板（`runtime/shared/mcp-presets.ts`）只收录核对过安装方式的包并锁定版本，禁止 `@latest`；令牌只经 `mcp.secret` 进 DPAPI，模板条目本身不带密钥名；文件夹模板拒绝 GalAgent 数据目录与禁止目录。
 9. **活人感**（[docs/活人感-v1.md](docs/活人感-v1.md)）：早安/晚安/分享/旧事重提只能经 `runtime/core/life.ts` 选出、`lifeBlocked` 放行后走 `generate('initiative')`，开始前必须 `recordInitiative`；同一时刻至多一个主动请求。分条消息只是 `Message.parts`，一条回复只存一条记录；小嘀咕不入库；补一句、心情、小日程、小嘀咕不得发起模型请求。
 
 ---

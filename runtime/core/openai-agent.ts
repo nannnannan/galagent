@@ -64,6 +64,7 @@ export class OpenAIToolAgent implements AgentRunner {
   return typeof data?.id==='string'&&data.id?{id:data.id}:undefined;
  }
  /** Restores the files the most recent task changed (checked writes only). */
+ async undoRun(runId:string){const r=await this.host.undoRun(runId);return{runId,...r};}
  async undoLast(){const run=await this.host.lastRun();if(!run)throw new Error('没有可撤销的文件改动');const r=await this.host.undoRun(run.runId);return{runId:run.runId,...r};}
  async probe(){return{name:'GalAgent local tools',version:'KimiCode-0.29.2-format'};}
  cancelAll(){for(const controller of this.controllers.values())controller.abort();this.host.invalidatePolicy();for(const session of this.host.sessions.values())if(!session.parentId)this.host.cancelSession(session.id);}
