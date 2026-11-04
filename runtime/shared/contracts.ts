@@ -94,6 +94,17 @@ export type Settings = {
   murmursEnabled?: boolean;
   /** 自适应节奏：被冷落的话题自动退避、整体被冷落时拉长间隔（只会更安静）。缺省为开。 */
   adaptivePacing?: boolean;
+  /** TTS request shape; absent = guessed from the address (MiMo vs OpenAI /audio/speech). */
+  ttsFormat?: 'openai-speech' | 'mimo-chat-audio';
+  /** 按住说话：默认关闭，只有用户能打开（AI 改不了）。音频只发给下面这个语音识别接口。 */
+  voiceInputEnabled?: boolean;
+  sttBaseUrl?: string;
+  sttModel?: string;
+  sttFormat?: 'openai-transcriptions' | 'chat-input-audio';
+  /** ISO-639-1 hint for the recognizer, e.g. zh. */
+  sttLanguage?: string;
+  /** A speech-input key is saved (the value itself only lives in the desktop shell). */
+  sttKeySet?: boolean;
   /** Times a day the character may share something it found online (0 = never). */
   shareDailyLimit?: number;
   /** Bring up something you mentioned days ago at most once every N days (0 = never). */
@@ -185,6 +196,8 @@ export type AppSnapshot = {
   pacing?: PacingView;
   /** Finished executor tasks (newest first, at most 40 here; details via agent.task). */
   taskHistory?: TaskRunView[];
+  /** TA 对用户的整体印象（每日档案顺带更新；用户可改写或清除）。 */
+  portrait?: { text: string; updatedAt: string; userEdited?: boolean };
   activity?: { kind: 'idle' | 'thinking' | 'working' | 'speaking' | 'quiet' | 'sleeping' | 'offline' | 'resting' | 'focus'; label: string; /** What the character is up to in its own routine. */ routine?: string; /** Thinking about opening a conversation on its own rather than answering. */ initiative?: boolean; /** Dozing because the user stepped away (not quiet hours). */ away?: boolean; /** The executor is waiting for the user's answer (e.g. a Shell confirmation). */ waiting?: boolean };
   visual: { expression: Expression; action: PetAction; bubble: string; revision: number; intensity?: number };
   messages: Message[];
@@ -232,10 +245,17 @@ export type AppCommand =
   | { type: 'pet.roam'; active?: boolean; direction?: -1 | 1 }
   | { type: 'tts.speak'; text: string }
   | { type: 'tts.stop' }
-  | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string }
+  | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string; ttsFormat?: 'openai-speech' | 'mimo-chat-audio' }
+  | { type: 'stt.configure'; voiceInputEnabled?: boolean; sttBaseUrl?: string; sttModel?: string; sttFormat?: 'openai-transcriptions' | 'chat-input-audio'; sttLanguage?: string; sttApiKey?: string; sttKeySet?: boolean }
+  | { type: 'voice.transcribe'; audio: Uint8Array }
+  | { type: 'endpoint.models'; kind: 'chat' | 'tts' | 'stt'; baseUrl: string; apiKey?: string }
   | { type: 'settings.update'; settings: SettingsPatch }
   | { type: 'config.save'; apiKey?: string; baseUrl: string; model: string; mode?: ProviderMode }
   | { type: 'memory.delete'; id: string }
+  | { type: 'memory.source'; id: string }
+  | { type: 'portrait.update'; text: string }
+  | { type: 'portrait.clear' }
+  | { type: 'profile.rhythm' }
   | { type: 'memory.correct'; id: string; text: string }
   | { type: 'memory.remember'; text: string }
   | { type: 'watch.add'; title: string; condition?: string; checkAfterMinutes?: number }

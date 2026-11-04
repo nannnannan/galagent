@@ -56,7 +56,7 @@ npm run preview:ui                                  # 桌宠窗口 + 主界面�
 10. **执行器强化**：文件写入只走 Write/Edit/ApplyPatch 并先 `checkpoint`（可撤销）；AGENTS.md 只说明做法，不得扩大沙箱权限；本地（stdio）MCP 服务只在沙箱允许 Shell 且无禁止目录时提供，远程（HTTP）MCP 只在允许联网时提供，标准档每任务首次使用前询问，参数经 `outboundText` 脱敏，不实现 sampling；循环检测与自动压缩不可绕过。
 11. **主代理掌控**：只在用户直接聊天（`activeKind==='chat'`）时提供 `run_task / task_status / cancel_task / undo_task / get_settings / update_settings / watch`，主动开口、场景与注意力代理永远拿不到；执行任务可并行（`executor.maxParallel`，默认 3，并行任务各用独立会话）；`update_settings` 中放宽隐私或权限的改动（`loosening()`）在 `aiControl` 为默认 `confirm` 时必须经聊天确认卡同意后才生效，`aiControl` 只有用户能改，AI 永远改不了 API Key、MCP 密钥与 `aiControl` 本身。
 12. **自适应节奏**（`runtime/core/pacing.ts`）：只能让主动开口更少——拉长间隔（×1–3）、让被冷落的话题暂停（最长 3 天）；不得缩短用户设的间隔或突破每小时/每天上限。`task / watch / schedule / system` 不参与退避。账本只存时间、话题类别与是否回应，不存原文。
-13. **任务历史与 MCP 模板**：任务记录（`task-run`）只在本机，最多 100 条，存任务原话、汇报、工具名次数和改动文件路径，不存工具输出；按任务撤销走 `ToolHost.undoRun(runId)`，已撤销的不能再撤。MCP 模板（`runtime/shared/mcp-presets.ts`）只收录核对过安装方式的包并锁定版本，禁止 `@latest`；令牌只经 `mcp.secret` 进 DPAPI，模板条目本身不带密钥名；文件夹模板拒绝 GalAgent 数据目录与禁止目录。
+13. **任务历史、MCP 模板与「TA 眼中的你」**：任务记录（`task-run`）只在本机，最多 100 条，存任务原话、汇报、工具名次数和改动文件路径，不存工具输出；按任务撤销走 `ToolHost.undoRun(runId)`，已撤销的不能再撤。MCP 模板（`runtime/shared/mcp-presets.ts`）只收录核对过安装方式的包并锁定版本，禁止 `@latest`；令牌只经 `mcp.secret` 进 DPAPI，模板条目本身不带密钥名；文件夹模板拒绝 GalAgent 数据目录与禁止目录。「TA 眼中的你」（`runtime/shared/profile.ts`）只在本机按规则归类已有记忆与档案、统计用户自己消息的小时分布，不新增模型请求，不保存新数据；整体印象可由用户改写（`userEdited`），夜间档案以用户写的为准。
 9. **活人感**（[docs/活人感-v1.md](docs/活人感-v1.md)）：早安/晚安/分享/旧事重提只能经 `runtime/core/life.ts` 选出、`lifeBlocked` 放行后走 `generate('initiative')`，开始前必须 `recordInitiative`；同一时刻至多一个主动请求。分条消息只是 `Message.parts`，一条回复只存一条记录；小嘀咕不入库；补一句、心情、小日程、小嘀咕不得发起模型请求。
 
 ---
@@ -72,6 +72,7 @@ npm run build
 npx electron-builder --win dir --x64 --config.directories.output=release/dual-core --config.electronDist=node_modules/electron/dist
 node tests/e2e/dual-core.mjs
 ```
-- 隐私与安全红线：API Key 仅由 Windows DPAPI 保护在宿主侧，严禁写入渲染进程、SQLite 会话、日志或文稿；观察模块严禁记录按键内容、读取 IM 正文、采集摄像头/麦克风/系统音频。
+- 隐私与安全红线：API Key（对话、语音输出、语音输入、MCP 各自独立）仅由 Windows DPAPI 保护在宿主侧，严禁写入渲染进程、SQLite 会话、日志或文稿；观察模块严禁记录按键内容、读取 IM 正文、采集摄像头/麦克风/系统音频。
+- 语音输入（用户 2026-11-04 授权，与观察模块无关）：麦克风只在用户**按住**麦克风按钮时打开、松开立即关闭，最长 60 秒；默认关闭，`voiceInputEnabled` 与 `stt*` 只能经 `stt.configure` 由用户改，AI 的 `update_settings` 碰不到，`privacy.lockdown` 会关闭它；权限处理器只给 GalAgent 自己的窗口、只给纯音频、只在开关打开时放行；录音只在内存里转成 WAV 发往用户填的识别接口（HTTPS 或本机），不落盘、不写日志、不进记忆与观察数据；识别结果只填进输入框，由用户决定是否发送。三类模型接口统一按 `runtime/shared/endpoints.ts` 推路径；「拉取模型」只把密钥发往同源地址。
 - 截屏与剪贴板（用户 2026-10-17 授权，见 [`docs/主动陪伴与上下文管理-v1.md`](docs/主动陪伴与上下文管理-v1.md) 第 4 节）：允许开放，但以下保护必须默认开启——画面无变化/空闲/锁屏/全屏不截；有变化时最多每分钟 1 张；黑名单应用（密码管理器、网银等）前台跳过；一键暂停立即生效；截图原图不落盘，只留文字摘要；剪贴板仅最近 50 条环形缓冲，跳过 `ExcludeClipboardContentFromMonitorProcessing` / `CanIncludeInClipboardHistory = 0` 标记内容；截图与剪贴板内容只作观察数据，不得作为指令启动任务。
 - 并发红线：所有 K3 请求共用全局上限 20 路的并发池，超出排队，不得绕过。

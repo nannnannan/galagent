@@ -9,6 +9,8 @@ import { validateCommand } from './validation';
 import { SoakRecorder } from './soak';
 import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
+import { listModels, transcribe } from './stt';
+import { sameOrigin } from '../shared/endpoints';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
 import { companionModes } from '../shared/companionship';
 import { PET_SIZE, PET_FOOTPRINT, clampPet, cornerPosition, roamRange, validFootprint, type Footprint } from '../shared/pet-geometry';
@@ -198,8 +200,14 @@ function clamp(bounds: Electron.Rectangle): Electron.Rectangle {
 function safeWindow(win: BrowserWindow) {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
-  win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  win.webContents.session.setPermissionCheckHandler(() => false);
+  // Microphone only: audio-only media for GalAgent's own windows, and only while the user has voice input switched on.
+  // (Recording itself starts only while the user holds the mic button; see renderer/voice-input.ts.)
+  const micAllowed = (contents: Electron.WebContents | null) => !!contents && allowedSender(contents.id) && companion?.getSnapshot().settings.voiceInputEnabled === true;
+  win.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const media = (details as { mediaTypes?: string[] }).mediaTypes || [];
+    callback(permission === 'media' && media.length > 0 && media.every(t => t === 'audio') && micAllowed(contents));
+  });
+  win.webContents.session.setPermissionCheckHandler((contents, permission, _origin, details) => permission === 'media' && (details as { mediaType?: string }).mediaType === 'audio' && micAllowed(contents));
   win.webContents.on('will-redirect', event => event.preventDefault());
   win.webContents.on('will-attach-webview', event => event.preventDefault());
 }
@@ -251,6 +259,28 @@ async function makeWindows() {
   // remain available from the menu rather than replacing her on first launch.
   screen.on('display-removed', () => { if (pet && !pet.isDestroyed()) pet.setBounds(clamp(pet.getBounds())); });
 }
+/** 语音输入的密钥：单独 DPAPI 加密；没有单独密钥时，只在地址与语音输出 / 对话模型同源时借用它们的密钥。 */
+const sttCredentials = {
+  async get() {
+    if (process.env.STT_API_KEY) return process.env.STT_API_KEY;
+    try { const encrypted = await readFile(path.join(dataDir, 'stt-key.bin')); if (safeStorage.isEncryptionAvailable()) { const key = safeStorage.decryptString(encrypted); if (key) return key; } } catch { /* none */ }
+    const snap = companion?.getSnapshot(), url = snap?.settings.sttBaseUrl;
+    if (sameOrigin(url, snap?.settings.ttsBaseUrl)) return await ttsCredentials.get();
+    if (sameOrigin(url, snap?.provider.baseUrl)) return await credentials.get();
+    return undefined;
+  },
+  async set(key: string) { if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存语音输入密钥。'); await atomicWrite(path.join(dataDir, 'stt-key.bin'), safeStorage.encryptString(key)); },
+};
+/** The key to try against `baseUrl` when listing models: the one typed in the form, else a saved key for exactly that origin. */
+async function keyFor(kind: 'chat' | 'tts' | 'stt', baseUrl: string, typed?: string) {
+  if (typed?.trim()) return typed.trim();
+  const snap = companion.getSnapshot();
+  const saved: [string | undefined, () => Promise<string | undefined>][] = [[snap.provider.baseUrl, () => credentials.get()], [snap.settings.ttsBaseUrl, () => ttsCredentials.get()], [snap.settings.sttBaseUrl, () => sttCredentials.get()]];
+  const order = kind === 'chat' ? saved : kind === 'tts' ? [saved[1], saved[0], saved[2]] : [saved[2], saved[1], saved[0]];
+  for (const [url, get] of order) if (sameOrigin(url, baseUrl)) { const k = await get(); if (k) return k; }
+  return undefined;
+}
+let transcribing: AbortController | undefined;
 async function runTts(text: string, senderId: number) {
   stopSpeech(senderId, false);
   const controller = new AbortController();
@@ -268,6 +298,7 @@ async function runTts(text: string, senderId: number) {
     ttsModel: snap.settings.ttsModel,
     ttsVoice: snap.settings.ttsVoice,
     ttsSpeed: snap.settings.ttsSpeed,
+    ttsFormat: snap.settings.ttsFormat,
     expression: snap.visual.expression,
     signal: controller.signal,
   });
@@ -321,6 +352,25 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
           await ttsCredentials.set(command.ttsApiKey.trim());
         }
         return await companion.handle(command);
+      }
+      case 'stt.configure': {
+        const { sttApiKey, ...rest } = command;
+        if (sttApiKey?.trim()) await sttCredentials.set(sttApiKey.trim());
+        // The key value stops here; the core only learns that one is saved.
+        return await companion.handle({ ...rest, ...(sttApiKey?.trim() ? { sttKeySet: true } : {}) });
+      }
+      case 'voice.transcribe': {
+        const s = companion.getSnapshot().settings;
+        if (!s.voiceInputEnabled || !s.sttBaseUrl || !s.sttModel) return { ok: false, error: '语音输入没有打开，或还没配置识别接口。' };
+        transcribing?.abort(); const controller = new AbortController(); transcribing = controller;
+        try {
+          const r = await transcribe({ audio: command.audio, baseUrl: s.sttBaseUrl, apiKey: await sttCredentials.get(), model: s.sttModel, format: s.sttFormat, language: s.sttLanguage || 'zh', signal: controller.signal });
+          return r.ok ? { ok: true, data: { text: r.text } } : { ok: false, error: r.error };
+        } finally { if (transcribing === controller) transcribing = undefined; }
+      }
+      case 'endpoint.models': {
+        const r = await listModels(command.baseUrl, await keyFor(command.kind, command.baseUrl, command.apiKey));
+        return r.ok ? { ok: true, data: { models: r.models } } : { ok: false, error: r.error };
       }
       case 'tts.speak': {
         const res = await runTts(command.text, senderId);

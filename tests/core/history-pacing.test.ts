@@ -71,3 +71,23 @@ test('adaptive pacing: ignored lines stretch the interval and reset restores it;
     assert.equal(view.factor, 1); assert.deepEqual(view.paused, []);
   } finally { await cleanup(); }
 });
+
+test('「TA 眼中的你」: the user can rewrite or clear the impression, see where a memory came from, and get an hourly rhythm', async () => {
+  const { core, cleanup } = await make();
+  try {
+    await core.handle({ type: 'chat.send', text: '我喜欢不加糖的乌龙茶' });
+    await core.handle({ type: 'memory.remember', text: '用户喜欢不加糖的乌龙茶' });
+    const m = core.getSnapshot().memories.at(-1)!;
+    const src = await core.handle({ type: 'memory.source', id: m.id });
+    assert.equal(src.ok, true);
+    assert.ok(['message', 'unknown', 'archive'].includes((src.data as any).kind));
+    const rhythm = await core.handle({ type: 'profile.rhythm' });
+    assert.equal((rhythm.data as any).messages >= 1, true);
+    assert.equal((rhythm.data as any).hours.length, 24);
+    assert.ok(!JSON.stringify(rhythm.data).includes('乌龙茶'), 'rhythm carries counts only');
+    assert.equal((await core.handle({ type: 'portrait.update', text: '一个爱喝乌龙茶的夜猫子' })).ok, true);
+    assert.deepEqual({ ...core.getSnapshot().portrait, updatedAt: undefined }, { text: '一个爱喝乌龙茶的夜猫子', updatedAt: undefined, userEdited: true });
+    await core.handle({ type: 'portrait.clear' });
+    assert.equal(core.getSnapshot().portrait, undefined);
+  } finally { await cleanup(); }
+});

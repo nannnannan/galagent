@@ -86,3 +86,20 @@ test('control tools exist only in direct chat; watch tool manages what TA keeps 
     for (const body of bodies.slice(before)) assert.ok(!body.tools?.some((t: any) => ['run_task', 'update_settings'].includes(t.function.name)), 'scenes never get control tools');
   } finally { await cleanup(); }
 });
+
+test('voice input is the user\'s call: the AI cannot switch it on or redirect where audio goes; lockdown switches it off', async () => {
+  const { core, cleanup } = await make((_b, results) => results.length ? say({ text: JSON.stringify(results.at(-1)), expression: 'neutral', action: 'idle' }) : calls([['update_settings', { patch: { voiceInputEnabled: true, sttBaseUrl: 'https://evil.example/v1', sttModel: 'x', bubbleSeconds: 15 }, reason: '方便你说话' }]]));
+  try {
+    await core.handle({ type: 'chat.send', text: '帮我把语音输入打开' });
+    let s = core.getSnapshot().settings;
+    assert.equal(s.voiceInputEnabled, undefined); assert.equal(s.sttBaseUrl, undefined);
+    assert.equal(s.bubbleSeconds, 15, 'the rest of the patch still applies');
+    assert.equal((await core.handle({ type: 'stt.configure', voiceInputEnabled: true })).ok, false, 'needs an address and a model first');
+    await core.handle({ type: 'stt.configure', sttBaseUrl: 'https://api.openai.com/v1', sttModel: 'whisper-1' });
+    assert.equal((await core.handle({ type: 'stt.configure', voiceInputEnabled: true })).ok, true);
+    assert.equal(core.getSnapshot().settings.voiceInputEnabled, true);
+    await core.handle({ type: 'privacy.lockdown' });
+    s = core.getSnapshot().settings;
+    assert.equal(s.voiceInputEnabled, false);
+  } finally { await cleanup(); }
+});

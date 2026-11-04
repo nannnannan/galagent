@@ -48,13 +48,15 @@ const P: Record<string, string> = {
   bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   hush: '<path d="M6 16.5V11a6 6 0 0 1 9.5-4.9M18 11v5.5l1.5 2H8"/><path d="M10 20.5a2 2 0 0 0 4 0M4 4l16 16"/>',
   folder: '<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+  mic: '<rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5M9 20.5h6"/>',
+  list: '<path d="M8.5 6.5h11M8.5 12h11M8.5 17.5h11"/><circle cx="4.8" cy="6.5" r=".9" fill="currentColor"/><circle cx="4.8" cy="12" r=".9" fill="currentColor"/><circle cx="4.8" cy="17.5" r=".9" fill="currentColor"/>',
   diamond: '<path d="M12 3 21 12 12 21 3 12z" fill="currentColor" stroke="none"/><path d="M12 7.5 16.5 12 12 16.5 7.5 12z" fill="var(--icon-cut, #fff)" stroke="none" opacity=".9"/>',
 };
 /** Emoji used across the UI → icon name, so every existing call site draws the same family. */
 const ALIAS: Record<string, string> = {
   '💬': 'chat', '🎭': 'persona', '🐾': 'paw', '🌙': 'moon', '⏰': 'alarm', '🛡️': 'shield', '📌': 'pin', '📔': 'book', '🏆': 'trophy', '🔌': 'plug',
   '🎉': 'sparkles', '🚶': 'walk', '🔇': 'mute', '🔒': 'lock', '🏠': 'home', '🖥️': 'monitor', '📦': 'box', '🧭': 'compass', '👀': 'eye', '🧩': 'puzzle', '🌐': 'globe',
-  '+': 'plus', '✓': 'check', '!': 'alert', '🌱': 'sprout', '🔥': 'flame', '📅': 'calendar', '🤲': 'hand', '⚡': 'zap', '🪁': 'send', '👉': 'pointer', '😵': 'spiral', '⌨️': 'keyboard', '◆': 'diamond', '🎯': 'target', '☀️': 'sun', '🔔': 'bell', '🤫': 'hush',
+  '+': 'plus', '✓': 'check', '!': 'alert', '🌱': 'sprout', '🔥': 'flame', '📅': 'calendar', '🤲': 'hand', '⚡': 'zap', '🪁': 'send', '👉': 'pointer', '😵': 'spiral', '⌨️': 'keyboard', '◆': 'diamond', '🎯': 'target', '☀️': 'sun', '🔔': 'bell', '🤫': 'hush', '🎙️': 'mic',
 };
 export const iconName = (value: string) => P[value] ? value : ALIAS[value];
 export function svgIcon(name: string, size = 18): SVGSVGElement | undefined {

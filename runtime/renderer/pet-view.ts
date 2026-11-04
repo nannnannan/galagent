@@ -7,6 +7,7 @@ import { AchievementWatcher, Fling, FLING_MIN_SPEED, Mischief, Murmurer, Orbit, 
 import { Ambient, confetti } from './effects';
 import { firstVisitToday, reportAchievement, trackPet } from './bond';
 import { bridge, command, onCommand } from './ui';
+import { attachVoice } from './voice-input';
 import { loadPet, wantedPet } from './pet-assets';
 import { builtinPixelPets } from '../shared/pixel-pets';
 
@@ -27,7 +28,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     <button class="pet-handle" type="button" aria-label="打开菜单" title="菜单"><span aria-hidden="true">⋯</span></button>
     <form id="pet-input" class="pet-input" hidden>
       <textarea id="pet-text" rows="2" maxlength="1200" aria-label="说点什么" placeholder="想说点什么…"></textarea>
-      <div class="pet-input-actions"><small id="pet-input-note"></small><button id="pet-input-close" type="button" class="btn ghost">收起</button><button type="submit" class="btn primary">发送</button></div>
+      <div class="pet-input-actions"><small id="pet-input-note"></small><button id="pet-mic" class="btn ghost round" hidden></button><button id="pet-input-close" type="button" class="btn ghost">收起</button><button type="submit" class="btn primary">发送</button></div>
     </form>
   </main>`;
   const stage = app.querySelector<HTMLElement>('.pet-stage')!, body = app.querySelector<HTMLElement>('#pet-body')!, host = body.querySelector<HTMLElement>('.pet-sprite')!;
@@ -338,6 +339,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
   const closeInput = async () => { input.hidden = true; stage.classList.remove('input-open'); await command({ type: 'shell.input', open: false }, true); refreshPointer(); };
   const openInput = async () => { input.hidden = false; stage.classList.add('input-open'); note.textContent = snapshot.provider.configured ? '' : '尚未连接模型，可从菜单打开「连接」。'; const result = await command({ type: 'shell.input', open: true }, true); if (result.ok) text.focus(); refreshPointer(); };
   app.querySelector('#pet-input-close')!.addEventListener('click', () => void closeInput());
+  const petMic = app.querySelector<HTMLButtonElement>('#pet-mic')!; attachVoice(petMic, text);
   text.addEventListener('compositionstart', () => composing = true); text.addEventListener('compositionend', () => composing = false);
   text.addEventListener('keydown', event => { if (event.isComposing || composing) return; if (event.key === 'Escape') { event.preventDefault(); void closeInput(); } else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); input.requestSubmit(); } });
   input.onsubmit = async event => {
@@ -394,6 +396,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     if (lastActivity?.away && next.activity?.kind === 'idle' && funOn() && canAnimate()) { localEffect('wave', 2000); pet.impulse('jump', 0.6); say(pickOne(welcomeBackLines), 3200); }
     lastActivity = next.activity;
     watcher.update(next.bond).forEach((a, i) => setTimeout(() => celebrate(a.title), i * 5400));
+    petMic.hidden = !next.settings.voiceInputEnabled;
     syncAmbient(); applyState(); updateChip(); refreshPointer();
   }
   render(initial);

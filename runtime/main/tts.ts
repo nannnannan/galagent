@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import type { Expression } from '../shared/contracts';
 import { safeChildEnv } from '../core/safe-env';
+import { checkBaseUrl, endpointUrl, type TtsFormat } from '../shared/endpoints';
 
 export interface TtsSynthesizeOptions {
   text: string;
@@ -9,6 +10,8 @@ export interface TtsSynthesizeOptions {
   ttsModel?: string;
   ttsVoice?: string;
   ttsSpeed?: number;
+  /** Explicit request shape; absent = guessed from the address. */
+  ttsFormat?: TtsFormat;
   expression?: Expression;
   persona?: TtsPersona;
   fetchImpl?: typeof fetch;
@@ -185,7 +188,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
   }
   const speed = Math.max(0.5, Math.min(2.0, Number(options.ttsSpeed) || 1.0));
   const model = (options.ttsModel || 'mimo-v2.5-tts').trim();
-  const mimoMode = isXiaomiMimoTts(options.ttsBaseUrl, model);
+  const mimoMode = options.ttsFormat ? options.ttsFormat === 'mimo-chat-audio' : isXiaomiMimoTts(options.ttsBaseUrl, model);
   const voice = mimoMode
     ? resolveMimoVoice(options.ttsVoice)
     : (options.ttsVoice || '冰糖').trim();
@@ -194,7 +197,7 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
   if (options.ttsBaseUrl && options.ttsBaseUrl.trim()) {
     let endpoint: string;
     try {
-      endpoint = resolveTtsEndpoint(options.ttsBaseUrl, model);
+      endpoint = options.ttsFormat ? (checkBaseUrl(options.ttsBaseUrl, 'TTS '), endpointUrl('tts', options.ttsBaseUrl, options.ttsFormat)) : resolveTtsEndpoint(options.ttsBaseUrl, model);
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }

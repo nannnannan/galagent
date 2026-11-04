@@ -10,7 +10,7 @@ export type DailyArchive = {
   topics: string[]; highlights: string[]; openThreads: string[];
   sourceIds: string[]; messageCount: number; digest: string; createdAt: string; version: 1;
 };
-export type Portrait = { text: string; updatedAt: string; days: string[] };
+export type Portrait = { text: string; updatedAt: string; days: string[]; /** The user rewrote it; the nightly archive builds on their wording. */ userEdited?: boolean };
 /** Days further back than this are left to the rolling summary instead of a catch-up burst. */
 export const DAILY_CATCHUP_DAYS = 14;
 /** Messages this recent stay verbatim even across midnight, so a late-night conversation does not lose its thread. */

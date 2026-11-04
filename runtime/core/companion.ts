@@ -34,6 +34,7 @@ import { BrowserPerception, type BrowserReport, type BrowserHistoryItem, type Br
 import { parseExtraction, extractionPrompt, journalPrompt, parseJournal, searchJournals, memoryBoost, coreMemories, JOURNAL_EVERY, type MemoryOp } from './memory-plus';
 import { validMode, validTopic, readPreferences, topicLabels } from '../shared/companionship';
 import { MCP_PRESETS, mcpPreset, presetSecrets, presetServer } from '../shared/mcp-presets';
+import { rhythmOf } from '../shared/profile';
 import { galagentSecret } from './privacy';
 import { emptyPacing, noteInitiative, noteUserReply, noteWelcome, pacingView, readPacing, settlePacing, topicPaused, intervalFactor, type PacingLedger } from './pacing';
 import type { CompanionPreferences, InitiativeTopic, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
@@ -69,6 +70,8 @@ export type CompanionOptions = {
         close(): Promise<void>;
     };
 };
+/** Settings the AI's update_settings may never touch (in addition to aiControl and every secret). */
+const USER_ONLY_SETTINGS = ['voiceInputEnabled', 'sttBaseUrl', 'sttModel', 'sttFormat', 'sttLanguage', 'sttKeySet'] as const;
 const TASK_HISTORY_MAX = 100;
 /** Light list row for the snapshot; the full record is fetched with agent.task. */
 const taskView = (r: TaskRunDetail): TaskRunView => ({ id: r.id, task: r.task.slice(0, 160), status: r.status, startedAt: r.startedAt, completedAt: r.completedAt, durationMs: r.durationMs, toolCount: r.toolCount, changedFiles: r.files.length, undoable: !!r.runId && r.files.length > 0 && !r.undone, ...(r.undone ? { undone: true } : {}) });
@@ -358,6 +361,7 @@ export class CompanionService extends EventEmitter {
                     // One switch to stop everything that could carry data out: observation, tools, in-flight replies.
                     this.cancelRuns(); this.agent.cancelAll?.(); this.cancel();
                     this.clipboardRing.clear(); this.browser.clear(); this.sampler?.reset();
+                    this.state.settings.voiceInputEnabled = false;
                     return await this.handle({ type: 'settings.update', settings: { observationEnabled: false, screenCaptureEnabled: false, clipboardEnabled: false, sandbox: { level: 'strict', ...SANDBOX_PRESETS.strict } } });
                 }
                 case 'agent.answer':{const pending=this.agentQuestions.get(command.id);if(!pending)throw new Error('问题已结束');pending.resolve(command.answers);break;}
@@ -541,9 +545,23 @@ export class CompanionService extends EventEmitter {
                     if (command.ttsModel !== undefined) this.state.settings.ttsModel = command.ttsModel.trim().slice(0, 100) || 'tts-1';
                     if (command.ttsVoice !== undefined) this.state.settings.ttsVoice = command.ttsVoice.trim().slice(0, 100) || 'zh-CN-XiaoxiaoNeural';
                     if (command.ttsSpeed !== undefined) this.state.settings.ttsSpeed = Math.min(2.0, Math.max(0.5, Number(command.ttsSpeed) || 1.0));
+                    if (command.ttsFormat !== undefined) this.state.settings.ttsFormat = command.ttsFormat;
                     this.persist();
                     break;
                 }
+                case 'stt.configure': {
+                    // User-only (the AI's update_settings cannot reach these): where the user's voice is sent, and whether the mic button exists.
+                    const s = this.state.settings;
+                    if (command.sttBaseUrl !== undefined) s.sttBaseUrl = command.sttBaseUrl.trim().slice(0, 400);
+                    if (command.sttModel !== undefined) s.sttModel = command.sttModel.trim().slice(0, 200);
+                    if (command.sttFormat !== undefined) s.sttFormat = command.sttFormat;
+                    if (command.sttLanguage !== undefined) s.sttLanguage = command.sttLanguage;
+                    if (command.sttKeySet !== undefined) s.sttKeySet = command.sttKeySet;
+                    if (command.voiceInputEnabled !== undefined) { if (command.voiceInputEnabled && !(s.sttBaseUrl && s.sttModel)) throw new Error('先填好语音输入的地址和模型'); s.voiceInputEnabled = command.voiceInputEnabled; }
+                    this.persist();
+                    break;
+                }
+                case 'voice.transcribe': case 'endpoint.models': throw new Error('只能由桌面程序处理');
                 case 'tts.speak': case 'tts.stop':
                     break;
                 case 'chat.cancel':
@@ -590,6 +608,24 @@ export class CompanionService extends EventEmitter {
                     this.store.put('message', source.id, source);
                     this.addMemory(text, source.id, { importance: 4 });
                     break;
+                }
+                case 'memory.source':{
+                    // Where a memory came from: the user's own words (or the archive day) it was taken from. Local only.
+                    const m=this.state.memories.find(x=>x.id===command.id);if(!m)throw new Error('没有这条记忆');
+                    const src=this.store.get<Message>(m.sourceId);
+                    if(src&&this.store.kind(m.sourceId)==='message'&&!this.store.dead(m.sourceId))return{ok:true,data:{kind:'message',role:src.role,text:src.text.slice(0,600),createdAt:src.createdAt}};
+                    return{ok:true,data:{kind:m.sourceId.startsWith('daily:')?'archive':'unknown',day:m.sourceId.startsWith('daily:')?m.sourceId.slice(6):undefined,createdAt:m.createdAt}};
+                }
+                case 'portrait.update':{
+                    const prev=this.store.get<Portrait>('user-portrait');
+                    this.store.put('state','user-portrait',{text:this.checkText(command.text,600),updatedAt:new Date(Date.now()).toISOString(),days:prev?.days||[],userEdited:true} satisfies Portrait);
+                    break;
+                }
+                case 'portrait.clear':this.store.remove('user-portrait');break;
+                case 'profile.rhythm':{
+                    const dead=this.store.deadIds();
+                    const times=this.store.all<Message>('message').filter(m=>m.role==='user'&&m.source==='chat'&&!dead.has(m.id)).map(m=>Date.parse(m.createdAt));
+                    return{ok:true,data:rhythmOf(times,Date.now())};
                 }
                 case 'memory.delete':
                     this.deleteMemory(command.id);
@@ -1342,10 +1378,12 @@ export class CompanionService extends EventEmitter {
             tasks:()=>({running:[...this.runs.values()].map(r=>({id:r.id,task:r.task.slice(0,200),startedAt:r.startedAt})),maxParallel:this.maxParallel(),recent:this.history.slice(0,8).map(r=>({id:r.id,task:r.task.slice(0,200),status:r.status,summary:r.summary.slice(0,1500),completedAt:r.completedAt,...(r.files.length?{changedFiles:r.files.length}:{}),...(r.undone?{undone:true}:{})})),undoable:!!(this.state.agent?.lastResult?.changedFiles&&!this.state.agent.lastResult.undone),cwd:this.state.agent?.cwd}),
             cancelTask:id=>this.cancelRuns(id),
             undoLastTask:async()=>{const r=await this.handle({type:'agent.undo'});return r.ok?r.data:{error:r.error};},
-            settingsView:()=>{const {quietUntil:_q,...settings}=this.state.settings;return{settings:{...settings,mcpServers:(settings.mcpServers||[]).map(m=>({...m,secretsSet:[...(m.envKeys||[]),...(m.headerKeys||[])]}))},quietNow:this.state.settings.quietUntil>Date.now()?new Date(this.state.settings.quietUntil).toISOString():null,topics:Object.fromEntries(Object.keys(topicLabels).map(t=>[t,this.companionship.topics[t as InitiativeTopic]!=='mute'])),persona:{active:this.personas.activeId(),list:this.personas.list().map(p=>({id:p.id,name:p.name,tagline:p.tagline}))},pets:this.pets.catalog().map(p=>({id:p.id,name:p.name})),cwd:this.state.agent?.cwd,watches:this.attention?.watches().map(w=>({id:w.id,title:w.title,condition:w.condition}))||[],aiControl:this.state.settings.aiControl||'confirm',mcpPresets:MCP_PRESETS.map(p=>({title:p.title,name:p.name,...(p.url?{url:p.url}:{command:p.command,args:p.args}),needsFolder:!!p.folder,secretNames:(p.secrets||[]).map(x=>x.key)})),note:'mcpPresets 是常用 MCP 模板，可照着加进 mcpServers（需要文件夹的把路径加到 args 末尾）；密钥只能由用户在「连接」页填写，你看不到也设不了。quietUntil 用 quietMinutes（分钟，0 表示恢复）来改；aiControl 只有用户能改'};},
+            settingsView:()=>{const {quietUntil:_q,...settings}=this.state.settings;return{settings:{...settings,mcpServers:(settings.mcpServers||[]).map(m=>({...m,secretsSet:[...(m.envKeys||[]),...(m.headerKeys||[])]}))},quietNow:this.state.settings.quietUntil>Date.now()?new Date(this.state.settings.quietUntil).toISOString():null,topics:Object.fromEntries(Object.keys(topicLabels).map(t=>[t,this.companionship.topics[t as InitiativeTopic]!=='mute'])),persona:{active:this.personas.activeId(),list:this.personas.list().map(p=>({id:p.id,name:p.name,tagline:p.tagline}))},pets:this.pets.catalog().map(p=>({id:p.id,name:p.name})),cwd:this.state.agent?.cwd,watches:this.attention?.watches().map(w=>({id:w.id,title:w.title,condition:w.condition}))||[],aiControl:this.state.settings.aiControl||'confirm',mcpPresets:MCP_PRESETS.map(p=>({title:p.title,name:p.name,...(p.url?{url:p.url}:{command:p.command,args:p.args}),needsFolder:!!p.folder,secretNames:(p.secrets||[]).map(x=>x.key)})),note:'mcpPresets 是常用 MCP 模板，可照着加进 mcpServers（需要文件夹的把路径加到 args 末尾）；密钥只能由用户在「连接」页填写，你看不到也设不了。quietUntil 用 quietMinutes（分钟，0 表示恢复）来改；aiControl 与语音输入（voiceInputEnabled、stt*）只有用户能改'};},
             updateSettings:async(patch,reason)=>{
                 const p={...patch};const applied:string[]=[];const notes:string[]=[];
                 delete (p as Record<string,unknown>).aiControl;
+                // Where the user's voice goes, and whether the mic exists at all, are the user's decisions only.
+                for(const k of USER_ONLY_SETTINGS)if(k in p){delete (p as Record<string,unknown>)[k];notes.push(`${k} 只能由用户在「连接 → 语音输入」里改`);}
                 if(typeof p.quietMinutes==='number'){p.quietUntil=p.quietMinutes>0?Date.now()+Math.min(p.quietMinutes,24*60)*60_000:0;delete p.quietMinutes;}
                 const topics=p.topics as Record<string,unknown>|undefined,persona=p.persona,cwd=p.cwd;delete p.topics;delete p.persona;delete p.cwd;
                 const loose=this.loosening(p),full=this.state.settings.aiControl==='full';
@@ -1762,7 +1800,7 @@ export class CompanionService extends EventEmitter {
         try {
             const previous = this.store.get<Portrait>('user-portrait');
             const persona = this.personas.active();
-            const raw = await this.request([{ role: 'system', content: this.personas.prompt(this.bondView().daysTogether) + dailyPrompt }, { role: 'user', content: JSON.stringify({ day, myName: persona.name, ...(this.state.settings.moodEnabled !== false ? { myMoodTonight: vitalityView(this.vitality).label } : {}), previousPortrait: previous?.text || '', messages: transcript(records) }) }], controller.signal);
+            const raw = await this.request([{ role: 'system', content: this.personas.prompt(this.bondView().daysTogether) + dailyPrompt }, { role: 'user', content: JSON.stringify({ day, myName: persona.name, ...(this.state.settings.moodEnabled !== false ? { myMoodTonight: vitalityView(this.vitality).label } : {}), previousPortrait: previous?.text || '', ...(previous?.userEdited ? { portraitNote: '用户亲自改写过这段印象：以它为准，只在今天有新的真实依据时补充，不要推翻用户的说法' } : {}), messages: transcript(records) }) }], controller.signal);
             const parsed = parseDaily(raw);
             if (this.closed) throw new Error('已退出');
             if (!this.legalWork(job) || !this.store.get(job.id)) return;
@@ -1835,6 +1873,7 @@ export class CompanionService extends EventEmitter {
         this.state.activity = this.activityView();
         this.state.bond = this.bondView();
         const today = localDay(Date.now());
+        { const p = this.store.get<Portrait>('user-portrait'); if (p?.text) this.state.portrait = { text: p.text, updatedAt: p.updatedAt, ...(p.userEdited ? { userEdited: true } : {}) }; else delete this.state.portrait; }
         this.state.archives = this.store.all<DailyArchive>('daily-archive').filter(a => a.day < today).sort((a, b) => b.day.localeCompare(a.day)).slice(0, 30).map(({ day, title, summary, diary, mood, topics, highlights, openThreads, messageCount, createdAt }) => ({ day, title, summary, diary, mood, topics, highlights, openThreads, messageCount, createdAt }));
         const p = this.pool.stats();
         this.state.status.pool = { limit: p.limit, effectiveLimit: p.effectiveLimit, inflight: p.inflight, queued: p.queued, peak: p.peak };

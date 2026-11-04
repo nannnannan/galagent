@@ -1,5 +1,6 @@
 import type { AppCommand } from '../shared/contracts';
 import { validMode, validTopic } from '../shared/companionship';
+import { checkBaseUrl } from '../shared/endpoints';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
 // Numbers the user types are accepted as long as they are finite; the core clamps them into a sane range.
@@ -45,6 +46,11 @@ export function validateCommand(value: unknown): AppCommand {
       if (!bounded(command.text, 2000) || !command.text.trim()) throw new Error('记忆内容过长或为空。'); break;
     case 'memory.correct':
       if (!bounded(command.id, 100) || !bounded(command.text, 2000) || !command.text.trim()) throw new Error('记忆格式不正确。'); break;
+    case 'memory.source':
+      if (!id(command.id)) throw new Error('记忆标识无效。'); break;
+    case 'portrait.update':
+      if (!bounded(command.text, 600) || !command.text.trim()) throw new Error('印象为空或超过 600 字。'); break;
+    case 'portrait.clear': case 'profile.rhythm': break;
     case 'memory.delete':
       if (!bounded(command.id, 100)) throw new Error('记忆格式不正确。'); break;
     case 'watch.add':
@@ -71,7 +77,24 @@ export function validateCommand(value: unknown): AppCommand {
       break;
     case 'tts.speak':
       if (!bounded(command.text, 2000) || !command.text.trim()) throw new Error('语音文本为空或过长。'); break;
+    case 'stt.configure': {
+      if (command.voiceInputEnabled !== undefined && typeof command.voiceInputEnabled !== 'boolean') throw new Error('语音输入开关无效。');
+      if (command.sttBaseUrl !== undefined) { if (!bounded(command.sttBaseUrl, 400)) throw new Error('语音输入地址无效。'); if (command.sttBaseUrl.trim()) checkBaseUrl(command.sttBaseUrl, '语音输入'); }
+      if (command.sttModel !== undefined && !bounded(command.sttModel, 200)) throw new Error('语音输入模型无效。');
+      if (command.sttFormat !== undefined && !['openai-transcriptions', 'chat-input-audio'].includes(String(command.sttFormat))) throw new Error('语音输入格式无效。');
+      if (command.sttLanguage !== undefined && !(typeof command.sttLanguage === 'string' && /^([a-z]{2,3}(-[A-Za-z]{2,4})?)?$/.test(command.sttLanguage))) throw new Error('语言代码无效。');
+      if (command.sttApiKey !== undefined && !bounded(command.sttApiKey, 4000)) throw new Error('密钥过长。');
+      if (command.sttKeySet !== undefined) throw new Error('无效操作。');
+      break;
+    }
+    case 'voice.transcribe':
+      if (!(command.audio instanceof Uint8Array) || command.audio.length < 45 || command.audio.length > 4 * 1024 * 1024) throw new Error('录音无效或过长。'); break;
+    case 'endpoint.models':
+      if (!['chat', 'tts', 'stt'].includes(String(command.kind)) || !bounded(command.baseUrl, 400) || !command.baseUrl.trim()) throw new Error('接口地址无效。');
+      checkBaseUrl(command.baseUrl);
+      if (command.apiKey !== undefined && !bounded(command.apiKey, 4000)) throw new Error('密钥过长。'); break;
     case 'tts.configure': {
+      if (command.ttsFormat !== undefined && !['openai-speech', 'mimo-chat-audio'].includes(String(command.ttsFormat))) throw new Error('TTS 格式无效。');
       if (command.ttsEnabled !== undefined && typeof command.ttsEnabled !== 'boolean') throw new Error('TTS 开关无效。');
       if (command.ttsBaseUrl !== undefined && !bounded(command.ttsBaseUrl, 400)) throw new Error('TTS 地址无效。');
       checkTtsUrl(command.ttsBaseUrl);

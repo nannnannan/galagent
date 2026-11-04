@@ -1,5 +1,5 @@
 import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
-import type { AppSnapshot, Expression, Message, PetAction, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
+import type { AppSnapshot, Expression, MemoryItem, Message, PetAction, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
 import { companionModes, topicLabels, validTopic } from '../shared/companionship';
 import { achievements as achievementDefs } from '../shared/achievements';
 import { builtinPixelPets } from '../shared/pixel-pets';
@@ -15,7 +15,10 @@ import { reportAchievement, trackPet } from './bond';
 import { builtinPet, loadPet, wantedPet } from './pet-assets';
 import { guidePanel, openPersonaEditor, personaBadges } from './persona-editor';
 import { svgIcon } from './icons';
+import { attachVoice } from './voice-input';
 import { MCP_PRESETS, type McpPreset } from '../shared/mcp-presets';
+import { ENDPOINT_LABEL, STT_FORMATS, STT_PRESETS, TTS_FORMATS, rankModels, type EndpointKind } from '../shared/endpoints';
+import { PROFILE_GROUPS, groupMemories, recentFocus, type Rhythm } from '../shared/profile';
 import { bridge, button, clockText, command, el, field, iconBadge, linesArea, notice, numberInput, onCommand, readFileText, relativeTime, section, select, toast, toggle } from './ui';
 
 type Page = { id: string; icon: string; title: string; intro: string; key: (s: AppSnapshot) => unknown; render: (root: HTMLElement, s: AppSnapshot) => void };
@@ -72,7 +75,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
         <form id="composer" class="composer">
           <div id="runtime-error" class="notice warn" hidden></div>
           <div class="composer-box"><textarea id="input" rows="1" maxlength="12000" placeholder="说点什么…  (Enter 发送，Shift+Enter 换行，/任务 xxx 交给执行器)"></textarea>
-          <button id="send" class="btn primary round" type="submit" aria-label="发送"></button></div>
+          <button id="mic" class="btn ghost round" hidden></button><button id="send" class="btn primary round" type="submit" aria-label="发送"></button></div>
           <div class="composer-foot"><span id="thinking" class="thinking" hidden><i></i><i></i><i></i> <span id="thinking-text">正在想</span></span><span class="spacer"></span><button id="stop-voice" class="btn ghost small" type="button">停止朗读</button><button id="cancel" class="btn ghost small" type="button">取消回复</button><button id="quiet" class="btn ghost small" type="button">安静一会</button></div>
         </form>
       </div>
@@ -119,6 +122,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     render(snapshot, true);
   }
   app.querySelector('#send')!.append(svgIcon('arrowUp', 18)!);
+  attachVoice(app.querySelector<HTMLButtonElement>('#mic')!, app.querySelector<HTMLTextAreaElement>('#input')!);
   // The title bar gains a hairline once the page scrolls under it.
   const titlebar = app.querySelector<HTMLElement>('.titlebar')!;
   const markScroll = (event: Event) => titlebar.classList.toggle('scrolled', (event.target as HTMLElement).scrollTop > 4);
@@ -357,6 +361,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const error = app.querySelector<HTMLElement>('#runtime-error')!; error.textContent = next.status.error || (!next.provider.configured ? '还没有连接模型：到「连接」页填入 API 地址、模型和 Key 就能开始真实对话。' : ''); error.hidden = !error.textContent;
     app.querySelector('#thinking')!.toggleAttribute('hidden', !next.status.busy);
     app.querySelector<HTMLButtonElement>('#send')!.disabled = next.status.busy;
+    app.querySelector<HTMLButtonElement>('#mic')!.hidden = !next.settings.voiceInputEnabled;
     const quiet = app.querySelector<HTMLElement>('#quiet')!; quiet.textContent = next.settings.quietUntil > Date.now() ? '恢复主动' : '安静一会'; quiet.classList.toggle('on', next.settings.quietUntil > Date.now());
     const signature = JSON.stringify([next.messages.map(m => m.id + m.text.length), next.companionship?.ratings, p?.id, next.status.busy, next.identity.name]);
     if (signature !== lastMessages) { lastMessages = signature; renderMessages(); }
@@ -393,10 +398,10 @@ const pages: Page[] = [
   { id: 'companion', icon: '🌙', title: '陪伴', intro: '主动陪伴的节奏完全由你决定：选项点选，数字随意填。', key: s => [s.settings, s.companionship?.topics, s.watches, s.pacing], render: renderCompanion },
   { id: 'schedule', icon: '⏰', title: '定时', intro: '你和 TA 设下的提醒。到点后 TA 会主动来找你。', key: s => [s.schedules, s.settings.petId], render: renderSchedules },
   { id: 'privacy', icon: '🛡️', title: '隐私与沙箱', intro: '控制执行器能碰什么，以及哪些内容绝不离开这台电脑。', key: s => [s.settings.sandbox, s.settings.forbiddenPaths, s.settings.captureBlocklist, s.privacy, s.settings.observationEnabled, s.settings.screenCaptureEnabled, s.settings.clipboardEnabled, s.settings.windowTitlesEnabled], render: renderPrivacy },
-  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 记住的关于你的事。你随时可以纠正或删除。', key: s => [s.memories, s.settings.petId], render: renderMemories },
+  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 眼中的你，和 TA 记住的每一件事。每条都能看来源、纠正或删除。', key: s => [s.memories, s.settings.petId, s.portrait, s.archives?.map(a => a.day + a.createdAt)], render: renderMemories },
   { id: 'diary', icon: '📔', title: '札记', intro: '每天 0 点，TA 会把前一天整理成一份档案；日记是 TA 的感受，不会变成事实。', key: s => [s.diary, s.archives, s.status.journal, s.settings.petId], render: renderDiary },
   { id: 'achievements', icon: '🏆', title: '成就', intro: '相处留下的小徽章。互动成就在桌面小人身上触发，其余只依据真实记录颁发。', key: s => [s.bond, s.identity.name, s.settings.petId, s.pets?.revision], render: renderAchievements },
-  { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled, s.settings.mcpServers, s.agent?.mcp, s.agent?.running, s.settings.executor], render: renderConfig },
+  { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled, s.settings.mcpServers, s.agent?.mcp, s.agent?.running, s.settings.executor, s.settings.voiceInputEnabled, s.settings.sttKeySet, s.settings.sttBaseUrl, s.settings.ttsBaseUrl, s.settings.ttsFormat], render: renderConfig },
 ];
 
 /** Face of a persona card: its own pixel pet standing still (it wakes up on hover); a letter badge when the card has no sprite. */
@@ -466,6 +471,56 @@ function taskBody(t: TaskRunView, root: HTMLElement, s: AppSnapshot) {
     button('复制汇报', () => { void navigator.clipboard.writeText(detail.summary).then(() => toast('已复制。')); }, 'btn ghost small'));
   body.append(actions);
   return body;
+}
+
+/** The one way a model endpoint is entered: address, key, model — with 「拉取模型」 listing what the address offers. */
+function endpointInputs(kind: EndpointKind, baseUrl: string, modelName: string, keyHint: string) {
+  const url = el('input'); url.value = baseUrl; url.spellcheck = false; url.placeholder = 'https://…/v1';
+  const key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.placeholder = keyHint;
+  const model = el('input'); model.value = modelName; model.spellcheck = false;
+  const list = el('datalist'); list.id = `models-${kind}-${Math.random().toString(36).slice(2, 8)}`; model.setAttribute('list', list.id);
+  const chips = el('div', 'chips model-chips'); chips.hidden = true;
+  const fetchBtn = button('拉取模型', async () => {
+    if (!url.value.trim()) { toast('先填地址', 'error'); return; }
+    fetchBtn.disabled = true; fetchBtn.textContent = '拉取中…';
+    const r = await command({ type: 'endpoint.models', kind, baseUrl: url.value.trim(), ...(key.value.trim() ? { apiKey: key.value.trim() } : {}) }, true);
+    fetchBtn.disabled = false; fetchBtn.textContent = '拉取模型';
+    const models = rankModels(kind, (r.data as { models?: string[] } | undefined)?.models || []);
+    if (!r.ok || !models.length) { toast(r.error || '没拿到模型列表，请手动填写。', 'error'); return; }
+    list.replaceChildren(...models.map(m => { const o = el('option'); o.value = m; return o; }));
+    chips.replaceChildren(...models.slice(0, 14).map(m => button(m, () => { model.value = m; for (const c of chips.children) c.classList.toggle('on', c.textContent === m); }, `chip small${m === model.value ? ' on' : ''}`)));
+    if (models.length > 14) chips.append(el('small', 'row-meta', `共 ${models.length} 个，在模型框里输入可筛选`));
+    chips.hidden = false; toast(`拿到 ${models.length} 个模型。`);
+  }, 'btn ghost small');
+  const modelRow = el('div', 'row model-row'); modelRow.append(model, fetchBtn, list);
+  const modelBox = el('div', 'model-box'); modelBox.append(modelRow, chips);
+  return { url, key, model, fields: [field(`${ENDPOINT_LABEL[kind]}地址`, url), field('API Key', key), field('模型', modelBox, '可以点「拉取模型」从接口拿可用列表')] };
+}
+
+/** 语音输入（按住说话）：识别接口的配置与开关。只有用户能改；音频只发给这里填的接口。 */
+function voiceInputSection(s: AppSnapshot) {
+  const st = s.settings;
+  const box = section('语音输入（按住说话）', '按住聊天框旁的麦克风说话，松开后交给下面的语音识别接口转成文字，填进输入框，你确认后再发。按下才开麦，松开立刻关，最长 60 秒；录音不保存。');
+  const form = el('form', 'form-grid');
+  const ep = endpointInputs('stt', st.sttBaseUrl || '', st.sttModel || '', st.sttKeySet ? '已加密保存；留空保留原密钥' : '填入密钥（与语音输出 / 对话模型同一地址时可留空）');
+  const format = select(st.sttFormat || 'openai-transcriptions', STT_FORMATS, () => {});
+  const lang = el('input'); lang.value = st.sttLanguage || 'zh'; lang.maxLength = 8; lang.placeholder = 'zh';
+  const enabled = toggle(!!st.voiceInputEnabled, async v => {
+    if (v && !confirm(`打开后，你按住麦克风说的话会发送到：\n${st.sttBaseUrl || '（还没填地址）'}\n\n只在你按住时录音，录音不保存。确定打开？`)) { void command({ type: 'stt.configure', voiceInputEnabled: false }); return; }
+    const r = await command({ type: 'stt.configure', voiceInputEnabled: v }); if (r.ok && v) toast('已打开，聊天框旁边多了一个麦克风。');
+  });
+  const presets = el('div', 'row wrap'); presets.append(el('small', 'hint', '快速填入：'));
+  for (const p of STT_PRESETS) presets.append(button(p.label, () => { ep.url.value = p.url; ep.model.value = p.model; format.value = p.format; }, 'chip small'));
+  presets.append(button('同语音输出', () => { ep.url.value = st.ttsBaseUrl || ''; }, 'chip small'), button('同对话模型', () => { ep.url.value = s.provider.baseUrl; format.value = 'chat-input-audio'; }, 'chip small'));
+  const save = el('button', 'btn primary', '保存语音输入'); save.type = 'submit';
+  form.append(field('打开按住说话', enabled, '默认关闭；AI 改不了这个开关'), field('请求格式', format, '大多数服务用第一种；会听音频的多模态对话模型选第二种'), ...ep.fields, field('语言', lang, 'zh 中文、en 英文；留空让接口自己判断'), presets, save);
+  form.onsubmit = async event => {
+    event.preventDefault(); const k = ep.key.value.trim(); ep.key.value = '';
+    const r = await command({ type: 'stt.configure', sttBaseUrl: ep.url.value.trim(), sttModel: ep.model.value.trim(), sttFormat: format.value as 'openai-transcriptions' | 'chat-input-audio', sttLanguage: lang.value.trim(), ...(k ? { sttApiKey: k } : {}) });
+    if (r.ok) toast('语音输入配置已保存。');
+  };
+  box.append(form, el('p', 'hint', '密钥只交给桌面进程，用 Windows DPAPI 加密保存。地址只能是 HTTPS 或本机。'));
+  return box;
 }
 
 /** 一键添加：常用 MCP 服务的模板卡片，点开填文件夹 / 令牌即可。 */
@@ -738,28 +793,85 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
 }
 
 function renderMemories(root: HTMLElement, s: AppSnapshot) {
+  root.append(profileSection(s));
   const add = section('让 TA 记住一件事', '写下来的事会成为 TA 的长期记忆；不确定的事 TA 不会当真。');
   const form = el('form', 'inline-form'); const area = el('textarea'); area.rows = 2; area.maxLength = 1500; area.placeholder = '有一件事，希望 TA 记住…'; const save = el('button', 'btn primary', '记住'); save.type = 'submit'; form.append(area, save);
   form.onsubmit = async event => { event.preventDefault(); if (area.value.trim() && (await command({ type: 'memory.remember', text: area.value.trim() })).ok) area.value = ''; };
   add.append(form);
-  const items = s.memories.filter(x => x.valid);
-  const list = section('TA 记住的事', items.length ? `共 ${items.length} 条，新的在前` : '');
-  if (!items.length) list.append(emptyPet(s, '还没有记忆。慢慢来，我们有时间。', 'think'));
-  for (const item of [...items].reverse()) {
-    const row = el('div', 'list-row'), main = el('div', 'row-main'), meta = el('div', 'row-meta');
-    meta.append(el('span', 'pill', ({ fact: '事实', episode: '共同经历', reflection: '感受' })[item.kind]), ...(item.importance && item.importance >= 4 ? [el('span', 'pill accent', '重要')] : []), el('span', '', new Date(item.createdAt).toLocaleDateString('zh-CN')));
-    const text = el('p', '', item.text); main.append(text, meta);
-    const actions = el('div', 'row-actions');
-    const restore = () => actions.replaceChildren(fix, remove);
-    const fix = button('纠正', () => {
-      const editor = el('textarea'); editor.value = item.text; editor.maxLength = 1500; editor.rows = 2;
-      const ok = button('保存', async () => { if (editor.value.trim()) await command({ type: 'memory.correct', id: item.id, text: editor.value.trim() }); }, 'btn primary small');
-      text.replaceWith(editor); actions.replaceChildren(ok, button('取消', () => { editor.replaceWith(text); restore(); }, 'btn ghost small')); editor.focus();
-    }, 'btn ghost small');
-    const remove = button('删除', async () => { if (confirm('这条记忆、来源消息、同源记忆和相关札记会一起删除。确定吗？')) await command({ type: 'memory.delete', id: item.id }); }, 'btn danger small');
-    restore(); row.append(main, actions); list.append(row);
+  const valid = s.memories.filter(x => x.valid);
+  if (!valid.length) { const empty = section('TA 记住的事'); empty.append(emptyPet(s, '还没有记忆。慢慢来，我们有时间。', 'think')); root.append(add, empty); return; }
+  root.append(add);
+  const groups = groupMemories(valid);
+  for (const g of PROFILE_GROUPS) {
+    const items = groups[g.id]; if (!items.length) continue;
+    const box = section(g.title, `${g.hint} · ${items.length} 条`);
+    for (const item of items) box.append(memoryRow(item));
+    root.append(box);
   }
-  root.append(add, list);
+  const feelings = valid.filter(m => m.kind === 'reflection');
+  if (feelings.length) { const box = section('TA 自己的感受', '这些是 TA 的心情和想法，不当作关于你的事实。'); for (const item of feelings) box.append(memoryRow(item)); root.append(box); }
+}
+/** One memory with its source, correction and deletion. */
+function memoryRow(item: MemoryItem) {
+  const row = el('div', 'list-row memory-row'), main = el('div', 'row-main'), meta = el('div', 'row-meta');
+  meta.append(...(item.importance && item.importance >= 4 ? [el('span', 'pill accent', '重要')] : []), el('span', '', new Date(item.createdAt).toLocaleDateString('zh-CN')), ...(item.recalls ? [el('span', '', `TA 提起过 ${item.recalls} 次`)] : []));
+  const text = el('p', '', item.text); main.append(text, meta);
+  const actions = el('div', 'row-actions');
+  const source = button('来源', async () => {
+    const old = main.querySelector('.memory-source'); if (old) { old.remove(); return; }
+    const box = el('div', 'memory-source'); box.textContent = '读取中…'; main.append(box);
+    const r = await command({ type: 'memory.source', id: item.id }, true);
+    const d = r.data as { kind: string; role?: string; text?: string; createdAt?: string; day?: string } | undefined;
+    box.textContent = !r.ok || !d ? (r.error || '找不到来源。') : d.kind === 'message' ? `${d.role === 'user' ? '你' : 'TA'} 在 ${clockText(d.createdAt!)} 说：「${d.text}」` : d.kind === 'archive' ? `来自 ${d.day} 的每日档案（原话可在「札记」里查看当天）。` : '原始消息已经不在了（可能被删除），这条记忆是当时记下的。';
+  }, 'btn ghost small');
+  const restore = () => actions.replaceChildren(source, fix, remove);
+  const fix = button('纠正', () => {
+    const editor = el('textarea'); editor.value = item.text; editor.maxLength = 1500; editor.rows = 2;
+    const ok = button('保存', async () => { if (editor.value.trim()) await command({ type: 'memory.correct', id: item.id, text: editor.value.trim() }); }, 'btn primary small');
+    text.replaceWith(editor); actions.replaceChildren(ok, button('取消', () => { editor.replaceWith(text); restore(); }, 'btn ghost small')); editor.focus();
+  }, 'btn ghost small');
+  const remove = button('删除', async () => { if (confirm('这条记忆、来源消息、同源记忆和相关札记会一起删除。确定吗？')) await command({ type: 'memory.delete', id: item.id }); }, 'btn danger small');
+  restore(); row.append(main, actions);
+  return row;
+}
+/** 「TA 眼中的你」: the overall impression, what's been on your plate, and when you usually talk. */
+function profileSection(s: AppSnapshot) {
+  const box = section('TA 眼中的你', '都来自你们真实的聊天和每日档案，只在这台电脑上。哪里不对，直接改。');
+  box.classList.add('profile');
+  // impression
+  const imp = el('div', 'profile-impression');
+  if (s.portrait?.text) {
+    const quote = el('blockquote', '', s.portrait.text);
+    const meta = el('small', 'row-meta', `${s.portrait.userEdited ? '你改写过 · ' : 'TA 每晚整理档案时更新 · '}${clockText(s.portrait.updatedAt || new Date().toISOString())}`);
+    const actions = el('div', 'row wrap');
+    actions.append(button('改写', () => {
+      const editor = el('textarea'); editor.value = s.portrait!.text; editor.maxLength = 600; editor.rows = 4;
+      const ok = button('保存', async () => { if (editor.value.trim()) { const r = await command({ type: 'portrait.update', text: editor.value.trim() }); if (r.ok) toast('TA 之后会以你写的为准。'); } }, 'btn primary small');
+      quote.replaceWith(editor); actions.replaceChildren(ok); editor.focus();
+    }, 'btn ghost small'), button('清除', async () => { if (confirm('清除 TA 对你的整体印象？之后每晚整理档案时会重新慢慢形成。')) await command({ type: 'portrait.clear' }); }, 'btn ghost small'));
+    imp.append(el('small', 'row-meta', 'TA 对你的整体印象'), quote, meta, actions);
+  } else imp.append(el('small', 'row-meta', 'TA 对你的整体印象'), el('p', 'hint', '还没形成。每天 0 点整理前一天的档案时，TA 会慢慢写下对你的印象。'));
+  // recent focus
+  const focus = recentFocus(s.archives || []);
+  const busy = el('div', 'profile-focus');
+  busy.append(el('small', 'row-meta', '最近一周在忙'));
+  if (focus.topics.length) { const chips = el('div', 'chips'); for (const t of focus.topics) chips.append(el('span', 'pill', t.days > 1 ? `${t.text} · ${t.days} 天` : t.text)); busy.append(chips); }
+  if (focus.threads.length) { const list = el('ul', 'profile-threads'); for (const t of focus.threads) list.append(el('li', '', t.text)); busy.append(el('small', 'row-meta', '还没聊完的事'), list); }
+  if (!focus.topics.length && !focus.threads.length) busy.append(el('p', 'hint', '最近一周还没有整理好的档案。'));
+  // rhythm (asked from the core: counts of your own messages per hour, no text)
+  const rhythm = el('div', 'profile-rhythm'); rhythm.append(el('small', 'row-meta', '你常在什么时候找 TA'), el('p', 'hint', '统计中…'));
+  void command({ type: 'profile.rhythm' }, true).then(r => {
+    const d = r.data as Rhythm | undefined; rhythm.replaceChildren(el('small', 'row-meta', '你常在什么时候找 TA（近 30 天）'));
+    if (!r.ok || !d || d.messages < 10) { rhythm.append(el('p', 'hint', '聊得还不够多，过几天再来看。')); return; }
+    const max = Math.max(...d.hours), bars = el('div', 'rhythm-bars');
+    d.hours.forEach((n, h) => { const b = el('i'); b.style.setProperty('--h', String(max ? n / max : 0)); b.title = `${h} 点：${n} 条`; if (d.peak && ((h - d.peak[0] + 24) % 24) < 4) b.classList.add('peak'); bars.append(b); });
+    const axis = el('div', 'rhythm-axis'); for (const h of [0, 6, 12, 18, 24]) axis.append(el('span', '', String(h)));
+    const lines = [d.peak ? `最常在 ${d.peak[0]}–${d.peak[1]} 点聊天` : '', `${d.days} 天里聊过`, d.lateNights ? `${d.lateNights} 个深夜（0–4 点）还在` : '没有熬到深夜'].filter(Boolean);
+    rhythm.append(bars, axis, el('p', 'hint', lines.join(' · ') + '。'));
+  });
+  const grid = el('div', 'profile-grid'); grid.append(busy, rhythm);
+  box.append(imp, grid);
+  return box;
 }
 
 function renderDiary(root: HTMLElement, s: AppSnapshot) {
@@ -851,10 +963,9 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const model = section('对话模型', '任何 OpenAI 兼容接口都可以（/chat/completions，支持 JSON 输出）。');
   const form = el('form', 'form-grid');
   const mode = select(s.provider.mode || 'native-api', [['native-api', '标准 OpenAI 兼容接口'], ['mira-proxy', 'Mira 本地反代（自动拉起）']], () => {});
-  const url = el('input'); url.value = s.provider.baseUrl; url.required = true; url.spellcheck = false;
-  const name = el('input'); name.value = s.provider.model; name.required = true; name.spellcheck = false;
-  const key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.placeholder = s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key';
-  form.append(field('接入方式', mode), field('API 地址', url), field('模型', name), field('API Key', key));
+  const chatEp = endpointInputs('chat', s.provider.baseUrl, s.provider.model, s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key');
+  const { url, model: name, key } = chatEp; url.required = true; name.required = true;
+  form.append(field('接入方式', mode), ...chatEp.fields);
   const presets = el('div', 'row wrap');
   presets.append(el('small', 'hint', '快速填入：'));
   for (const [label, m, u, n] of [['Mira K3.1 Pro', 'mira-proxy', MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
@@ -865,17 +976,18 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   model.append(form, el('p', 'hint', '密钥只交给桌面进程，用 Windows DPAPI 加密保存，不会进入页面、聊天记录或日志。'));
   const tts = section('语音合成（可选）', '支持小米 MiMo TTS（会按角色卡的声音风格演绎）、OpenAI /audio/speech 和系统离线语音。');
   const tform = el('form', 'form-grid');
-  const tUrl = el('input'); tUrl.value = s.settings.ttsBaseUrl || ''; tUrl.placeholder = 'https://api.xiaomimimo.com/v1';
-  const tModel = el('input'); tModel.value = s.settings.ttsModel || ''; tModel.placeholder = 'mimo-v2.5-tts / tts-1';
+  const ttsEp = endpointInputs('tts', s.settings.ttsBaseUrl || '', s.settings.ttsModel || '', '可选；留空保留原密钥');
+  const { url: tUrl, model: tModel, key: tKey } = ttsEp; tUrl.placeholder = 'https://api.xiaomimimo.com/v1'; tModel.placeholder = 'mimo-v2.5-tts / tts-1';
+  const tFormat = select(s.settings.ttsFormat || '', [['', '按地址自动判断'], ...TTS_FORMATS], () => {});
   const tVoice = el('input'); tVoice.value = s.settings.ttsVoice || ''; tVoice.placeholder = '音色名';
-  const tKey = el('input'); tKey.type = 'password'; tKey.placeholder = '可选；留空保留原密钥';
   let speed = s.settings.ttsSpeed || 1;
-  tform.append(field('启用自动朗读', toggle(!!s.settings.ttsEnabled, v => void command({ type: 'tts.configure', ttsEnabled: v }))), field('TTS 地址', tUrl), field('模型', tModel), field('音色', tVoice), field('语速', numberInput(speed, v => { speed = v; }, { step: 0.1, unit: '倍' })), field('TTS Key', tKey));
+  tform.append(field('启用自动朗读', toggle(!!s.settings.ttsEnabled, v => void command({ type: 'tts.configure', ttsEnabled: v }))), field('请求格式', tFormat), ...ttsEp.fields, field('音色', tVoice), field('语速', numberInput(speed, v => { speed = v; }, { step: 0.1, unit: '倍' })));
   const tsave = el('button', 'btn primary', '保存语音'); tsave.type = 'submit';
   const row = el('div', 'row'); row.append(tsave, button('试听', async () => { const p = s.persona?.active; const r = await command({ type: 'tts.speak', text: p?.greeting || '你好，很高兴认识你。' }); if (r.ok) toast('正在试听…'); }, 'btn ghost'));
   tform.append(row);
-  tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
+  tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(tFormat.value ? { ttsFormat: tFormat.value as 'openai-speech' | 'mimo-chat-audio' } : {}), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
+  const stt = voiceInputSection(s);
   const agent = section('本机执行器', `${27 + (s.agent?.mcp || []).reduce((n, m) => n + m.tools, 0)} 个工具：文件读写与多文件补丁、搜索、Shell、网页搜索与读网页、子代理${s.agent?.mcp?.length ? '、MCP' : ''}；会读取工作目录里的 AGENTS.md，长任务自动压缩上下文，改动可撤销。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松', full: '完全放开' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
@@ -946,5 +1058,5 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
   archive.append(arow);
   const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
-  root.append(model, tts, agent, mcp, archive, thanks);
+  root.append(model, tts, stt, agent, mcp, archive, thanks);
 }
