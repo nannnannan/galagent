@@ -91,10 +91,18 @@ test('context is bounded independently of archive size', async () => {
     for (let i = 0; i < 50; i++)
         await core.handle({ type: 'memory.remember', text: `记录${i}：` + '星'.repeat(100) });
     await core.waitForBackground();
+    // With a 200k window the budgets are the original small ones: static prompt (~5.9k) + 活人感 state (~0.2k).
+    await core.handle({ type: 'settings.update', settings: { contextWindow: 200000 } });
     await core.handle({ type: 'chat.send', text: '你好' });
-    // Static prompt (~5.9k) plus the 活人感 state and protocol lines (~0.2k); the point is that it does not grow with the archive.
     assert.ok(core.getSnapshot().status.contextTokens <= 6500);
     assert.ok(contexts[0].length < core.exportArchive().length);
+    // The default 1M window lets memory and history in more generously (×5) — but it still does not grow with the archive.
+    await core.handle({ type: 'settings.update', settings: { contextWindow: 0 } });
+    assert.equal(core.getSnapshot().status.contextBudget, 200000, 'until the next request recomputes it');
+    await core.handle({ type: 'chat.send', text: '再聊聊' });
+    assert.equal(core.getSnapshot().status.contextBudget, 1_000_000);
+    assert.ok(core.getSnapshot().status.contextTokens < 40000);
+    assert.ok(contexts.at(-1)!.length < core.exportArchive().length);
     await core.waitForBackground();
     await cleanup();
 });
@@ -224,7 +232,7 @@ test('non-K3 omits K3-only knobs, and truncated/empty thinking output has an act
     const requests:any[]=[];let truncated=true;
     const {core,cleanup}=await setup(async(_url,init)=>{if(isMemoryRequest(init))return emptyMemory();requests.push(JSON.parse(String(init?.body)));return new Response(JSON.stringify({choices:[{finish_reason:truncated?'length':'stop',message:{role:'assistant',content:'',reasoning_content:'budget spent'}}]}));});
     await core.handle({type:'config.save',baseUrl:'https://api.moonshot.cn/v1',model:'kimi-k2.6'});
-    const result=await core.handle({type:'chat.send',text:'你好'});assert.equal(result.ok,false);assert.match(result.error||'',/截断.*输出预算/);assert.equal(requests[0].max_tokens,900);assert.equal('reasoning_effort'in requests[0],false);assert.equal('max_completion_tokens'in requests[0],false);assert.equal('temperature'in requests[0],false);
+    const result=await core.handle({type:'chat.send',text:'你好'});assert.equal(result.ok,false);assert.match(result.error||'',/截断.*输出预算/);assert.equal(requests[0].max_tokens,4096);assert.equal('reasoning_effort'in requests[0],false);assert.equal('max_completion_tokens'in requests[0],false);assert.equal('temperature'in requests[0],false);
     truncated=false;const empty=await core.handle({type:'chat.send',text:'重试'});assert.match(empty.error||'',/输出预算.*思考/);assert.equal(core.getSnapshot().messages.length,0);await cleanup();
 });
 test('correcting one sourced fact preserves the first encounter, sibling facts and diary while retaining historical validity', async () => {

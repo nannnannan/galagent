@@ -1,5 +1,5 @@
 import type { McpSecrets } from '../core/mcp';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, nativeTheme, safeStorage, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, safeStorage, screen, shell, Tray } from 'electron';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -11,6 +11,8 @@ import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
 import { listModels, transcribe } from './stt';
 import { sameOrigin } from '../shared/endpoints';
+import { ILinkClient } from '../core/wechat/ilink';
+import { WeChatBridge, type WeChatSession } from '../core/wechat/bridge';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
 import { companionModes } from '../shared/companionship';
 import { PET_SIZE, PET_FOOTPRINT, clampPet, cornerPosition, roamRange, validFootprint, type Footprint } from '../shared/pet-geometry';
@@ -117,6 +119,21 @@ const ttsCredentials = {
   },
 };
 /** MCP server secrets (env vars / headers), one DPAPI-encrypted JSON map; never sent to the renderer. */
+/** 微信绑定（bot 令牌、绑定的微信号、回复窗口）：整份用 DPAPI 加密，只在桌面进程里。 */
+const wechatSecrets = {
+  async load(): Promise<WeChatSession | undefined> {
+    try { const encrypted = await readFile(path.join(dataDir, 'wechat-session.bin')); if (safeStorage.isEncryptionAvailable()) return JSON.parse(safeStorage.decryptString(encrypted)) as WeChatSession; } catch { /* not bound */ }
+    return undefined;
+  },
+  async save(session: WeChatSession | undefined) {
+    const file = path.join(dataDir, 'wechat-session.bin');
+    if (!session) { await writeFile(file, '').catch(() => {}); return; }
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存微信绑定。');
+    await atomicWrite(file, safeStorage.encryptString(JSON.stringify(session)));
+  },
+};
+let wechat: WeChatBridge | undefined;
+let wechatChain: Promise<void> = Promise.resolve();
 const mcpSecrets = {
   async all(): Promise<Record<string, McpSecrets>> {
     try { const encrypted = await readFile(path.join(dataDir, 'mcp-secrets.bin')); if (safeStorage.isEncryptionAvailable()) return JSON.parse(safeStorage.decryptString(encrypted)) || {}; } catch { /* none saved */ }
@@ -186,6 +203,7 @@ function wireWindowVisibility(win:BrowserWindow){
   win.webContents.on('did-finish-load',()=>publishWindowVisibility(win));
 }
 function sendSnapshot(snapshot: AppSnapshot) {
+  if (wechat) { const w = wechat; wechatChain = wechatChain.then(() => w.onSnapshot(snapshot)).catch(() => {}); }
   const nextPolicy = JSON.stringify([snapshot.settings.ttsEnabled, snapshot.settings.quietUntil, snapshot.settings.ttsBaseUrl, snapshot.settings.ttsModel, snapshot.settings.ttsVoice, snapshot.settings.ttsSpeed, snapshot.settings.companionMode]);
   if (speechPolicy && speechPolicy !== nextPolicy) stopSpeech();
   speechPolicy = nextPolicy;
@@ -281,6 +299,15 @@ async function keyFor(kind: 'chat' | 'tts' | 'stt', baseUrl: string, typed?: str
   return undefined;
 }
 let transcribing: AbortController | undefined;
+/** Reads the saved chat model's context / output limits from its /models list, when the API reports them. */
+async function detectLimits() {
+  try {
+    const p = companion.getSnapshot().provider; if (!p.configured) return;
+    const r = await listModels(p.baseUrl, await credentials.get());
+    const info = r.ok ? r.info.find(m => m.id === p.model) : undefined;
+    companion.setModelLimits(info ? { model: p.model, baseUrl: p.baseUrl, ...(info.contextWindow ? { contextWindow: info.contextWindow } : {}), ...(info.maxOutput ? { maxOutput: info.maxOutput } : {}) } : undefined);
+  } catch { /* offline: keep defaults */ }
+}
 async function runTts(text: string, senderId: number) {
   stopSpeech(senderId, false);
   const controller = new AbortController();
@@ -345,7 +372,9 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
         if (!override && command.mode !== 'native-api') {
           await ensureLocalProxyRunning({ baseUrl: command.baseUrl, desktopDir: app.getPath('desktop') }).catch(() => {});
         }
-        return await companion.handle(command);
+        const saved = await companion.handle(command);
+        if (saved.ok) void detectLimits();
+        return saved;
       }
       case 'tts.configure': {
         if (command.ttsApiKey !== undefined && command.ttsApiKey.trim()) {
@@ -368,9 +397,14 @@ async function shellCommand(raw: unknown, senderId: number): Promise<CommandResu
           return r.ok ? { ok: true, data: { text: r.text } } : { ok: false, error: r.error };
         } finally { if (transcribing === controller) transcribing = undefined; }
       }
+      case 'wechat.enable': { const r = await companion.handle(command); wechat?.sync(); return r; }
+      case 'wechat.login': { if (!wechat) return { ok: false, error: '微信通道还没准备好。' }; await wechat.startLogin(); return { ok: true }; }
+      case 'wechat.verify': { await wechat?.verify(command.code); return { ok: true }; }
+      case 'wechat.logout': { await wechat?.logout(); return { ok: true }; }
+      case 'privacy.lockdown': { const r = await companion.handle(command); wechat?.sync(); return r; }
       case 'endpoint.models': {
         const r = await listModels(command.baseUrl, await keyFor(command.kind, command.baseUrl, command.apiKey));
-        return r.ok ? { ok: true, data: { models: r.models } } : { ok: false, error: r.error };
+        return r.ok ? { ok: true, data: { models: r.models, info: r.info } } : { ok: false, error: r.error };
       }
       case 'tts.speak': {
         const res = await runTts(command.text, senderId);
@@ -428,8 +462,9 @@ else {
     const packagedModel = path.join(process.resourcesPath, 'models');
     const developmentModel = path.resolve(__dirname, '../../.cache/models/Xenova/multilingual-e5-small');
     const skillRoot = app.isPackaged ? path.join(process.resourcesPath, 'skills') : path.resolve(__dirname, '../../skills');
-    companion = new CompanionService({ dataDir, credentials, mcpSecrets, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
+    companion = new CompanionService({ dataDir, credentials, mcpSecrets, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true, research: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
     await companion.init();
+    void detectLimits();
     if (!override) {
       const configuredBaseUrl = companion.getSnapshot().provider.baseUrl;
       if (configuredBaseUrl && configuredBaseUrl !== 'http://127.0.0.1:18890/v1') {
@@ -437,6 +472,14 @@ else {
       }
     }
     observer = new DesktopObserver({ scriptPath: app.isPackaged ? path.join(process.resourcesPath, 'observer.ps1') : path.join(rootDir, 'desktop/observer.ps1'), onObservation: observation => companion.setObservation(observation), onClipboard });
+    // WeChat (Tencent iLink): only the bound account is heard; every outgoing line passes the privacy guard.
+    wechat = new WeChatBridge({
+      client: new ILinkClient({ botAgent: `GalAgent/${app.getVersion()}` }),
+      secrets: wechatSecrets,
+      core: { snapshot: () => companion.getSnapshot(), handle: command => companion.handle(command), setReachable: r => companion.setRemoteReachable(r), redact: text => companion.redactForWeChat(text), setView: view => companion.setWeChatView(view) },
+      away: () => { try { return powerMonitor.getSystemIdleState(300) !== 'active'; } catch { return false; } },
+    });
+    await wechat.init();
     companion.on('snapshot', sendSnapshot);
     ipcMain.handle('galagent:snapshot', event => { if (!allowedSender(event.sender.id)) throw new Error('未知窗口'); return companion.getSnapshot(); });
     ipcMain.handle('galagent:window-visibility',event=>{const win=senderWindow(event.sender.id);if(!win)throw new Error('未知窗口');return windowVisibility(win);});
@@ -499,7 +542,7 @@ else {
     if (timer) clearInterval(timer); if (roamTimer) clearInterval(roamTimer); if (saveTimer) clearTimeout(saveTimer); if(cursorTimer)clearInterval(cursorTimer);
     observer?.stop();
     void (async () => {
-      try { await soak?.stop(); if (pet && !pet.isDestroyed()) await atomicWrite(positionFile, JSON.stringify(pet.getBounds())).catch(() => {}); await companion?.close(); }
+      try { wechat?.close(); await soak?.stop(); if (pet && !pet.isDestroyed()) await atomicWrite(positionFile, JSON.stringify(pet.getBounds())).catch(() => {}); await companion?.close(); }
       catch { /* A close failure must not trap the user in a background application. */ }
       finally { tray?.destroy(); app.quit(); }
     })();

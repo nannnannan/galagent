@@ -4,11 +4,11 @@ import { checkBaseUrl } from '../shared/endpoints';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
 // Numbers the user types are accepted as long as they are finite; the core clamps them into a sane range.
-const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed', 'shareDailyLimit', 'recallEveryDays']);
+const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed', 'shareDailyLimit', 'recallEveryDays', 'contextWindow', 'maxOutputTokens']);
 const strings = (value: unknown, count: number, width: number) => Array.isArray(value) && value.length <= count && value.every(item => bounded(item, width));
 const slug = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(value);
 const id = (value: unknown) => bounded(value, 100) && !!value.trim();
-const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled', 'adaptivePacing']);
+const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled', 'adaptivePacing', 'researchEnabled']);
 // Shared by tts.configure and settings.update so neither path can point TTS at a plaintext or credential-bearing URL.
 function checkTtsUrl(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return;
@@ -41,7 +41,16 @@ export function validateCommand(value: unknown): AppCommand {
     case 'agent.answer':
       if(!bounded(command.id,100)||!plain(command.answers)||Object.entries(command.answers).some(([key,val])=>key.length>3000||!bounded(val,3000)))throw new Error('任务回答格式无效。');break;
     case 'chat.send':
-      if (!bounded(command.text, 12000) || !command.text.trim()) throw new Error('请输入消息，最多 12000 字。'); break;
+      if (!bounded(command.text, 12000) || !command.text.trim()) throw new Error('请输入消息，最多 12000 字。');
+      if (command.channel !== undefined) throw new Error('无效操作。'); // only the desktop shell's WeChat bridge marks a message as coming from WeChat
+      break;
+    case 'research.addInterest': if (!bounded(command.topic, 40) || !command.topic.trim()) throw new Error('兴趣为空或太长。'); break;
+    case 'research.removeInterest': if (!id(command.id)) throw new Error('兴趣无效。'); break;
+    case 'research.pinInterest': if (!id(command.id) || typeof command.pinned !== 'boolean') throw new Error('兴趣无效。'); break;
+    case 'research.rateFinding': if (!id(command.id) || !['up', 'down'].includes(String(command.rating))) throw new Error('评价无效。'); break;
+    case 'research.run': case 'wechat.login': case 'wechat.logout': break;
+    case 'wechat.verify': if (!(typeof command.code === 'string' && /^\d{1,12}$/.test(command.code))) throw new Error('验证码是一串数字。'); break;
+    case 'wechat.enable': if (typeof command.enabled !== 'boolean') throw new Error('开关无效。'); break;
     case 'memory.remember':
       if (!bounded(command.text, 2000) || !command.text.trim()) throw new Error('记忆内容过长或为空。'); break;
     case 'memory.correct':

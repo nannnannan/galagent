@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { apiRoot, checkBaseUrl, endpointUrl, modelsUrl, parseModelList, rankModels, sameOrigin } from '../../runtime/shared/endpoints';
+import { apiRoot, checkBaseUrl, endpointUrl, modelsUrl, parseModelInfo, parseModelList, rankModels, sameOrigin } from '../../runtime/shared/endpoints';
 import { cleanTranscript, listModels, transcribe } from '../../runtime/main/stt';
 import { validateCommand } from '../../runtime/main/validation';
 
@@ -23,6 +23,21 @@ test('one rule for all three endpoints: base → …/v1 → kind-specific path',
   assert.ok(sameOrigin('https://a.com/v1', 'https://a.com/x')); assert.ok(!sameOrigin('https://a.com', 'https://b.com'));
 });
 
+test('context and output limits are read from whatever fields the gateway uses', () => {
+  const info = parseModelInfo({ data: [
+    { id: 'openrouter/x', context_length: 1048576, top_provider: { max_completion_tokens: 65536 } },
+    { id: 'vllm-model', max_model_len: 131072 },
+    { id: 'models/gemini-x', inputTokenLimit: 1000000, outputTokenLimit: 8192 },
+    { id: 'groq-x', context_window: 131072, max_completion_tokens: 32768 },
+    { id: 'plain' }, { id: 'weird', context_length: 'lots', max_output_tokens: 5 },
+  ] });
+  assert.deepEqual(info.find(m => m.id === 'openrouter/x'), { id: 'openrouter/x', contextWindow: 1048576, maxOutput: 65536 });
+  assert.deepEqual(info.find(m => m.id === 'vllm-model'), { id: 'vllm-model', contextWindow: 131072 });
+  assert.deepEqual(info.find(m => m.id === 'gemini-x'), { id: 'gemini-x', contextWindow: 1000000, maxOutput: 8192 });
+  assert.deepEqual(info.find(m => m.id === 'groq-x'), { id: 'groq-x', contextWindow: 131072, maxOutput: 32768 });
+  assert.deepEqual(info.find(m => m.id === 'weird'), { id: 'weird' }, 'nonsense values are ignored');
+});
+
 test('model lists from OpenAI-style and other shapes, ranked for the kind', () => {
   assert.deepEqual(parseModelList({ data: [{ id: 'b' }, { id: 'a' }, { id: 'a' }] }), ['a', 'b']);
   assert.deepEqual(parseModelList({ models: [{ name: 'qwen2.5' }] }), ['qwen2.5']);
@@ -35,7 +50,7 @@ test('model lists from OpenAI-style and other shapes, ranked for the kind', () =
 test('listModels sends the key only as a Bearer header and explains failures', async () => {
   let seen: { url: string; auth?: string } | undefined;
   const ok = await listModels('https://api.x.com/v1', 'sk-1', (async (url: string, init?: RequestInit) => { seen = { url, auth: (init?.headers as Record<string, string>)?.Authorization }; return new Response(JSON.stringify({ data: [{ id: 'm1' }] }), { headers: { 'content-type': 'application/json' } }); }) as typeof fetch);
-  assert.deepEqual(ok, { ok: true, models: ['m1'] });
+  assert.deepEqual(ok, { ok: true, models: ['m1'], info: [] });
   assert.deepEqual(seen, { url: 'https://api.x.com/v1/models', auth: 'Bearer sk-1' });
   const denied = await listModels('https://api.x.com/v1', undefined, (async () => new Response('', { status: 401 })) as typeof fetch);
   assert.equal(denied.ok, false); assert.match((denied as { error: string }).error, /密钥/);

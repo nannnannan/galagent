@@ -28,7 +28,7 @@ export type OpenAIAgentOptions={protectedWritePaths?:()=>string[];
  /** Folder for per-task file checkpoints (undo). */checkpointDir?:()=>string|undefined;
  /** Redacts text bound for MCP servers. */outboundText?:(text:string)=>string;
  /** Context size (estimated tokens) at which history is compacted into a summary. Default 48k. */compactAt?:number;
- /** Per-request output budget and per-task round limit (user settings). */budget?:()=>{maxOutputTokens?:number;maxTurns?:number};
+ /** Per-request output budget and per-task round limit (user settings). */budget?:()=>{maxOutputTokens?:number;maxTurns?:number;/** Compaction threshold derived from the model window. */compactAt?:number};
 };
 const estimate=(value:unknown)=>{let images=0,videos=0;const text=JSON.stringify(value,(_key,item)=>{if(typeof item==='string'){if(/^data:image\//.test(item)){images++;return'[image payload]';}if(/^(data:video\/|ms:\/\/)/.test(item)){videos++;return'[video payload]';}}return item;});return Math.ceil(text.length*.6)+images*1800+videos*3600;};
 export class OpenAIToolAgent implements AgentRunner {
@@ -149,7 +149,7 @@ export class OpenAIToolAgent implements AgentRunner {
   return{...result,changedFiles:await this.host.runChanges(session).catch(()=>[] as string[]),runId:session.runId};}
  /** Auto-compaction (Codex / Kimi Code): once the history passes compactAt, older rounds become one model-written handoff summary. */
  private async compact(session:HostSession,signal:AbortSignal){
-  const limit=this.options.compactAt??48000,history=session.messages;
+  const limit=this.options.budget?.().compactAt??this.options.compactAt??48000,history=session.messages;
   if(estimate([history,this.host.definitions])<=limit||history.length<6)return;
   // Keep a recent tail (≤1/3 of the limit) that starts at a clean boundary: an assistant turn or a plain user message.
   let k=history.length,tail=0;

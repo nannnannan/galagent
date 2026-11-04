@@ -41,6 +41,27 @@ export function parseModelList(body: unknown): string[] {
   return [...new Set(ids)].sort((a, b) => a.localeCompare(b)).slice(0, 500);
 }
 
+export type ModelInfo = { id: string; contextWindow?: number; maxOutput?: number };
+const num = (...vals: unknown[]) => { for (const v of vals) { const n = typeof v === 'string' ? Number(v) : v; if (typeof n === 'number' && Number.isFinite(n) && n >= 1024 && n <= 100_000_000) return Math.round(n); } return undefined; };
+/** Context and output limits, from whichever field this gateway uses (OpenRouter, vLLM, Groq, Gemini, Moonshot, LiteLLM…). */
+export function parseModelInfo(body: unknown): ModelInfo[] {
+  const raw = Array.isArray(body) ? body : body && typeof body === 'object' ? ((body as Record<string, unknown>).data ?? (body as Record<string, unknown>).models) : undefined;
+  if (!Array.isArray(raw)) return [];
+  const out = new Map<string, ModelInfo>();
+  for (const m of raw) {
+    if (typeof m === 'string') { out.set(m, { id: m }); continue; }
+    if (!m || typeof m !== 'object') continue;
+    const r = m as Record<string, unknown>, top = (r.top_provider || {}) as Record<string, unknown>, meta = (r.metadata || r.model_info || r.info || {}) as Record<string, unknown>;
+    const id = String(r.id ?? r.name ?? '').replace(/^models\//, ''); if (!id || id.length > 200) continue;
+    const contextWindow = num(r.context_length, r.context_window, r.max_context_length, r.max_model_len, r.max_input_tokens, r.inputTokenLimit, r.input_token_limit, top.context_length, meta.context_length, meta.max_input_tokens, meta.context_window);
+    const maxOutput = num(top.max_completion_tokens, r.max_completion_tokens, r.max_output_tokens, r.outputTokenLimit, r.output_token_limit, meta.max_output_tokens, meta.max_tokens, r.max_tokens);
+    out.set(id, { id, ...(contextWindow ? { contextWindow } : {}), ...(maxOutput && (!contextWindow || maxOutput <= contextWindow) ? { maxOutput } : {}) });
+  }
+  return [...out.values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, 500);
+}
+/** Default when the API does not say: mainstream models are around a million tokens now. */
+export const DEFAULT_CONTEXT_WINDOW = 1_000_000;
+
 /** Puts the models most likely meant for this kind first (speech models for TTS, whisper/asr for STT). */
 export function rankModels(kind: EndpointKind, ids: string[]): string[] {
   const hint = kind === 'tts' ? /tts|speech|voice|cosyvoice|sambert|audio/i : kind === 'stt' ? /whisper|transcri|asr|sensevoice|paraformer|audio|omni|speech/i : /chat|instruct|gpt|qwen|deepseek|kimi|glm|claude|llama|mistral|moonshot|k2|k3/i;

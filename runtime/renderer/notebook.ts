@@ -17,7 +17,8 @@ import { guidePanel, openPersonaEditor, personaBadges } from './persona-editor';
 import { svgIcon } from './icons';
 import { attachVoice } from './voice-input';
 import { MCP_PRESETS, type McpPreset } from '../shared/mcp-presets';
-import { ENDPOINT_LABEL, STT_FORMATS, STT_PRESETS, TTS_FORMATS, rankModels, type EndpointKind } from '../shared/endpoints';
+import qrcode from 'qrcode-generator';
+import { DEFAULT_CONTEXT_WINDOW, ENDPOINT_LABEL, STT_FORMATS, STT_PRESETS, TTS_FORMATS, rankModels, type EndpointKind, type ModelInfo } from '../shared/endpoints';
 import { PROFILE_GROUPS, groupMemories, recentFocus, type Rhythm } from '../shared/profile';
 import { bridge, button, clockText, command, el, field, iconBadge, linesArea, notice, numberInput, onCommand, readFileText, relativeTime, section, select, toast, toggle } from './ui';
 
@@ -237,6 +238,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       const who = message.role === 'user' ? '你' : message.speaker || snapshot.identity.name || 'TA';
       const meta = el('div', 'message-meta');
       meta.append(el('span', '', `${who} · ${new Date(message.createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}${message.source === 'initiative' ? ' · 主动开口' : ''}${message.afterthought ? ' · 补了一句' : ''}`));
+      if (message.channel === 'wechat') meta.append(el('span', 'pill wechat', '微信'));
       const copy = tip(button('', async () => { try { await navigator.clipboard.writeText(message.text); toast('已复制到剪贴板'); } catch { toast('复制失败', 'error'); } }, 'icon-btn message-copy'), '复制', 'top');
       copy.append(svgIcon('copy', 14)!); copy.setAttribute('aria-label', '复制这条消息'); meta.append(copy);
       let body: HTMLElement;
@@ -398,10 +400,10 @@ const pages: Page[] = [
   { id: 'companion', icon: '🌙', title: '陪伴', intro: '主动陪伴的节奏完全由你决定：选项点选，数字随意填。', key: s => [s.settings, s.companionship?.topics, s.watches, s.pacing], render: renderCompanion },
   { id: 'schedule', icon: '⏰', title: '定时', intro: '你和 TA 设下的提醒。到点后 TA 会主动来找你。', key: s => [s.schedules, s.settings.petId], render: renderSchedules },
   { id: 'privacy', icon: '🛡️', title: '隐私与沙箱', intro: '控制执行器能碰什么，以及哪些内容绝不离开这台电脑。', key: s => [s.settings.sandbox, s.settings.forbiddenPaths, s.settings.captureBlocklist, s.privacy, s.settings.observationEnabled, s.settings.screenCaptureEnabled, s.settings.clipboardEnabled, s.settings.windowTitlesEnabled], render: renderPrivacy },
-  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 眼中的你，和 TA 记住的每一件事。每条都能看来源、纠正或删除。', key: s => [s.memories, s.settings.petId, s.portrait, s.archives?.map(a => a.day + a.createdAt)], render: renderMemories },
+  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 眼中的你，和 TA 记住的每一件事。每条都能看来源、纠正或删除。', key: s => [s.memories, s.settings.petId, s.portrait, s.archives?.map(a => a.day + a.createdAt), s.research, s.settings.researchEnabled], render: renderMemories },
   { id: 'diary', icon: '📔', title: '札记', intro: '每天 0 点，TA 会把前一天整理成一份档案；日记是 TA 的感受，不会变成事实。', key: s => [s.diary, s.archives, s.status.journal, s.settings.petId], render: renderDiary },
   { id: 'achievements', icon: '🏆', title: '成就', intro: '相处留下的小徽章。互动成就在桌面小人身上触发，其余只依据真实记录颁发。', key: s => [s.bond, s.identity.name, s.settings.petId, s.pets?.revision], render: renderAchievements },
-  { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled, s.settings.mcpServers, s.agent?.mcp, s.agent?.running, s.settings.executor, s.settings.voiceInputEnabled, s.settings.sttKeySet, s.settings.sttBaseUrl, s.settings.ttsBaseUrl, s.settings.ttsFormat], render: renderConfig },
+  { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled, s.settings.mcpServers, s.agent?.mcp, s.agent?.running, s.settings.executor, s.settings.voiceInputEnabled, s.settings.sttKeySet, s.settings.sttBaseUrl, s.settings.ttsBaseUrl, s.settings.ttsFormat, s.settings.wechatEnabled, s.wechat, s.settings.contextWindow, s.settings.maxOutputTokens, s.settings.modelLimits], render: renderConfig },
 ];
 
 /** Face of a persona card: its own pixel pet standing still (it wakes up on hover); a letter badge when the card has no sprite. */
@@ -474,7 +476,7 @@ function taskBody(t: TaskRunView, root: HTMLElement, s: AppSnapshot) {
 }
 
 /** The one way a model endpoint is entered: address, key, model — with 「拉取模型」 listing what the address offers. */
-function endpointInputs(kind: EndpointKind, baseUrl: string, modelName: string, keyHint: string) {
+function endpointInputs(kind: EndpointKind, baseUrl: string, modelName: string, keyHint: string, onModelInfo?: (info: ModelInfo | undefined) => void) {
   const url = el('input'); url.value = baseUrl; url.spellcheck = false; url.placeholder = 'https://…/v1';
   const key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.placeholder = keyHint;
   const model = el('input'); model.value = modelName; model.spellcheck = false;
@@ -485,16 +487,57 @@ function endpointInputs(kind: EndpointKind, baseUrl: string, modelName: string, 
     fetchBtn.disabled = true; fetchBtn.textContent = '拉取中…';
     const r = await command({ type: 'endpoint.models', kind, baseUrl: url.value.trim(), ...(key.value.trim() ? { apiKey: key.value.trim() } : {}) }, true);
     fetchBtn.disabled = false; fetchBtn.textContent = '拉取模型';
-    const models = rankModels(kind, (r.data as { models?: string[] } | undefined)?.models || []);
+    const data = r.data as { models?: string[]; info?: ModelInfo[] } | undefined, infos = new Map((data?.info || []).map(i => [i.id, i]));
+    const models = rankModels(kind, data?.models || []);
+    onModelInfo?.(infos.get(model.value));
+    model.onchange = () => onModelInfo?.(infos.get(model.value.trim()));
     if (!r.ok || !models.length) { toast(r.error || '没拿到模型列表，请手动填写。', 'error'); return; }
     list.replaceChildren(...models.map(m => { const o = el('option'); o.value = m; return o; }));
-    chips.replaceChildren(...models.slice(0, 14).map(m => button(m, () => { model.value = m; for (const c of chips.children) c.classList.toggle('on', c.textContent === m); }, `chip small${m === model.value ? ' on' : ''}`)));
+    chips.replaceChildren(...models.slice(0, 14).map(m => button(m, () => { model.value = m; onModelInfo?.(infos.get(m)); for (const c of chips.children) c.classList.toggle('on', c.textContent === m); }, `chip small${m === model.value ? ' on' : ''}`)));
     if (models.length > 14) chips.append(el('small', 'row-meta', `共 ${models.length} 个，在模型框里输入可筛选`));
     chips.hidden = false; toast(`拿到 ${models.length} 个模型。`);
   }, 'btn ghost small');
   const modelRow = el('div', 'row model-row'); modelRow.append(model, fetchBtn, list);
   const modelBox = el('div', 'model-box'); modelBox.append(modelRow, chips);
   return { url, key, model, fields: [field(`${ENDPOINT_LABEL[kind]}地址`, url), field('API Key', key), field('模型', modelBox, '可以点「拉取模型」从接口拿可用列表')] };
+}
+
+/** 微信：用户自己的个人微信里多一个 TA。只认扫码的人；需要确认的事发到微信回数字；每句话出门前都脱敏。 */
+function wechatSection(s: AppSnapshot) {
+  const w = s.wechat || { state: 'off' as const }, on = s.settings.wechatEnabled === true;
+  const box = section('微信（手机上找 TA）', '扫码后，你的微信里会多一个 TA。离开电脑时，TA 的主动消息、任务结果、提醒和需要你确认的事都会发到微信；在微信里和 TA 说话，就是在和桌面上同一个 TA 聊天（带长期记忆，能派任务、改设置）。');
+  const toggleEl = toggle(on, async v => {
+    if (v && !confirm('打开微信通道？\n\n· 和 TA 的微信聊天会经过腾讯的服务器。\n· 只有扫码绑定的那个微信号能和 TA 说话，别人发来一律不理。\n· 在微信里 TA 能派任务、改设置；需要你确认的操作会以编号发到微信，不回复就不执行。\n· API Key、密码这类内容发出前仍会自动打码。')) return;
+    await command({ type: 'wechat.enable', enabled: v });
+  });
+  box.append(field('打开微信通道', toggleEl, '默认关闭；只有你能改，「一键隐私锁定」会关掉它'));
+  const status = el('div', 'wechat-status');
+  const label: Record<string, string> = { off: '已关闭', unbound: '还没绑定', qr: '用手机微信扫下面的码', scanned: '已扫码，请在手机上确认', verify: '请输入手机上显示的数字', connected: '已连接', expired: '登录失效了，需要重新绑定', error: '出错了' };
+  status.append(el('strong', '', label[w.state] || w.state));
+  const meta: string[] = [];
+  if (w.boundAt) meta.push(`绑定于 ${clockText(w.boundAt)}`);
+  if (w.lastInboundAt) meta.push(`你上次在微信说话：${relativeTime(w.lastInboundAt)}`);
+  if (w.replyWindowUntil) meta.push(Date.parse(w.replyWindowUntil) > Date.now() ? `TA 能主动发消息到 ${clockText(w.replyWindowUntil)}（腾讯的规则：你发一句，窗口就续上）` : '回复窗口已过：在微信里给 TA 发一句，TA 才能继续给你发消息');
+  if (w.sent || w.received) meta.push(`收 ${w.received || 0} 条 · 发 ${w.sent || 0} 条`);
+  if (meta.length) status.append(el('small', 'row-meta', meta.join(' · ')));
+  if (w.error) status.append(notice(w.error, 'warn'));
+  if (w.qr && (w.state === 'qr' || w.state === 'scanned')) {
+    const q = qrcode(0, 'M'); q.addData(w.qr); q.make();
+    const img = el('div', 'wechat-qr'); img.innerHTML = q.createSvgTag({ cellSize: 5, margin: 3, scalable: true });
+    status.append(img, el('small', 'hint', '只有扫这个码的人能和 TA 说话。'));
+  }
+  if (w.state === 'verify') {
+    const code = el('input'); code.inputMode = 'numeric'; code.maxLength = 12; code.placeholder = '手机上的数字';
+    const row = el('div', 'row'); row.append(code, button('提交', () => void command({ type: 'wechat.verify', code: code.value.trim() }), 'btn primary small'));
+    status.append(row);
+  }
+  const actions = el('div', 'row wrap');
+  if (on && (w.state === 'unbound' || w.state === 'expired' || w.state === 'error')) actions.append(button(w.state === 'unbound' ? '扫码绑定微信' : '重新绑定', async () => { const r = await command({ type: 'wechat.login' }); if (!r.ok) toast(r.error || '没拿到二维码', 'error'); }, 'btn primary'));
+  if (w.boundAt) actions.append(button('解除绑定', async () => { if (confirm('解除绑定？之后微信里的 TA 就收不到也发不出消息了。')) await command({ type: 'wechat.logout' }); }, 'btn ghost'));
+  if (on) box.append(status);
+  if (actions.childElementCount) box.append(actions);
+  box.append(el('p', 'hint', '用的是腾讯官方的 iLink 机器人接口（和 OpenClaw 的微信插件同一个），不是外挂；接口没有公开文档，腾讯改动时可能需要更新。绑定信息用 Windows DPAPI 加密保存在本机。'));
+  return box;
 }
 
 /** 语音输入（按住说话）：识别接口的配置与开关。只有用户能改；音频只发给这里填的接口。 */
@@ -793,7 +836,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
 }
 
 function renderMemories(root: HTMLElement, s: AppSnapshot) {
-  root.append(profileSection(s));
+  root.append(profileSection(s), researchSection(s));
   const add = section('让 TA 记住一件事', '写下来的事会成为 TA 的长期记忆；不确定的事 TA 不会当真。');
   const form = el('form', 'inline-form'); const area = el('textarea'); area.rows = 2; area.maxLength = 1500; area.placeholder = '有一件事，希望 TA 记住…'; const save = el('button', 'btn primary', '记住'); save.type = 'submit'; form.append(area, save);
   form.onsubmit = async event => { event.preventDefault(); if (area.value.trim() && (await command({ type: 'memory.remember', text: area.value.trim() })).ok) area.value = ''; };
@@ -834,6 +877,53 @@ function memoryRow(item: MemoryItem) {
   restore(); row.append(main, actions);
   return row;
 }
+/** 主动研究：TA 从哪些渠道了解你、整理出的兴趣、替你查到的新鲜事。都能删、能改、能打分。 */
+function researchSection(s: AppSnapshot) {
+  const r = s.research;
+  const run = button('现在研究一下', async () => { const res = await command({ type: 'research.run' }); if (res.ok) toast('TA 去查了，结果会出现在这里。'); }, 'btn ghost small');
+  const box = section('TA 在研究你喜欢的东西', 'TA 会从下面这些渠道慢慢了解你的日常，整理出你的兴趣，再从不同角度、不同网站去查新鲜事，攒成笔记；聊天时会自然提起，你不在电脑前时会合成一份小报发到微信。', ...(r && !r.blocked ? [run] : []));
+  box.classList.add('research');
+  box.append(field('主动研究', toggle(s.settings.researchEnabled !== false, v => void settings({ researchEnabled: v })), '需要沙箱允许联网；每天最多研究 4 次，用后台额度，不打扰聊天'));
+  if (!r) return box;
+  if (r.blocked) box.append(notice(r.blocked, 'warn'));
+  // channels
+  const ch = el('div', 'research-channels');
+  const hint: Record<string, string> = { apps: '打开「隐私与沙箱 → 桌面观察」后才有', browser: '连上浏览器扩展并打开桌面观察后才有', manual: '在下面加' };
+  for (const c of r.channels) { const chip = el('span', `channel${c.count ? ' on' : ''}`); chip.append(el('strong', '', c.label), el('small', '', c.count ? `${c.count}` : hint[c.id] || '暂时没有')); ch.append(chip); }
+  box.append(el('small', 'row-meta', 'TA 了解你的渠道'), ch);
+  if (r.daily?.summary) { const d = el('div', 'research-daily'); d.append(el('small', 'row-meta', 'TA 理解的你的日常'), el('p', '', r.daily.summary)); if (r.daily.focus.length) { const chips = el('div', 'chips'); for (const f of r.daily.focus) chips.append(el('span', 'pill', f)); d.append(chips); } box.append(d); }
+  // interests
+  const list = el('div', 'interest-list');
+  for (const i of r.interests) {
+    const row = el('div', `interest${i.pinned ? ' pinned' : ''}`), main = el('div', 'row-main');
+    const head = el('div', 'interest-head'); head.append(el('strong', '', i.topic), el('span', 'weight', '●'.repeat(Math.max(1, Math.min(5, i.weight)))));
+    const src = el('div', 'chips'); for (const c of i.sources) src.append(el('span', 'pill', r.channels.find(x => x.id === c)?.label || c));
+    main.append(head, el('small', 'row-meta', `${i.why}${i.lastResearchedAt ? ` · 上次研究 ${relativeTime(i.lastResearchedAt)}` : ' · 还没研究'}`), src);
+    const acts = el('div', 'row-actions');
+    acts.append(button(i.pinned ? '取消置顶' : '置顶', () => void command({ type: 'research.pinInterest', id: i.id, pinned: !i.pinned }), 'btn ghost small'), button('不用研究', async () => { if (confirm(`不再研究「${i.topic}」？之后也不会再加回来。`)) await command({ type: 'research.removeInterest', id: i.id }); }, 'btn ghost small'));
+    row.append(main, acts); list.append(row);
+  }
+  if (!r.interests.length) list.append(el('p', 'hint', r.blocked ? '' : '还没整理出兴趣。多聊几天，或者在下面直接告诉 TA。'));
+  const form = el('form', 'inline-form'), topic = el('input'); topic.maxLength = 40; topic.placeholder = '告诉 TA 一个你感兴趣的东西，比如“胶片相机”“周末展览”';
+  const add = el('button', 'btn primary', '加进去'); add.type = 'submit'; form.append(topic, add);
+  form.onsubmit = async e => { e.preventDefault(); if (topic.value.trim() && (await command({ type: 'research.addInterest', topic: topic.value.trim() })).ok) topic.value = ''; };
+  box.append(el('small', 'row-meta', `你的兴趣（${r.interests.length}）`), list, form);
+  // findings
+  if (r.findings.length) {
+    const fl = el('div', 'finding-list');
+    for (const f of r.findings.slice(0, 12)) {
+      const card = el('div', `finding${f.rating === 'down' ? ' down' : ''}`);
+      const head = el('div', 'finding-head'); head.append(el('span', 'pill accent', f.topic), el('strong', '', f.title));
+      const src = el('div', 'finding-sources'); for (const x of f.sources) src.append(el('small', 'selectable-text', `${x.title || ''} ${x.url}`.trim()));
+      const meta = el('small', 'row-meta', `${f.angle} · 可信度 ${'★'.repeat(f.confidence)}${'☆'.repeat(5 - f.confidence)} · ${relativeTime(new Date(f.at).toISOString())}${f.sharedAt ? ' · 已经跟你说过' : ''}`);
+      const acts = el('div', 'row'); acts.append(button(f.rating === 'up' ? '👍 已赞' : '👍 有用', () => void command({ type: 'research.rateFinding', id: f.id, rating: 'up' }), 'btn ghost small'), button('👎 不感兴趣', () => void command({ type: 'research.rateFinding', id: f.id, rating: 'down' }), 'btn ghost small'));
+      card.append(head, el('p', '', f.summary), ...(f.why ? [el('small', 'hint', f.why)] : []), src, meta, acts); fl.append(card);
+    }
+    box.append(el('small', 'row-meta', 'TA 研究到的'), fl);
+  }
+  return box;
+}
+
 /** 「TA 眼中的你」: the overall impression, what's been on your plate, and when you usually talk. */
 function profileSection(s: AppSnapshot) {
   const box = section('TA 眼中的你', '都来自你们真实的聊天和每日档案，只在这台电脑上。哪里不对，直接改。');
@@ -963,16 +1053,29 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const model = section('对话模型', '任何 OpenAI 兼容接口都可以（/chat/completions，支持 JSON 输出）。');
   const form = el('form', 'form-grid');
   const mode = select(s.provider.mode || 'native-api', [['native-api', '标准 OpenAI 兼容接口'], ['mira-proxy', 'Mira 本地反代（自动拉起）']], () => {});
-  const chatEp = endpointInputs('chat', s.provider.baseUrl, s.provider.model, s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key');
+  const lim = s.settings.modelLimits && s.settings.modelLimits.model === s.provider.model && s.settings.modelLimits.baseUrl === s.provider.baseUrl ? s.settings.modelLimits : undefined;
+  const windowIn = el('input'), outIn = el('input');
+  for (const i of [windowIn, outIn]) { i.type = 'number'; i.min = '0'; i.step = '1000'; }
+  windowIn.value = s.settings.contextWindow ? String(s.settings.contextWindow) : ''; windowIn.placeholder = `自动：${(lim?.contextWindow || DEFAULT_CONTEXT_WINDOW).toLocaleString()}`;
+  outIn.value = s.settings.maxOutputTokens ? String(s.settings.maxOutputTokens) : ''; outIn.placeholder = lim?.maxOutput ? `自动：${Math.min(lim.maxOutput, 32768).toLocaleString()}（接口上限 ${lim.maxOutput.toLocaleString()}）` : '自动：4,096';
+  const chatEp = endpointInputs('chat', s.provider.baseUrl, s.provider.model, s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key', info => {
+    windowIn.placeholder = `自动：${(info?.contextWindow || DEFAULT_CONTEXT_WINDOW).toLocaleString()}${info?.contextWindow ? '（接口报告）' : ''}`;
+    outIn.placeholder = info?.maxOutput ? `自动：${Math.min(info.maxOutput, 32768).toLocaleString()}（接口上限 ${info.maxOutput.toLocaleString()}）` : '自动：4,096';
+  });
   const { url, model: name, key } = chatEp; url.required = true; name.required = true;
-  form.append(field('接入方式', mode), ...chatEp.fields);
+  form.append(field('接入方式', mode), ...chatEp.fields,
+    field('上下文窗口', windowIn, `留空 = 用接口报告的值，接口不报就按 100 万（主流模型的大小）。${lim?.contextWindow ? `接口报告：${lim.contextWindow.toLocaleString()}` : ''}`),
+    field('单次输出上限', outIn, `留空 = 用接口报告的上限（聊天一句话最多取 32,768），接口不报就 4,096。${lim?.maxOutput ? `接口报告：${lim.maxOutput.toLocaleString()}` : ''}`));
   const presets = el('div', 'row wrap');
   presets.append(el('small', 'hint', '快速填入：'));
   for (const [label, m, u, n] of [['Mira K3.1 Pro', 'mira-proxy', MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
     presets.append(button(label, () => { mode.value = m; url.value = u; name.value = n; }, 'chip small'));
   const save = el('button', 'btn primary', '保存连接'); save.type = 'submit';
   form.append(presets, save);
-  form.onsubmit = async event => { event.preventDefault(); const k = key.value; key.value = ''; const r = await command({ type: 'config.save', baseUrl: url.value.trim(), model: name.value.trim(), mode: mode.value as 'mira-proxy' | 'native-api', ...(k ? { apiKey: k } : {}) }); if (r.ok) toast('连接已保存，回到聊天打个招呼吧。'); };
+  form.onsubmit = async event => { event.preventDefault(); const k = key.value; key.value = ''; const r = await command({ type: 'config.save', baseUrl: url.value.trim(), model: name.value.trim(), mode: mode.value as 'mira-proxy' | 'native-api', ...(k ? { apiKey: k } : {}) }); if (!r.ok) return;
+    const win = Number(windowIn.value), out = Number(outIn.value);
+    await settings({ contextWindow: windowIn.value.trim() && Number.isFinite(win) ? win : 0, maxOutputTokens: outIn.value.trim() && Number.isFinite(out) ? out : 0 });
+    toast('连接已保存；上下文窗口和输出上限会按接口报告自动更新。'); };
   model.append(form, el('p', 'hint', '密钥只交给桌面进程，用 Windows DPAPI 加密保存，不会进入页面、聊天记录或日志。'));
   const tts = section('语音合成（可选）', '支持小米 MiMo TTS（会按角色卡的声音风格演绎）、OpenAI /audio/speech 和系统离线语音。');
   const tform = el('form', 'form-grid');
@@ -988,6 +1091,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(tFormat.value ? { ttsFormat: tFormat.value as 'openai-speech' | 'mimo-chat-audio' } : {}), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
   const stt = voiceInputSection(s);
+  const wx = wechatSection(s);
   const agent = section('本机执行器', `${27 + (s.agent?.mcp || []).reduce((n, m) => n + m.tools, 0)} 个工具：文件读写与多文件补丁、搜索、Shell、网页搜索与读网页、子代理${s.agent?.mcp?.length ? '、MCP' : ''}；会读取工作目录里的 AGENTS.md，长任务自动压缩上下文，改动可撤销。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松', full: '完全放开' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
@@ -1058,5 +1162,5 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
   archive.append(arow);
   const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
-  root.append(model, tts, stt, agent, mcp, archive, thanks);
+  root.append(model, wx, tts, stt, agent, mcp, archive, thanks);
 }

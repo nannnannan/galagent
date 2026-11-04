@@ -33,6 +33,11 @@ export type VitalityTone = 'asleep' | 'sleepy' | 'tired' | 'sulky' | 'happy' | '
 /** One executor task, kept locally for the 任务 page (newest first in snapshots). */
 export type TaskRunView = { id: string; task: string; status: 'done' | 'failed' | 'cancelled'; startedAt: string; completedAt: string; durationMs: number; toolCount: number; changedFiles: number; undoable: boolean; undone?: boolean };
 export type TaskRunDetail = TaskRunView & { task: string; cwd: string; summary: string; tools: Record<string, number>; files: string[]; runId?: string; undo?: { at: string; restored: number; conflicts: string[]; skipped: number } };
+export type ResearchFinding = { id: string; interestId: string; topic: string; angle: string; title: string; summary: string; why: string; sources: { title: string; url: string }[]; freshness: 'new' | 'evergreen'; confidence: number; at: number; sharedAt?: number; rating?: 'up' | 'down' };
+export type InterestView = { id: string; topic: string; kind: string; why: string; sources: string[]; weight: number; pinned?: boolean; lastResearchedAt?: string };
+export type ResearchView = { enabled: boolean; blocked?: string; channels: { id: string; label: string; count: number }[]; interests: InterestView[]; findings: ResearchFinding[]; daily?: { summary: string; routines: string[]; focus: string[]; at: string }; lastPlanAt?: string; runsToday: number };
+/** 微信（腾讯 iLink）连接状态；凭据只在桌面进程里。 */
+export type WeChatView = { state: 'off' | 'unbound' | 'qr' | 'scanned' | 'verify' | 'connected' | 'expired' | 'error'; qr?: string; boundAt?: string; lastInboundAt?: string; replyWindowUntil?: string; error?: string; sent?: number; received?: number };
 export type PacingView = { enabled: boolean; factor: number; ignoreRate: number; samples: number; paused: { topic: InitiativeTopic; until: number; ignored: number }[] };
 export type VitalityView = { energy: number; mood: number; tone: VitalityTone; label: string };
 export type Settings = {
@@ -94,6 +99,16 @@ export type Settings = {
   murmursEnabled?: boolean;
   /** 自适应节奏：被冷落的话题自动退避、整体被冷落时拉长间隔（只会更安静）。缺省为开。 */
   adaptivePacing?: boolean;
+  /** 主动研究：按兴趣联网研究（需要沙箱允许联网）。缺省为开。 */
+  researchEnabled?: boolean;
+  /** 对话模型的上下文窗口（token）。不填用接口报告的值，再不行默认 100 万。 */
+  contextWindow?: number;
+  /** 对话模型单次输出上限（token）。不填用接口报告的值。 */
+  maxOutputTokens?: number;
+  /** 从接口 /models 读到的限制（只对这个模型有效）。 */
+  modelLimits?: { model: string; baseUrl: string; contextWindow?: number; maxOutput?: number; fetchedAt: string };
+  /** 微信通道总开关（只有用户能改；一键隐私锁定会关掉）。 */
+  wechatEnabled?: boolean;
   /** TTS request shape; absent = guessed from the address (MiMo vs OpenAI /audio/speech). */
   ttsFormat?: 'openai-speech' | 'mimo-chat-audio';
   /** 按住说话：默认关闭，只有用户能打开（AI 改不了）。音频只发给下面这个语音识别接口。 */
@@ -151,7 +166,7 @@ export type DailyArchiveView = { day: string; title: string; summary: string; di
 export type ArchiveStatus = { lastDay?: string; pendingDays: string[]; failedDays: string[]; nextRunAt: string };
 export type BondView = { firstMetAt?: string; daysTogether: number; streakDays: number; activeDays: number; todayChats: number; achievements: { id: string; icon: string; title: string; description: string; unlockedAt?: string; hidden?: boolean }[] };
 export type PetCatalogEntry = { id: string; name: string; description: string; builtin: boolean };
-export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; initiativeTopics?: InitiativeTopic[]; personaId?: string; speaker?: string; /** A reply sent as several short messages, like typing (the text keeps all of them). */ parts?: string[]; /** A short follow-up line sent a minute or two after a reply. */ afterthought?: boolean };
+export type Message = { id: string; role: 'user' | 'assistant'; text: string; createdAt: string; source: 'chat' | 'initiative' | 'scene'; /** Said on WeChat rather than at the desk. */ channel?: 'wechat'; initiativeTopics?: InitiativeTopic[]; personaId?: string; speaker?: string; /** A reply sent as several short messages, like typing (the text keeps all of them). */ parts?: string[]; /** A short follow-up line sent a minute or two after a reply. */ afterthought?: boolean };
 export type MemoryItem = { id: string; kind: 'fact' | 'episode' | 'reflection'; text: string; sourceId: string; createdAt: string; valid: boolean; validFrom?: string; validTo?: string; supersedes?: string; importance?: number; /** Ebbinghaus-style reinforcement: times the character actually cited it. */ recalls?: number; lastRecalledAt?: string };
 export type DiaryEntry = { id: string; text: string; createdAt: string; sourceIds: string[]; kind?: 'note' | 'journal'; title?: string };
 export type StoryScene = { type: 'E01' | 'E02' | 'E03' | 'E04' | 'E05' | 'E06'; key: string; sourceIds: string[]; evidence: Record<string, unknown> };
@@ -183,7 +198,7 @@ export type AppSnapshot = {
   bond?: BondView;
   privacy?: PrivacyView;
   companionship?: CompanionPreferences;
-  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];running?:{id:string;task:string;startedAt:string}[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
+  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];running?:{id:string;task:string;startedAt:string}[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;/** Short brief of the summary for the main agent's context. */gist?:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
   variables?: PersonaVariables;
   story?: StorySnapshot;
   watches?: WatchView[];
@@ -194,6 +209,8 @@ export type AppSnapshot = {
   vitality?: VitalityView;
   /** 自适应节奏的当前状态（只有类别与时间）。 */
   pacing?: PacingView;
+  research?: ResearchView;
+  wechat?: WeChatView;
   /** Finished executor tasks (newest first, at most 40 here; details via agent.task). */
   taskHistory?: TaskRunView[];
   /** TA 对用户的整体印象（每日档案顺带更新；用户可改写或清除）。 */
@@ -239,7 +256,7 @@ export type AppCommand =
   | { type: 'mcp.secret'; server: string; env?: Record<string, string>; headers?: Record<string, string> }
   | { type: 'agent.configure'; cwd: string }
   | { type: 'agent.answer'; id:string; answers:Record<string,string> }
-  | { type: 'chat.send'; text: string }
+  | { type: 'chat.send'; text: string; channel?: 'wechat' }
   | { type: 'chat.cancel' }
   | { type: 'pet.interact'; interaction: 'tap' | 'drag' | 'pat' }
   | { type: 'pet.roam'; active?: boolean; direction?: -1 | 1 }
@@ -266,6 +283,15 @@ export type AppCommand =
   | { type: 'initiative.feedback'; messageId: string; value: InitiativeFeedback }
   | { type: 'initiative.resetFeedback' }
   | { type: 'pacing.reset' }
+  | { type: 'research.addInterest'; topic: string }
+  | { type: 'research.removeInterest'; id: string }
+  | { type: 'research.pinInterest'; id: string; pinned: boolean }
+  | { type: 'research.rateFinding'; id: string; rating: 'up' | 'down' }
+  | { type: 'research.run' }
+  | { type: 'wechat.login' }
+  | { type: 'wechat.verify'; code: string }
+  | { type: 'wechat.logout' }
+  | { type: 'wechat.enable'; enabled: boolean }
   | { type: 'initiative.topic'; topic: InitiativeTopic; enabled: boolean }
   | { type: 'pet.emote'; action: PetAction; bubble?: string }
   | { type: 'shell.chat'; open?: boolean }

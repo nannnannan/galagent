@@ -1,6 +1,6 @@
 {
   "name": "galagent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "A customizable desktop companion: pick or write a character, choose a pixel pet, and let it keep you company.",
   "main": "dist/main/index.cjs",
@@ -21,6 +21,7 @@
     "electron": "44.7.0",
     "electron-builder": "^26.0.12",
     "esbuild": "^0.25.12",
+    "qrcode-generator": "2.0.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"

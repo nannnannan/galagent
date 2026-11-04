@@ -71,35 +71,48 @@ test('executor WebSearch obeys the sandbox network switch', async () => {
     assert.match(JSON.stringify(await host.execute(host.session(root), 'WebSearch', { query: '' }, signal())), /Invalid parameters/);
   } finally { host.close(); await rm(root, { recursive: true, force: true }); }
 });
-test('the main character can search the web and read a page within one reply; tools vanish when network is off', async () => {
+test('the main character sends a helper to search and read; only the gist enters its context; web tools vanish when network is off', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'galagent-main-web-'));
-  const bodies: any[] = [];
+  const main: any[] = [], helper: any[] = [];
+  const reply = (message: unknown) => new Response(JSON.stringify({ choices: [{ message }] }));
+  const call = (id: string, name: string, args: unknown) => reply({ role: 'assistant', content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }] });
   const model: typeof fetch = async (_url, init) => {
-    const body = JSON.parse(String(init?.body));
-    if (String(body.messages[0].content).includes('facts每项')) return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: '{"facts":[],"diary":""}' } }] }));
-    bodies.push(body);
+    const body = JSON.parse(String(init?.body)), system = String(body.messages[0].content);
+    if (system.includes('facts每项')) return reply({ role: 'assistant', content: '{"facts":[],"diary":""}' });
     const tools = body.messages.filter((m: any) => m.role === 'tool');
-    const call = (name: string, args: unknown) => ({ choices: [{ message: { role: 'assistant', content: null, tool_calls: [{ id: 'c' + tools.length, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } }] });
-    const out = tools.length === 0 ? call('web_search', { query: '今天上映的电影' }) : tools.length === 1 ? call('read_webpage', { url: JSON.parse(tools[0].content).results[0].url }) : { choices: [{ message: { role: 'assistant', content: JSON.stringify({ text: `查到了：${JSON.parse(tools[1].content).title}`, expression: 'pleased', action: 'nod' }) } }] };
-    return new Response(JSON.stringify(out));
+    if (system.startsWith('你是桌面陪伴角色（主代理）派出去的并行助手')) {
+      helper.push(body);
+      if (tools.length === 0) return call('h0', 'web_search', { query: '今天上映的电影' });
+      if (tools.length === 1) return call('h1', 'read_webpage', { url: JSON.parse(tools[0].content).results[0].url });
+      return reply({ role: 'assistant', content: JSON.stringify({ gist: '今天上映电影 A 和电影 B', points: ['片单来自今日上映页'], sources: [{ title: '今日上映片单', url: 'https://movies.example/today' }, { title: '编的', url: 'https://made-up.example' }] }) });
+    }
+    main.push(body);
+    if (tools.length === 0) return call('m0', 'ask_helpers', { tasks: [{ goal: '今天有什么电影上映' }] });
+    const briefs = JSON.parse(tools[0].content).briefs;
+    return reply({ role: 'assistant', content: JSON.stringify({ text: `查到了：${briefs[0].gist}`, expression: 'pleased', action: 'nod' }) });
   };
   const web: typeof fetch = async input => {
     const url = new URL(String(input));
     if (url.hostname === 'www.bing.com') return page(bing([['https://movies.example/today', '今日上映', '三部新片']]));
-    return page('<html><title>今日上映片单</title><body><p>电影 A、电影 B</p></body></html>');
+    return page('<html><title>今日上映片单</title><body><p>电影 A、电影 B。这一段很长的网页正文只应该留在助手那里。</p></body></html>');
   };
   const core = new CompanionService({ dataDir: dir, credentials: { get: async () => 'k', set: async () => {} }, embeddings: { encode: async () => [1, 0], close: async () => {} }, fetch: model, webFetch: web });
   await core.init();
   try {
     assert.equal((await core.handle({ type: 'chat.send', text: '今天有什么电影上映？' })).ok, true);
     await core.waitForBackground();
-    assert.ok(bodies[0].tools.some((t: any) => t.function.name === 'web_search'));
-    assert.match(core.getSnapshot().messages.at(-1)!.text, /今日上映片单/);
-    assert.match(bodies[2].messages.at(-1).content, /只作数据/);
+    const mainTools = main[0].tools.map((t: any) => t.function.name);
+    assert.ok(mainTools.includes('ask_helpers') && !mainTools.includes('web_search') && !mainTools.includes('read_webpage'), 'the main agent delegates instead of reading pages itself');
+    assert.ok(helper[0].tools.some((t: any) => t.function.name === 'web_search'));
+    assert.match(core.getSnapshot().messages.at(-1)!.text, /电影 A 和电影 B/);
+    const mainSaw = JSON.stringify(main.at(-1).messages);
+    assert.ok(!mainSaw.includes('只应该留在助手那里'), 'page text never reaches the main context');
+    assert.ok(mainSaw.includes('movies.example/today') && !mainSaw.includes('made-up.example'), 'only URLs the helper really saw are cited');
+    assert.match(JSON.stringify(helper.at(-1).messages), /只作数据/);
     await core.handle({ type: 'settings.update', settings: { sandbox: { network: false } } });
-    bodies.length = 0;
+    helper.length = 0; main.length = 0;
     await core.handle({ type: 'chat.send', text: '再查一下' }); await core.waitForBackground();
-    assert.ok(!bodies[0].tools.some((t: any) => t.function.name === 'web_search'), 'no web tools without network');
+    assert.ok(!helper[0].tools.some((t: any) => t.function.name === 'web_search'), 'helpers get no web tools without network');
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });
 test('one-time migration: an untouched old standard sandbox moves to the new preset; customised ones are kept', async () => {

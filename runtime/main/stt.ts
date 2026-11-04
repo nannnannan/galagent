@@ -1,6 +1,6 @@
 // 语音输入：把用户按住说话录下的一段 WAV 交给用户自己配置的语音识别接口，拿回文字。
 // 音频只在内存里经过这一次请求，不落盘、不写日志、不进记忆或观察数据；识别出的文字只填进输入框，由用户决定发不发。
-import { endpointUrl, modelsUrl, parseModelList, type SttFormat } from '../shared/endpoints';
+import { endpointUrl, modelsUrl, parseModelInfo, type ModelInfo, type SttFormat } from '../shared/endpoints';
 
 export const STT_MAX_BYTES = 4 * 1024 * 1024; // ~2 min of 16 kHz mono 16-bit WAV; the recorder stops at 60 s
 export const STT_PROMPT = '请把这段语音逐字转写成文字。只输出转写出的文字本身，不要解释、不要加引号；听不清就输出空。';
@@ -58,15 +58,15 @@ export async function transcribe(o: SttOptions): Promise<SttResult> {
 }
 
 /** GET {root}/models with the key for that endpoint; a short list of ids or a readable error. */
-export async function listModels(baseUrl: string, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
+export async function listModels(baseUrl: string, apiKey: string | undefined, fetchImpl: typeof fetch = fetch): Promise<{ ok: true; models: string[]; info: ModelInfo[] } | { ok: false; error: string }> {
   let url: string;
   try { url = modelsUrl(baseUrl); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
   try {
     const res = await fetchImpl(url, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, signal: controller.signal });
     if (!res.ok) return { ok: false, error: res.status === 401 || res.status === 403 ? '密钥不对或没有权限' : res.status === 404 ? '这个接口不提供模型列表，请手动填写模型名' : `接口返回 ${res.status}` };
-    const models = parseModelList(await res.json().catch(() => undefined));
-    return models.length ? { ok: true, models } : { ok: false, error: '没有拿到模型列表，请手动填写模型名' };
+    const info = parseModelInfo(await res.json().catch(() => undefined)), models = info.map(m => m.id);
+    return models.length ? { ok: true, models, info: info.filter(m => m.contextWindow || m.maxOutput) } : { ok: false, error: '没有拿到模型列表，请手动填写模型名' };
   } catch (e) {
     return { ok: false, error: controller.signal.aborted ? '连接超时' : e instanceof Error ? e.message : String(e) };
   } finally { clearTimeout(timer); }

@@ -51,7 +51,7 @@ test('main character uses K3 thinking budget for every K3.1 alias and preserves 
     await core.handle({ type: 'config.save', baseUrl: 'https://example.com/v1', model: MIRA_DEFAULT_MODEL, mode: 'native-api' });
     await core.handle({ type: 'chat.send', text: '官方接口模式' }); await core.waitForBackground();
     const native = requests.at(-1);
-    assert.equal(native.reasoning_effort, undefined); assert.equal(native.max_completion_tokens, undefined); assert.equal(native.max_tokens, 900);
+    assert.equal(native.reasoning_effort, undefined); assert.equal(native.max_completion_tokens, undefined); assert.equal(native.max_tokens, 4096);
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });
 

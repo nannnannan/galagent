@@ -441,6 +441,27 @@ body.reduced-motion .message.fresh .message-parts .part { animation: none; }
 .btn.mic.recording::after { content: var(--elapsed, ''); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--r-pill); background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; white-space: nowrap; }
 .btn.mic.working { opacity: .6; cursor: progress; }
 @keyframes mic-pulse { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--danger) 10%, transparent); } }
+/* research + wechat */
+.research > small.row-meta { display: block; margin-top: 12px; }
+.research-channels { display: flex; flex-wrap: wrap; gap: 8px; }
+.research-channels .channel { display: inline-flex; flex-direction: column; gap: 1px; padding: 6px 10px; border-radius: var(--r-sm); border: 1px dashed var(--line-strong); color: var(--faint); min-width: 92px; }
+.research-channels .channel strong { font-size: var(--fs-sm); font-weight: 600; } .research-channels .channel small { font-size: 10.5px; }
+.research-channels .channel.on { border-style: solid; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--accent-soft); color: var(--accent-text); }
+.research-daily { padding: 10px 14px; border-radius: var(--r-md); background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; }
+.interest-list { display: flex; flex-direction: column; }
+.interest { display: flex; gap: var(--s3); align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.interest .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.interest-head { display: flex; align-items: center; gap: 8px; } .interest-head .weight { color: var(--accent); font-size: 9px; letter-spacing: 1px; }
+.interest.pinned .interest-head strong::after { content: ' · 置顶'; color: var(--accent-text); font-weight: 500; font-size: var(--fs-xs); }
+.finding-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+.finding { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: var(--r-md); border: 1px solid var(--line); background: var(--panel); }
+.finding.down { opacity: .5; }
+.finding-head { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.finding-sources { display: flex; flex-direction: column; gap: 2px; color: var(--muted); font-size: var(--fs-xs); }
+.pill.wechat { background: color-mix(in srgb, #07c160 16%, var(--panel)); color: color-mix(in srgb, #07c160 70%, var(--text)); }
+.wechat-status { display: flex; flex-direction: column; gap: 8px; padding: var(--s3) var(--s4); border-radius: var(--r-md); background: var(--panel-2); margin-bottom: var(--s3); }
+.wechat-qr { width: 196px; height: 196px; padding: 6px; border-radius: var(--r-md); background: #fff; }
+.wechat-qr svg { width: 100%; height: 100%; display: block; }
 /* pets */
 .pet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--s3); }
 .pet-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: var(--s3) 10px 14px; text-align: center; }
