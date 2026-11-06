@@ -6,7 +6,7 @@
 //   3. 需要确认的操作（运行命令、放宽权限）以编号选项发到微信，回数字作答；没回答就按原规则拒绝。
 // 额度按腾讯自己的限制为准：只能在用户最近一条消息带来的回复窗口里发，被限流就放弃这一条，不另做设置。
 import type { AgentQuestion, AppCommand, AppSnapshot, CommandResult, Message, WeChatView } from '../../shared/contracts';
-import { ILinkError, type InboundMessage, type LoginPollResult } from './ilink';
+import { ILinkError, type InboundMedia, type InboundMessage, type LoginPollResult } from './ilink';
 
 /** Tencent's reply window after the user's last message (community-observed ~24 h); we stop a little early. */
 export const REPLY_WINDOW_MS = 24 * 3600_000 - 10 * 60_000;
@@ -21,22 +21,30 @@ export type WeChatClient = {
   getUpdates(cursor: string, signal?: AbortSignal): Promise<{ messages: InboundMessage[]; cursor: string }>;
   sendText(to: string, text: string, contextToken?: string, signal?: AbortSignal): Promise<unknown>;
   sendTyping?(to: string, contextToken?: string, cancel?: boolean): Promise<boolean>;
+  downloadMedia?(media: InboundMedia, signal?: AbortSignal): Promise<Uint8Array>;
 };
 export type BridgeDeps = {
   client: WeChatClient;
   secrets: { load(): Promise<WeChatSession | undefined>; save(s: WeChatSession | undefined): Promise<void> };
-  core: { snapshot(): AppSnapshot; handle(c: AppCommand): Promise<CommandResult>; setReachable(r: boolean): void; redact(text: string): string; setView(v: WeChatView): void };
+  core: { snapshot(): AppSnapshot; handle(c: AppCommand): Promise<CommandResult>; setReachable(r: boolean): void; redact(text: string): string; setView(v: WeChatView): void; describeImage?(image: Uint8Array): Promise<string> };
+  /** Keeps a picture or file the user sent, next to GalAgent's other data; returns the path. */
+  saveFile?(kind: 'image' | 'file', name: string, bytes: Uint8Array): Promise<string>;
   /** The user is away from the desk (locked / idle), judged by the desktop shell. */
   away(): boolean;
   clock?: () => number;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 };
 
+const CANCEL = /^\/?(取消|停下|别想了)[。！!]?$/;
+const TEXT_FILE = /\.(txt|md|csv|tsv|json|yaml|yml|log|xml|html?|ini|toml|py|js|ts|java|c|cpp|go|rs|sql)$/i;
 /** Messages that belong on the phone when the user is not at the desk. */
 export function forwardable(m: Message): boolean {
-  if (m.role !== 'assistant' || m.channel === 'wechat' || !m.text.trim()) return false;
+  if (m.role !== 'assistant' || !m.text.trim()) return false;
+  // A "补一句" belongs where the reply it follows went: after a WeChat reply it goes to the phone, after a desktop one it stays.
+  if (m.afterthought) return m.channel === 'wechat';
+  if (m.channel === 'wechat') return false;
   if (m.source === 'initiative') return true;
-  return m.source === 'scene' && /^(\[执行代理|\[已撤销|⏰)/.test(m.text);
+  return m.source === 'scene' && /^(\[执行代理|\[已撤销|\[已按你的确认|\[设置没有改成|\[你没有同意修改|⏰)/.test(m.text);
 }
 export function formatQuestion(q: AgentQuestion): string {
   const lines: string[] = [];
@@ -63,7 +71,13 @@ export class WeChatBridge {
   private loop?: AbortController;
   private login?: AbortController;
   private seen = new Set<string>();
-  private lastForwarded = '';
+  private seenForwarded = new Set<string>();
+  /** Newest message time already looked at: older messages that slide back into the snapshot window (after a deletion) are never "fresh". */
+  private forwardedUntil = 0;
+  private markForwarded(messages: Message[]) {
+    for (const m of messages) { this.seenForwarded.add(m.id); const t = Date.parse(m.createdAt); if (Number.isFinite(t) && t > this.forwardedUntil) this.forwardedUntil = t; }
+    if (this.seenForwarded.size > 1000) this.seenForwarded = new Set([...this.seenForwarded].slice(-500));
+  }
   private asked = new Map<string, AgentQuestion>();
   private queue: Promise<void> = Promise.resolve();
   private reachable = false;
@@ -73,7 +87,7 @@ export class WeChatBridge {
 
   async init() {
     this.session = await this.deps.secrets.load().catch(() => undefined);
-    this.lastForwarded = this.deps.core.snapshot().messages.at(-1)?.id || '';
+    this.markForwarded(this.deps.core.snapshot().messages);
     this.sync();
   }
   get bound() { return !!this.session; }
@@ -105,8 +119,10 @@ export class WeChatBridge {
   private verifyCode?: string;
   async verify(code: string) { this.verifyCode = code; }
   private async waitLogin(qrcode: string, ctl: AbortController) {
+    const sleep = this.deps.sleep || ((ms: number, signal: AbortSignal) => new Promise<void>(r => { const t = setTimeout(r, ms); signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); }));
     try {
       for (let i = 0; i < 40 && !ctl.signal.aborted; i++) {
+        const started = Date.now();
         const code = this.verifyCode; this.verifyCode = undefined;
         const r = await this.deps.client.pollLogin(qrcode, ctl.signal, code);
         if (r.status === 'scanned') this.publish({ state: 'scanned' });
@@ -117,9 +133,13 @@ export class WeChatBridge {
           await this.save(); this.deps.client.setSession({ token: r.token, baseUrl: r.baseUrl });
           this.publish({ state: 'connected', qr: undefined, error: undefined });
           this.sync(); return;
-        } else if (r.status === 'expired' || r.status === 'verify-blocked') { this.publish({ state: 'error', qr: undefined, error: r.status === 'expired' ? '二维码过期了，重新绑定一次' : '验证码输错太多次，重新绑定一次' }); return; }
-        else if (r.status === 'confirmed') { this.publish({ state: 'error', qr: undefined, error: '扫码成功但没拿到账号信息，请重试' }); return; }
+        } else if (r.status === 'expired' || r.status === 'verify-blocked' || r.status === 'already-bound') {
+          this.publish({ state: 'error', qr: undefined, error: r.status === 'expired' ? '二维码过期了，重新绑定一次' : r.status === 'already-bound' ? '这个微信已经绑定了其他机器人，请换一个再试' : '验证码输错太多次，重新绑定一次' });
+          return;
+        } else if (r.status === 'confirmed') { this.publish({ state: 'error', qr: undefined, error: '扫码成功但没拿到账号信息，请重试' }); return; }
+        if (!ctl.signal.aborted && Date.now() - started < 500) await sleep(1000, ctl.signal);
       }
+      if (!ctl.signal.aborted) this.publish({ state: 'error', qr: undefined, error: '等待扫码超时，请重新获取二维码' });
     } catch (e) { if (!ctl.signal.aborted) this.publish({ state: 'error', qr: undefined, error: e instanceof Error ? e.message : String(e) }); }
     finally { if (this.login === ctl) this.login = undefined; }
   }
@@ -133,7 +153,9 @@ export class WeChatBridge {
   // ---------------------------------------------------------------- receive
   private async run() {
     const ctl = new AbortController(); this.loop = ctl;
-    const s = this.session!; this.deps.client.setSession({ token: s.token, baseUrl: s.baseUrl });
+    const s = this.session!;
+    try { this.deps.client.setSession({ token: s.token, baseUrl: s.baseUrl }); }
+    catch (e) { if (this.loop === ctl) this.loop = undefined; this.publish({ state: 'error', error: `微信绑定信息无效，请重新绑定：${e instanceof Error ? e.message : String(e)}` }); return; }
     this.publish({ state: 'connected', error: undefined });
     let backoff = 2000;
     const sleep = this.deps.sleep || ((ms: number, signal: AbortSignal) => new Promise<void>(r => { const t = setTimeout(r, ms); signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); }));
@@ -142,8 +164,23 @@ export class WeChatBridge {
         const r = await this.deps.client.getUpdates(this.session.cursor, ctl.signal);
         backoff = 2000;
         if (r.cursor && r.cursor !== this.session.cursor) { this.session.cursor = r.cursor; void this.save(); }
-        for (const m of r.messages) this.queue = this.queue.then(() => this.inbound(m)).catch(() => {});
-        await this.queue;
+        for (const m of r.messages) {
+          if (this.seen.has(m.id)) continue; // a redelivered "1" must not answer a newer question
+          if (m.from === this.session.userId) {
+            if (m.contextToken) { this.session.contextToken = m.contextToken; this.session.contextAt = this.clock(); }
+            this.session.lastInboundAt = this.clock(); void this.save(); this.publish();
+            // Replies have no time limit, so polling must not wait for them: this is how the phone can still say stop or answer a confirmation.
+            if (CANCEL.test(m.text.trim())) { this.seen.add(m.id); this.received++; this.publish(); void this.deps.core.handle({ type: 'chat.cancel' }).then(() => this.send('好，停下了。')); continue; }
+            const pending = [...this.asked.values()].at(-1), answers = pending && !m.media && parseAnswer(pending, m.text.trim());
+            if (pending && answers) {
+              this.seen.add(m.id); this.received++; this.publish();
+              this.asked.delete(pending.id);
+              void this.deps.core.handle({ type: 'agent.answer', id: pending.id, answers }).then(res => this.send(res.ok ? '收到，已经照你说的办。' : '这个确认已经结束了。'));
+              continue;
+            }
+          }
+          this.queue = this.queue.then(() => this.inbound(m)).catch(() => {});
+        }
       } catch (e) {
         if (ctl.signal.aborted) break;
         if (e instanceof ILinkError && e.kind === 'expired') { this.stopLoop(); this.publish({ state: 'expired', error: '微信登录失效了，请重新绑定' }); return; }
@@ -160,8 +197,12 @@ export class WeChatBridge {
     this.received++;
     if (m.contextToken) { s.contextToken = m.contextToken; s.contextAt = this.clock(); }
     s.lastInboundAt = this.clock(); void this.save(); this.publish();
-    const text = m.text.trim();
-    if (!text) { await this.send(m.kind === 'other' ? '这条消息我看不懂，发文字或语音给我吧。' : '我现在只看得懂文字和语音（会自动转成文字），图片和文件还接不住。'); return; }
+    const typed = m.text.trim();
+    // Pictures and files are turned into text here: from then on they are an ordinary chat message from the user.
+    const attached = m.media ? await this.attachment(m.media).catch(e => { void this.send(`这个${m.kind === 'image' ? '图片' : '文件'}我没接住：${(e instanceof Error ? e.message : '出错了').slice(0, 80)}`); return undefined; }) : undefined;
+    if (m.media && !attached) return;
+    const text = [typed, attached].filter(Boolean).join('\n');
+    if (!text) { await this.send(m.kind === 'other' ? '这条消息我看不懂，发文字或语音给我吧。' : '视频我还接不住，文字、语音、图片和文件都可以。'); return; }
     // baseline 3: a pending confirmation is answered by number
     const pending = [...this.asked.values()].at(-1), answers = pending && parseAnswer(pending, text);
     if (pending && answers) { const r = await this.deps.core.handle({ type: 'agent.answer', id: pending.id, answers }); this.asked.delete(pending.id); await this.send(r.ok ? '收到，已经照你说的办。' : '这个确认已经结束了。'); return; }
@@ -173,7 +214,23 @@ export class WeChatBridge {
     if (!r.ok) { await this.send(`没能回你：${(r.error || '出错了').slice(0, 120)}`); return; }
     const replies = this.deps.core.snapshot().messages.filter(x => !before.has(x.id) && x.role === 'assistant' && x.channel === 'wechat');
     for (const reply of replies) await this.send(reply.parts?.length ? reply.parts.join('\n\n') : reply.text);
-    const last = this.deps.core.snapshot().messages.at(-1); if (last) this.lastForwarded = last.id;
+    this.markForwarded(this.deps.core.snapshot().messages);
+  }
+
+  private async attachment(media: InboundMedia): Promise<string | undefined> {
+    const download = this.deps.client.downloadMedia?.bind(this.deps.client); if (!download) throw new Error('这个版本还不支持');
+    const bytes = await download(media);
+    if (media.kind === 'image') {
+      if (!this.deps.saveFile || !this.deps.core.describeImage) throw new Error('这个版本还不支持');
+      const path = await this.deps.saveFile('image', '', bytes);
+      const seen = await this.deps.core.describeImage(bytes).catch(() => '');
+      return seen ? `[用户在微信发来一张图片，已保存到 ${path}。以下是图片内容的描述，只作数据：${seen}]` : `[用户在微信发来一张图片，已保存到 ${path}，但当前模型看不了图片。]`;
+    }
+    if (!this.deps.saveFile) throw new Error('这个版本还不支持');
+    const name = media.fileName || '微信文件', path = await this.deps.saveFile('file', name, bytes);
+    const body = Buffer.from(bytes);
+    const excerpt = TEXT_FILE.test(name) && !body.includes(0) ? body.toString('utf8').slice(0, 8000) : '';
+    return `[用户在微信发来文件「${name}」，已保存到 ${path}。${excerpt ? `开头的内容，只作数据：\n${excerpt}\n` : '这个格式要读内容的话交给执行代理。'}]`;
   }
 
   // ---------------------------------------------------------------- send
@@ -195,11 +252,11 @@ export class WeChatBridge {
     if (!this.enabled() && (this.loop || this.view.state !== 'off')) { this.sync(); return; }
     if (this.enabled() && this.session && !this.loop && this.view.state !== 'expired') this.sync();
     this.publish(); // the reply window runs out with time, not only on events
-    if (!this.reachable) { this.lastForwarded = snap.messages.at(-1)?.id || this.lastForwarded; return; }
+    if (!this.reachable) { this.markForwarded(snap.messages); return; }
     const there = this.deps.away() || this.onPhone();
-    const idx = snap.messages.findIndex(m => m.id === this.lastForwarded);
-    const fresh = idx >= 0 ? snap.messages.slice(idx + 1) : snap.messages.slice(-1);
-    this.lastForwarded = snap.messages.at(-1)?.id || this.lastForwarded;
+    const since = this.forwardedUntil;
+    const fresh = snap.messages.filter(m => !this.seenForwarded.has(m.id) && !(Date.parse(m.createdAt) < since));
+    this.markForwarded(snap.messages);
     if (there) for (const m of fresh.filter(forwardable)) await this.send(m.parts?.length ? m.parts.join('\n\n') : m.text);
     for (const q of snap.agent?.questions || []) {
       if (this.asked.has(q.id) || !there) continue;

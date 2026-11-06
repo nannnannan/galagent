@@ -25,8 +25,9 @@ function resources(label) {
 }
 const original=await chat.evaluate(()=>window.galagent.getSnapshot());
 assert.equal(original.provider.configured,false,'Verification data must not use a real key');
-assert.equal(await chat.evaluate(()=>[...document.querySelectorAll('.expression')].every(img=>img.complete&&img.naturalWidth===1024)),true);
-report.passed.push('all seven packaged transparent sprites load and renderer bridge works');
+await chat.waitForSelector('.pixel-pet-canvas',{timeout:15000});
+assert.equal(await chat.evaluate(()=>{const c=document.querySelectorAll('.pixel-pet-canvas');return c.length>0&&[...c].every(el=>el.width>0&&el.height>0);}),true);
+report.passed.push('packaged pixel pet canvas renders and renderer bridge works');
 resources('packaged-before-index');
 const text=`[运行包验收样本 ${Date.now()}] 我周六下午会去游泳。`;
 assert.equal((await chat.evaluate(text=>window.galagent.dispatch({type:'memory.remember',text}),text)).ok,true);

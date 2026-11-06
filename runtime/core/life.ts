@@ -35,8 +35,8 @@ export function pickLife(input: LifeInput): LifeKind | undefined {
   // The day opens with the greeting: until it has happened (or its window closed), nothing else goes first.
   if (t >= 5 * 60 && t < 11 * 60 && ledger.morning !== dayOf(now) && !input.muted('greeting')) return input.archivePending && t < 10 * 60 + 30 ? undefined : 'morning';
   const [gh, gm] = input.goodnightAt.split(':').map(Number), bed = (gh || 0) * 60 + (gm || 0);
-  // From bedtime until 04:00 (bedtime may itself be after midnight).
-  const lateNight = bed >= 12 * 60 ? t >= bed || t < 4 * 60 : t >= bed && t < 4 * 60;
+  // From bedtime until 04:00 (bedtime may itself be after midnight; if set to 04:00+, allow a 2h window).
+  const lateNight = bed >= 12 * 60 ? t >= bed || t < 4 * 60 : bed < 4 * 60 ? t >= bed && t < 4 * 60 : t >= bed && t < Math.min(bed + 2 * 60, bed < 6 * 60 ? 6 * 60 : 24 * 60); // ends by 06:00, where the night key turns over
   if (lateNight && ledger.goodnight !== nightOf(now) && !input.muted('greeting')) return 'goodnight';
   // The rest are occasional: one roll per 20 minutes, daytime only.
   if (ledger.lastRollAt && ms - ledger.lastRollAt < ROLL_EVERY_MS) return undefined;

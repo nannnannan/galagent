@@ -20,7 +20,11 @@ export const localDay = (time: number) => new Date(time).toLocaleDateString('en-
 export const archiveId = (day: string) => 'daily:' + day;
 export const nextMidnight = (now: number) => { const d = new Date(now); d.setHours(24, 0, 0, 0); return d.getTime(); };
 /** Fingerprint of exactly which messages (and texts) an archive covers; a deletion or correction changes it. */
-export const dayDigest = (messages: Message[]) => createHash('sha256').update(JSON.stringify(messages.map(m => [m.id, m.text.length, m.text.slice(0, 32)]))).digest('hex').slice(0, 24);
+export const dayDigest = (messages: Message[]) => createHash('sha256').update(JSON.stringify(messages.map(m => [m.id, m.text]))).digest('hex').slice(0, 24);
+/** The fingerprint archives written before v0.8.0 carry (id, length, first 32 chars); still accepted so an upgrade keeps them. */
+export const legacyDayDigest = (messages: Message[]) => createHash('sha256').update(JSON.stringify(messages.map(m => [m.id, m.text.length, m.text.slice(0, 32)]))).digest('hex').slice(0, 24);
+/** Does a saved archive still describe exactly these records? */
+export const archiveMatches = (archive: { digest: string }, messages: Message[]) => archive.digest === dayDigest(messages) || archive.digest === legacyDayDigest(messages);
 
 export const dailyPrompt = `现在是本地午夜之后，请把“这一天”与用户的真实对话整理成一份每日档案，并以你自己的身份写一篇当天的日记。
 规则：只依据 messages 中真实出现的内容，不编造；用户说的事实用中性客观的语气写进 summary；你的感受只写进 diary。messages 中带 omitted 的记录只是摘录，不要猜测省略部分。
@@ -36,7 +40,7 @@ export function parseDaily(raw: unknown) {
   const r = raw as Record<string, unknown>;
   const summary = str(r.summary, 600);
   if (summary.length < 4) throw new Error('每日档案缺少摘要');
-  return { title: str(r.title, 16) || '平常的一天', summary, diary: str(r.diary, 800), mood: str(r.mood, 12), topics: list(r.topics, 6, 16), highlights: list(r.highlights, 5, 80), openThreads: list(r.openThreads, 5, 80), portrait: str(r.portrait, 400) };
+  return { title: str(r.title, 16) || '平常的一天', summary, diary: str(r.diary, 800), mood: str(r.mood, 12), topics: list(r.topics, 6, 16), highlights: list(r.highlights, 5, 80), openThreads: list(r.openThreads, 5, 80), portrait: str(r.portrait, 600) };
 }
 
 /** Bounded transcript for the summariser: whole short days verbatim, long days as head + tail with an explicit gap marker. */

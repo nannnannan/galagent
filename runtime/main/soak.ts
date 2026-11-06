@@ -14,6 +14,8 @@ export class SoakRecorder {
   private stopped=false;
   private peakWorkingSetMiB=0;
   private samples: {cpu:number|null;memory:number}[]=[];
+  private cpuSum=0;
+  private cpuCount=0;
   private previousCPU=new Map<number,number>();
   private startedAt=new Date().toISOString();
   constructor(private output:string,private targetMs:number,private snapshot:()=>AppSnapshot) {}
@@ -32,7 +34,10 @@ export class SoakRecorder {
     for(const metric of metrics){const cumulative=metric.cpu.cumulativeCPUUsage;if(typeof cumulative==='number'){nextCPU.set(metric.pid,cumulative);if(this.previousCPU.has(metric.pid))deltaSeconds+=Math.max(0,cumulative-this.previousCPU.get(metric.pid)!);}}
     const cpu=allCumulative&&this.previousCPU.size&&gap>0?deltaSeconds/(gap/1000)/Math.max(1,os.cpus().length)*100:null;
     this.previousCPU=nextCPU;
-    this.peakWorkingSetMiB=Math.max(this.peakWorkingSetMiB,memoryMiB);this.samples.push({cpu,memory:memoryMiB});
+    this.peakWorkingSetMiB=Math.max(this.peakWorkingSetMiB,memoryMiB);
+    // Only the first samples are reported verbatim; the mean CPU is a running sum so memory stays flat on long soaks.
+    if(this.samples.length<11)this.samples.push({cpu,memory:memoryMiB});
+    if(cpu!==null){this.cpuSum+=cpu;this.cpuCount++;}
     const s=this.snapshot();
     const row={at:new Date(now).toISOString(),sample:++this.count,activeObservedMs:this.activeMs,gapMs:gap,processes:metrics.length,workingSetMiB:memoryMiB,reportedCPUPercent,wholeCPUPercent:cpu,logicalCPUs:os.cpus().length,configured:s.provider.configured,embedding:s.status.embedding,messages:s.messages.length,memories:s.stats.memories,backgroundRunning:s.status.tasks.filter(t=>t.state==='running').length,backgroundQueued:s.status.tasks.filter(t=>t.state==='queued').length,observationAvailable:s.observation.available};
     await appendFile(`${this.output}.jsonl`,`${JSON.stringify(row)}\n`);
@@ -40,8 +45,7 @@ export class SoakRecorder {
     if(this.activeMs>=this.targetMs){this.stopped=true;if(this.timer)clearInterval(this.timer);}
   }
   private async save(status:string) {
-    const known=this.samples.filter((s):s is {cpu:number;memory:number}=>s.cpu!==null);
-    const report={schemaVersion:2,status,pid:process.pid,executable:process.execPath,startedAt:this.startedAt,updatedAt:new Date().toISOString(),targetMs:this.targetMs,activeObservedMs:this.activeMs,sampleCount:this.count,peakWorkingSetMiB:this.peakWorkingSetMiB,meanWholeCPUPercent:known.length?known.reduce((n,s)=>n+s.cpu,0)/known.length:null,firstTenMinuteSamples:this.samples.slice(0,11),note:'Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality.'};
+    const report={schemaVersion:2,status,pid:process.pid,executable:process.execPath,startedAt:this.startedAt,updatedAt:new Date().toISOString(),targetMs:this.targetMs,activeObservedMs:this.activeMs,sampleCount:this.count,peakWorkingSetMiB:this.peakWorkingSetMiB,meanWholeCPUPercent:this.cpuCount?this.cpuSum/this.cpuCount:null,firstTenMinuteSamples:this.samples.slice(0,11),note:'Local metadata only. No dialogue, window titles, character identity or API keys. CPU is computed from cumulative process seconds, not a second normalization of reported percentages. Active time excludes long sleep gaps; this record alone does not prove model quality.'};
     await writeFile(`${this.output}.new`,JSON.stringify(report,null,2));await rename(`${this.output}.new`,this.output);
   }
   async stop(){if(this.timer)clearInterval(this.timer);await this.writing;if(!this.stopped){this.stopped=true;await this.save('interrupted');}}

@@ -11,6 +11,7 @@ await Promise.all([
 ]);
 await viteBuild({ root: path.join(root, 'runtime/renderer'), base: './', publicDir: false, build: { outDir: path.join(root, 'dist/renderer'), emptyOutDir: true }, server: { host: '127.0.0.1' } });
 await mkdir('dist/desktop', { recursive: true });
+await mkdir('dist/renderer/assets', { recursive: true });
 await copyFile('runtime/desktop/observer.ps1', 'dist/desktop/observer.ps1');
 for (const name of ['icon.png', 'icon.ico', 'tray.png']) await copyFile(`runtime/assets/${name}`, `dist/renderer/assets/${name}`);
 await copyFile('runtime/workers/embedding.mjs', 'dist/main/embedding.mjs');

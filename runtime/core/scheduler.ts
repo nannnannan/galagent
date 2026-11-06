@@ -47,8 +47,26 @@ export function cronNext(expression:string,after:number):number {
  const parts=expression.trim().split(/\s+/);if(parts.length!==5)throw new Error('cron须为5个字段');
  const ranges=[[0,59],[0,23],[1,31],[1,12],[0,7]];
  const sets=parts.map((part,index)=>{const [min,max]=ranges[index],values=new Set<number>();for(const item of part.split(',')){const [base,stepRaw,...extra]=item.split('/'),step=stepRaw===undefined?1:Number(stepRaw);if(extra.length||!Number.isInteger(step)||step<1)throw new Error('cron步长无效');let first=min,last=max;if(base!=='*'){const terms=base.split('-');if(terms.length>2||terms.some(t=>!/^\d+$/.test(t)))throw new Error('cron字段无效');first=Number(terms[0]);last=terms.length===2?Number(terms[1]):stepRaw===undefined?first:max;}if(first<min||last>max||last<first)throw new Error('cron范围无效');for(let n=first;n<=last;n+=step)values.add(index===4&&n===7?0:n);}return values;});
+ if(parts[2]!=='*'&&parts[4]==='*'){
+  const maxDays=[0,31,29,31,30,31,30,31,31,30,31,30,31];
+  const possible=[...sets[3]].some(m=>[...sets[2]].some(dom=>dom<=maxDays[m]));
+  if(!possible)throw new Error('未来5年没有匹配时间');
+ }
  // User's local zone is Asia/Shanghai; a cron job stores local minute fields.
- for(let time=Math.floor(after/60000)*60000+60000,end=time+5*366*86400000;time<end;time+=60000){const d=new Date(time+8*3600000),dom=sets[2].has(d.getUTCDate()),dow=sets[4].has(d.getUTCDay());const dateMatch=parts[2]==='*'?dow:parts[4]==='*'?dom:dom||dow;if(sets[0].has(d.getUTCMinutes())&&sets[1].has(d.getUTCHours())&&sets[3].has(d.getUTCMonth()+1)&&dateMatch)return time;}
+ for(let time=Math.floor(after/60000)*60000+60000,end=time+5*366*86400000;time<end;){
+  const d=new Date(time+8*3600000),dom=sets[2].has(d.getUTCDate()),dow=sets[4].has(d.getUTCDay());
+  const dateMatch=parts[2]==='*'?dow:parts[4]==='*'?dom:dom||dow;
+  if(!sets[3].has(d.getUTCMonth()+1)||!dateMatch){
+   time+=(24-d.getUTCHours())*3600000-d.getUTCMinutes()*60000;
+   continue;
+  }
+  if(!sets[1].has(d.getUTCHours())){
+   time+=(60-d.getUTCMinutes())*60000;
+   continue;
+  }
+  if(sets[0].has(d.getUTCMinutes()))return time;
+  time+=60000;
+ }
  throw new Error('未来5年没有匹配时间');
 }
 
@@ -79,7 +97,15 @@ export class SelfWakeScheduler {
     // The model tends to re-issue the same alarm on consecutive turns; keep one.
     // Only future alarms count: a snooze issued while an alarm rings must not merge into the one being completed.
     const duplicate = items.find(item => item.dueAt > now && item.note === note && Math.abs(item.dueAt - dueAt) < 5 * 60_000);
-    if (duplicate) return duplicate;
+    if (duplicate) {
+      if ((createdBy === 'user' && duplicate.createdBy !== 'user') || (cron && !duplicate.cron) || (repeatMinutes && !duplicate.repeatMinutes && !duplicate.cron)) {
+        const upgraded: SelfWake = { ...duplicate, createdBy: createdBy === 'user' ? 'user' : duplicate.createdBy, ...(cron ? { cron } : repeatMinutes && !duplicate.cron ? { repeatMinutes } : {}) };
+        if (cron) delete upgraded.repeatMinutes; // one repeat rule per alarm
+        this.store.put('self-wake', upgraded.id, upgraded);
+        return upgraded;
+      }
+      return duplicate;
+    }
     if (items.length >= SCHEDULE_LIMITS.active) throw new Error(`最多同时保留 ${SCHEDULE_LIMITS.active} 个定时提醒`);
     const item: SelfWake = { id: randomUUID(), note, dueAt, ...(cron ? { cron } : repeatMinutes ? { repeatMinutes } : {}), createdBy, createdAt: now };
     this.store.put('self-wake', item.id, item);

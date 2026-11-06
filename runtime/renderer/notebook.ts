@@ -1,5 +1,5 @@
 import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
-import type { AppSnapshot, Expression, MemoryItem, Message, PetAction, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
+import type { AppSnapshot, Expression, HistoryHit, HistoryScope, MemoryItem, Message, PetAction, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
 import { companionModes, topicLabels, validTopic } from '../shared/companionship';
 import { achievements as achievementDefs } from '../shared/achievements';
 import { builtinPixelPets } from '../shared/pixel-pets';
@@ -118,7 +118,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     // Only a page switch animates in; snapshot-driven re-renders of the same page stay still.
     content.classList.remove('enter'); void content.offsetWidth; content.classList.add('enter');
     clearTimeout(enterTimer); enterTimer = setTimeout(() => content.classList.remove('enter'), 700);
-    if (id !== 'chat') content.scrollTop = 0;
+    if (id !== 'chat') { content.scrollTop = 0; helloPet?.destroy(); helloPet = undefined; }
     else { disposePage(); content.replaceChildren(); } // hidden pages shouldn't keep little pets animating
     render(snapshot, true);
   }
@@ -221,6 +221,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
       hello.append(chips); box.replaceChildren(hello);
       void loadPet(wantedPet(snapshot), snapshot.pets?.revision || 0).then(spec => {
         if (!stage.isConnected) return;
+        helloPet?.destroy();
         helloPet = new PixelPet(stage, spec);
         helloPet.setState({ expression: 'pleased', action: 'wave', revision: 1, visible: true, reducedMotion: snapshot.settings.reducedMotion, quiet: false });
       });
@@ -329,10 +330,14 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   });
 
   // ---- shell-wide state ----
+  let portraitTicket = 0;
   async function syncPortrait() {
-    const id = wantedPet(snapshot), key = `${id}@${snapshot.pets?.revision || 0}`;
+    const id = wantedPet(snapshot), rev = snapshot.pets?.revision || 0, key = `${id}@${rev}`;
     if (key === portraitKey) return; portraitKey = key; trackPet(id, snapshot);
-    const spec = await loadPet(id, snapshot.pets?.revision || 0); if (spec !== portraitSpec) { portraitSpec = spec; portrait.setSpec(spec); }
+    const ticket = ++portraitTicket;
+    const spec = await loadPet(id, rev);
+    if (ticket !== portraitTicket) return;
+    if (spec !== portraitSpec) { portraitSpec = spec; portrait.setSpec(spec); }
   }
   let lastVisual = -1, lastUserMessage = initial.messages.filter(m => m.role === 'user').at(-1)?.id || '';
   function renderBond(next: AppSnapshot) {
@@ -345,8 +350,9 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   }
   function render(next: AppSnapshot, force = false) {
     if (!snapshot.status.busy && next.status.busy) speech.stop();
-    snapshot = next;
+    snapshot = next; latestSnapshot = next;
     document.body.classList.toggle('reduced-motion', next.settings.reducedMotion);
+    document.body.classList.toggle('quiet-mode', next.settings.quietUntil > Date.now());
     void syncPortrait();
     if (lastVisual !== next.visual.revision) { lastVisual = next.visual.revision; portrait.playText(next.visual.bubble); }
     applyPortrait();
@@ -378,11 +384,12 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     // Forms keep their DOM (and the user's half-typed text) until the page's own data changes.
     const key = JSON.stringify(current.key(next));
     const typing = content.contains(document.activeElement) && ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement!.tagName);
-    if (!force && (key === pageKey || typing)) return;
+    const editingInline = !!content.querySelector('.editor:not([data-saving])');
+    if (!force && (key === pageKey || typing || editingInline)) return;
     pageKey = key;
     const scroll = content.scrollTop; disposePage(); content.replaceChildren(); current.render(content, next); content.scrollTop = scroll;
   }
-  document.addEventListener('focusout', () => setTimeout(() => { if (page !== 'chat' && !content.contains(document.activeElement)) render(snapshot); }, 0));
+  document.addEventListener('focusout', () => setTimeout(() => { if (page !== 'chat' && !content.contains(document.activeElement) && !content.querySelector('.editor:not([data-saving])')) render(snapshot); }, 0));
   const requested = new URLSearchParams(location.search).get('page');
   go(pages.some(p => p.id === requested) ? requested! : 'chat');
   render(initial, true);
@@ -424,10 +431,12 @@ function personaFace(host: HTMLElement, p: { name: string; avatar?: string }, s:
 // ---- 任务 ----
 /** ?task= opens one record (previews only). */
 let openTaskId = new URLSearchParams(location.search).get('task') || '';
+let latestSnapshot: AppSnapshot | undefined;
 const taskDetails = new Map<string, TaskRunDetail>();
 const STATUS_TEXT = { done: '完成', failed: '未完成', cancelled: '已取消' } as const;
 const duration = (ms: number) => ms < 60_000 ? `${Math.max(1, Math.round(ms / 1000))} 秒` : ms < 3600_000 ? `${Math.round(ms / 60_000)} 分钟` : `${(ms / 3600_000).toFixed(1)} 小时`;
 function renderTasks(root: HTMLElement, s: AppSnapshot) {
+  latestSnapshot = s;
   const running = s.agent?.running || [], history = s.taskHistory || [];
   const now = section('正在进行', running.length ? `${running.length} 个任务在跑，聊天不受影响。` : '现在没有任务在跑。在聊天里让 TA 去做，或输入「/任务 要做的事」。');
   for (const r of running) {
@@ -440,7 +449,7 @@ function renderTasks(root: HTMLElement, s: AppSnapshot) {
   const past = section('做过的事', history.length ? `最近 ${history.length} 件（本机保存，最多 100 件）。点开看详情；撤销只恢复通过文件工具改过的文件，命令行造成的改动撤不回。` : '还没有做过任务。', ...(history.length ? [clear] : []));
   for (const t of history) {
     const item = el('div', 'task-item'); item.classList.toggle('open', t.id === openTaskId);
-    const head = button('', () => { openTaskId = openTaskId === t.id ? '' : t.id; root.replaceChildren(); renderTasks(root, s); }, 'task-head');
+    const head = button('', () => { openTaskId = openTaskId === t.id ? '' : t.id; root.replaceChildren(); renderTasks(root, latestSnapshot || s); }, 'task-head');
     const main = el('div', 'row-main');
     const meta = [clockText(t.completedAt), duration(t.durationMs), `${t.toolCount} 次工具`, ...(t.changedFiles ? [`改了 ${t.changedFiles} 个文件${t.undone ? '（已撤销）' : ''}`] : [])];
     main.append(el('strong', '', t.task), el('small', 'row-meta', meta.join(' · ')));
@@ -456,7 +465,7 @@ function taskBody(t: TaskRunView, root: HTMLElement, s: AppSnapshot) {
   const detail = taskDetails.get(t.id);
   if (!detail || detail.undone !== t.undone) {
     body.append(el('p', 'hint', '读取中…'));
-    void command({ type: 'agent.task', id: t.id }, true).then(r => { if (r.ok && r.data) { taskDetails.set(t.id, r.data as TaskRunDetail); if (openTaskId === t.id) { root.replaceChildren(); renderTasks(root, s); } } else body.replaceChildren(el('p', 'hint', r.error || '没找到这条记录。')); });
+    void command({ type: 'agent.task', id: t.id }, true).then(r => { if (r.ok && r.data) { taskDetails.set(t.id, r.data as TaskRunDetail); if (openTaskId === t.id && root.isConnected) { root.replaceChildren(); renderTasks(root, latestSnapshot || s); } } else body.replaceChildren(el('p', 'hint', r.error || '没找到这条记录。')); });
     return body;
   }
   const full = el('div', 'task-full'); full.append(el('small', 'row-meta', '交代的任务'), el('p', 'task-text', detail.task));
@@ -836,7 +845,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
 }
 
 function renderMemories(root: HTMLElement, s: AppSnapshot) {
-  root.append(profileSection(s), researchSection(s));
+  root.append(profileSection(s), historySection(), researchSection(s));
   const add = section('让 TA 记住一件事', '写下来的事会成为 TA 的长期记忆；不确定的事 TA 不会当真。');
   const form = el('form', 'inline-form'); const area = el('textarea'); area.rows = 2; area.maxLength = 1500; area.placeholder = '有一件事，希望 TA 记住…'; const save = el('button', 'btn primary', '记住'); save.type = 'submit'; form.append(area, save);
   form.onsubmit = async event => { event.preventDefault(); if (area.value.trim() && (await command({ type: 'memory.remember', text: area.value.trim() })).ok) area.value = ''; };
@@ -884,11 +893,15 @@ function researchSection(s: AppSnapshot) {
   const box = section('TA 在研究你喜欢的东西', 'TA 会从下面这些渠道慢慢了解你的日常，整理出你的兴趣，再从不同角度、不同网站去查新鲜事，攒成笔记；聊天时会自然提起，你不在电脑前时会合成一份小报发到微信。', ...(r && !r.blocked ? [run] : []));
   box.classList.add('research');
   box.append(field('主动研究', toggle(s.settings.researchEnabled !== false, v => void settings({ researchEnabled: v })), '需要沙箱允许联网；每天最多研究 4 次，用后台额度，不打扰聊天'));
+  box.append(field('深度访问', toggle(s.settings.researchDeepAccess === true, v => {
+    if (v && !confirm('打开深度访问？\n\nTA 和助手能看到：\n· 这台电脑上各浏览器的历史、书签和搜索词\n· 文件名，以及你的文本文件内容\n· 已安装的软件和 Steam 游戏\n这些内容会发给你配置的模型接口（密钥类文字会先打码）。\n\n始终碰不到：已存密码和登录状态、密钥文件、聊天软件的数据、你设的禁止目录。\n\n只有你能改这个开关，隐私锁定会把它关掉。')) { void command({ type: 'research.deepAccess', enabled: false }); return; }
+    void command({ type: 'research.deepAccess', enabled: v });
+  }), '让 TA 直接读这台电脑上的浏览记录、文件和软件，不用装浏览器扩展；默认关闭'));
   if (!r) return box;
   if (r.blocked) box.append(notice(r.blocked, 'warn'));
   // channels
   const ch = el('div', 'research-channels');
-  const hint: Record<string, string> = { apps: '打开「隐私与沙箱 → 桌面观察」后才有', browser: '连上浏览器扩展并打开桌面观察后才有', manual: '在下面加' };
+  const hint: Record<string, string> = { apps: '打开「隐私与沙箱 → 桌面观察」后才有', browser: '打开上面的深度访问，或连上浏览器扩展', files: '打开上面的深度访问后才有', software: '打开上面的深度访问后才有', manual: '在下面加' };
   for (const c of r.channels) { const chip = el('span', `channel${c.count ? ' on' : ''}`); chip.append(el('strong', '', c.label), el('small', '', c.count ? `${c.count}` : hint[c.id] || '暂时没有')); ch.append(chip); }
   box.append(el('small', 'row-meta', 'TA 了解你的渠道'), ch);
   if (r.daily?.summary) { const d = el('div', 'research-daily'); d.append(el('small', 'row-meta', 'TA 理解的你的日常'), el('p', '', r.daily.summary)); if (r.daily.focus.length) { const chips = el('div', 'chips'); for (const f of r.daily.focus) chips.append(el('span', 'pill', f)); d.append(chips); } box.append(d); }
@@ -898,7 +911,7 @@ function researchSection(s: AppSnapshot) {
     const row = el('div', `interest${i.pinned ? ' pinned' : ''}`), main = el('div', 'row-main');
     const head = el('div', 'interest-head'); head.append(el('strong', '', i.topic), el('span', 'weight', '●'.repeat(Math.max(1, Math.min(5, i.weight)))));
     const src = el('div', 'chips'); for (const c of i.sources) src.append(el('span', 'pill', r.channels.find(x => x.id === c)?.label || c));
-    main.append(head, el('small', 'row-meta', `${i.why}${i.lastResearchedAt ? ` · 上次研究 ${relativeTime(i.lastResearchedAt)}` : ' · 还没研究'}`), src);
+    main.append(head, el('small', 'row-meta', `${i.why}${i.restUntil ? ' · 你最近没兴趣，先歇两周' : i.lastResearchedAt ? ` · 上次研究 ${relativeTime(i.lastResearchedAt)}` : ' · 还没研究'}`), src);
     const acts = el('div', 'row-actions');
     acts.append(button(i.pinned ? '取消置顶' : '置顶', () => void command({ type: 'research.pinInterest', id: i.id, pinned: !i.pinned }), 'btn ghost small'), button('不用研究', async () => { if (confirm(`不再研究「${i.topic}」？之后也不会再加回来。`)) await command({ type: 'research.removeInterest', id: i.id }); }, 'btn ghost small'));
     row.append(main, acts); list.append(row);
@@ -915,12 +928,64 @@ function researchSection(s: AppSnapshot) {
       const card = el('div', `finding${f.rating === 'down' ? ' down' : ''}`);
       const head = el('div', 'finding-head'); head.append(el('span', 'pill accent', f.topic), el('strong', '', f.title));
       const src = el('div', 'finding-sources'); for (const x of f.sources) src.append(el('small', 'selectable-text', `${x.title || ''} ${x.url}`.trim()));
-      const meta = el('small', 'row-meta', `${f.angle} · 可信度 ${'★'.repeat(f.confidence)}${'☆'.repeat(5 - f.confidence)} · ${relativeTime(new Date(f.at).toISOString())}${f.sharedAt ? ' · 已经跟你说过' : ''}`);
+      const meta = el('small', 'row-meta', `${f.angle} · 可信度 ${'★'.repeat(f.confidence)}${'☆'.repeat(5 - f.confidence)} · ${relativeTime(new Date(f.at).toISOString())}${f.reaction === 'replied' ? ' · 你回应了' : f.reaction === 'ignored' ? ' · 你没接话' : f.reaction === 'rejected' ? ' · 你说不感兴趣' : f.sharedAt ? ' · 已经跟你说过' : ''}`);
       const acts = el('div', 'row'); acts.append(button(f.rating === 'up' ? '👍 已赞' : '👍 有用', () => void command({ type: 'research.rateFinding', id: f.id, rating: 'up' }), 'btn ghost small'), button('👎 不感兴趣', () => void command({ type: 'research.rateFinding', id: f.id, rating: 'down' }), 'btn ghost small'));
       card.append(head, el('p', '', f.summary), ...(f.why ? [el('small', 'hint', f.why)] : []), src, meta, acts); fl.append(card);
     }
     box.append(el('small', 'row-meta', 'TA 研究到的'), fl);
   }
+  return box;
+}
+
+/** Everything kept on this computer, searchable: chat, what helpers looked up, tasks, daily archives. */
+function historySection() {
+  const box = section('翻翻以前', '聊天原话（含微信）、TA 查过的资料、执行过的任务、每日档案都存在这台电脑上，TA 随时能查，你也可以在这里搜。');
+  box.classList.add('history');
+  const labels: Record<HistoryHit['kind'], string> = { chat: '聊天', brief: '查过的资料', task: '任务', archive: '档案' };
+  const scopes: [HistoryScope, string][] = [['all', '全部'], ['chat', '聊天'], ['brief', '查过的资料'], ['task', '任务'], ['archive', '每日档案']];
+  let scope: HistoryScope = 'brief';
+  const form = el('form', 'inline-form'), input = el('input'); input.maxLength = 200; input.placeholder = '搜点什么，比如“上次说的那家店”';
+  const go = el('button', 'btn primary', '搜索'); go.type = 'submit';
+  const list = el('div', 'history-list');
+  const open = async (hit: HistoryHit, row: HTMLElement) => {
+    const old = row.querySelector('.history-detail'); if (old) { old.remove(); return; }
+    const r = await command({ type: 'history.read', id: hit.id }); if (!r.ok) return;
+    const d = r.data as { messages?: { who: string; text: string; hit?: boolean }[]; gist?: string; points?: string[]; sources?: { title: string; url: string }[]; summary?: string; task?: string; highlights?: string[] };
+    const body = el('div', 'history-detail');
+    if (d.messages) for (const m of d.messages) { const line = el('p', m.hit ? 'hit' : ''); line.append(el('strong', '', `${m.who}：`), document.createTextNode(m.text)); body.append(line); }
+    else { if (d.task) body.append(el('p', '', d.task)); for (const t of [d.gist, d.summary]) if (t) body.append(el('p', '', t)); for (const t of [...(d.points || []), ...(d.highlights || [])]) body.append(el('p', '', `· ${t}`)); for (const x of d.sources || []) body.append(el('small', 'selectable-text', `${x.title || ''} ${x.url}`.trim())); }
+    row.append(body);
+  };
+  const run = async () => {
+    const r = await command({ type: 'history.search', query: input.value.trim(), scope }, true);
+    list.replaceChildren();
+    const hits = r.ok ? r.data as HistoryHit[] : [];
+    for (const hit of hits) {
+      const row = el('div', 'history-hit'), head = el('button', 'history-head'); head.type = 'button';
+      head.append(el('span', 'pill', hit.channel === 'wechat' ? '微信' : labels[hit.kind]), el('strong', '', hit.title || hit.who || ''), el('small', 'row-meta', relativeTime(hit.at)));
+      head.onclick = () => void open(hit, row);
+      row.append(head, el('p', 'history-snippet', hit.snippet)); list.append(row);
+    }
+    if (!hits.length) list.append(el('p', 'hint', input.value.trim() ? '没有搜到。换个说法试试。' : scope === 'chat' ? '输入关键词来搜聊天记录。' : '这里还是空的。'));
+  };
+  form.append(input, select(scope, scopes, v => { scope = v; void run(); }), go);
+  form.onsubmit = event => { event.preventDefault(); void run(); };
+  box.append(form, list); void run();
+  return box;
+}
+
+/** Tokens by what spent them: today, and the last week as one line each. */
+function usageSection(s: AppSnapshot) {
+  const box = section('用量', '按模型接口报告的 token 数统计，只算到“用了多少”，价格以你的服务商为准。');
+  const labels: [keyof NonNullable<AppSnapshot['usage']>['today'], string][] = [['chat', '聊天'], ['proactive', '主动开口'], ['helper', '并行助手'], ['research', '主动研究'], ['executor', '执行任务'], ['upkeep', '记忆与整理']];
+  const u = s.usage, today = u?.today || {}, total = Object.values(today).reduce((n, v) => n + (v || 0), 0);
+  if (!total) { box.append(el('p', 'hint', '今天还没有用量。')); }
+  else {
+    const list = el('div', 'usage-list');
+    for (const [key, label] of labels) { const n = today[key] || 0; if (!n) continue; const row = el('div', 'usage-row'), bar = el('span', 'usage-bar'), fill = el('i'); fill.style.width = `${Math.max(2, Math.round(n / total * 100))}%`; bar.append(fill); row.append(el('span', '', label), bar, el('small', 'row-meta', `${n.toLocaleString()} · ${Math.round(n / total * 100)}%`)); list.append(row); }
+    box.append(el('strong', '', `今天 ${total.toLocaleString()} tokens`), list);
+  }
+  if ((u?.days.length || 0) > 1) box.append(el('small', 'row-meta', `最近 7 天：${u!.days.map(d => `${d.day.slice(5)} ${Math.round(d.total / 1000)}k`).join(' · ')}`));
   return box;
 }
 
@@ -934,11 +999,14 @@ function profileSection(s: AppSnapshot) {
     const quote = el('blockquote', '', s.portrait.text);
     const meta = el('small', 'row-meta', `${s.portrait.userEdited ? '你改写过 · ' : 'TA 每晚整理档案时更新 · '}${clockText(s.portrait.updatedAt || new Date().toISOString())}`);
     const actions = el('div', 'row wrap');
-    actions.append(button('改写', () => {
-      const editor = el('textarea'); editor.value = s.portrait!.text; editor.maxLength = 600; editor.rows = 4;
-      const ok = button('保存', async () => { if (editor.value.trim()) { const r = await command({ type: 'portrait.update', text: editor.value.trim() }); if (r.ok) toast('TA 之后会以你写的为准。'); } }, 'btn primary small');
-      quote.replaceWith(editor); actions.replaceChildren(ok); editor.focus();
-    }, 'btn ghost small'), button('清除', async () => { if (confirm('清除 TA 对你的整体印象？之后每晚整理档案时会重新慢慢形成。')) await command({ type: 'portrait.clear' }); }, 'btn ghost small'));
+    const editBtn = button('改写', () => {
+      const editor = el('textarea', 'editor'); editor.value = s.portrait!.text; editor.maxLength = 600; editor.rows = 4;
+      const ok = button('保存', async () => { if (editor.value.trim()) { const r = await command({ type: 'portrait.update', text: editor.value.trim() }); if (r.ok) { toast('TA 之后会以你写的为准。'); quote.textContent = editor.value.trim(); editor.replaceWith(quote); actions.replaceChildren(editBtn, clearBtn); } } }, 'btn primary small');
+      const cancel = button('取消', () => { editor.replaceWith(quote); actions.replaceChildren(editBtn, clearBtn); }, 'btn ghost small');
+      quote.replaceWith(editor); actions.replaceChildren(ok, cancel); editor.focus();
+    }, 'btn ghost small');
+    const clearBtn = button('清除', async () => { if (confirm('清除 TA 对你的整体印象？之后每晚整理档案时会重新慢慢形成。')) await command({ type: 'portrait.clear' }); }, 'btn ghost small');
+    actions.append(editBtn, clearBtn);
     imp.append(el('small', 'row-meta', 'TA 对你的整体印象'), quote, meta, actions);
   } else imp.append(el('small', 'row-meta', 'TA 对你的整体印象'), el('p', 'hint', '还没形成。每天 0 点整理前一天的档案时，TA 会慢慢写下对你的印象。'));
   // recent focus
@@ -1092,6 +1160,7 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   tts.append(tform);
   const stt = voiceInputSection(s);
   const wx = wechatSection(s);
+  const usage = usageSection(s);
   const agent = section('本机执行器', `${27 + (s.agent?.mcp || []).reduce((n, m) => n + m.tools, 0)} 个工具：文件读写与多文件补丁、搜索、Shell、网页搜索与读网页、子代理${s.agent?.mcp?.length ? '、MCP' : ''}；会读取工作目录里的 AGENTS.md，长任务自动压缩上下文，改动可撤销。当前沙箱：${({ strict: '严格', standard: '标准', open: '宽松', full: '完全放开' })[s.settings.sandbox?.level || 'standard']}，可在「隐私与沙箱」调整。`);
   const aform = el('form', 'form-grid');
   const cwd = el('input'); cwd.value = s.agent?.cwd || '';
@@ -1162,5 +1231,5 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   const arow = el('div', 'row wrap'); arow.append(button('导出相处存档', () => void command({ type: 'app.export' }), 'btn ghost'), button('恢复存档…', () => void command({ type: 'app.import' }), 'btn ghost'));
   archive.append(arow);
   const thanks = section('致谢', '特别鸣谢：Gemini4argon · opus5.5 · gpt-Astra');
-  root.append(model, wx, tts, stt, agent, mcp, archive, thanks);
+  root.append(model, usage, wx, tts, stt, agent, mcp, archive, thanks);
 }

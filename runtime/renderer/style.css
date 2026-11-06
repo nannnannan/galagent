@@ -630,3 +630,15 @@ body.not-visible * { animation-play-state: paused !important; }
 .pet-stage.charging .pet-sprite { filter: drop-shadow(0 0 calc(var(--charge, 0) * 10px) rgba(255, 215, 94, var(--charge, 0))) brightness(calc(1 + var(--charge, 0) * .12)); animation: charge-shake .09s linear infinite; --amp: calc(var(--charge, 0) * 1.6px); }
 .pet-stage.charged .pet-sprite { filter: drop-shadow(0 0 10px #ffd75e) drop-shadow(0 0 3px #fff6c9) brightness(1.12); --amp: 1.8px; }
 @keyframes charge-shake { 25% { transform: translate(var(--amp), 0); } 75% { transform: translate(calc(var(--amp) * -1), 0); } }
+
+/* 翻翻以前 + 用量 */
+.history-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.history-hit { padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+.history-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.history-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-snippet { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); }
+.history-detail { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); font-size: var(--fs-sm); user-select: text; }
+.history-detail p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; } .history-detail p.hit { color: var(--accent-text); }
+.usage-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.usage-row { display: grid; grid-template-columns: 84px 1fr 130px; align-items: center; gap: 10px; font-size: var(--fs-sm); }
+.usage-bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; } .usage-bar i { display: block; height: 100%; background: var(--accent); }

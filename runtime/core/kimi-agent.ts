@@ -3,6 +3,9 @@ import {existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {realpath,stat} from 'node:fs/promises';
+import {safeChildEnv} from './safe-env';
+/** Kimi Code is the executor itself: it may need its own login key from the environment; every other secret stays out. */
+const kimiEnv=()=>({...safeChildEnv(),...Object.fromEntries(['KIMI_API_KEY','MOONSHOT_API_KEY','KIMI_BASE_URL'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]))});
 
 export type AgentResult={summary:string;stopReason:string;sessionId:string;tools:{id:string;title:string;status:string}[];/** Files the run changed through checked writes (undoable). */changedFiles?:string[];runId?:string};
 export type AgentRunner={run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void,options?:{fresh?:boolean}):Promise<AgentResult>;undoLast?():Promise<{runId:string;label:string;restored:string[];conflicts:string[];skipped:string[]}>;undoRun?(runId:string):Promise<{runId:string;label:string;restored:string[];conflicts:string[];skipped:string[]}>;probe():Promise<{name:string;version:string}>;close():void;tick?(now?:number):void;cancelAll?():void};
@@ -39,12 +42,16 @@ export class KimiCodeAgent implements AgentRunner {
   async probe(){
     if(this.info&&this.child)return this.info;
     if(!existsSync(this.executable))throw new Error('未找到Kimi Code，请配置本机kimi.exe路径');
-    const child=spawn(this.executable,this.launchArgs,{windowsHide:true,stdio:'pipe',shell:false});this.child=child;this.buffer='';
+    const child=spawn(this.executable,this.launchArgs,{env:kimiEnv(),windowsHide:true,stdio:'pipe',shell:false});this.child=child;this.buffer='';
     child.stdout.setEncoding('utf8');child.stdout.on('data',chunk=>{if(this.child===child)this.receive(chunk);});child.stderr.resume();
     child.once('error',()=>{if(this.child===child){this.fail('无法启动本机Kimi Code');this.child=undefined;this.info=undefined;}});
     child.once('exit',()=>{if(this.child===child){this.fail('Kimi Code进程已退出');this.child=undefined;this.info=undefined;}});
-    const response=await this.rpc('initialize',{protocolVersion:1,clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false},clientInfo:{name:'GalAgent',version:'0.1.0'}});
-    this.info={name:response.agentInfo?.name||'Kimi Code',version:response.agentInfo?.version||'unknown'};return this.info;
+    try{
+      const response=await this.rpc('initialize',{protocolVersion:1,clientCapabilities:{fs:{readTextFile:false,writeTextFile:false},terminal:false},clientInfo:{name:'GalAgent',version:'0.1.0'}});
+      this.info={name:response.agentInfo?.name||'Kimi Code',version:response.agentInfo?.version||'unknown'};return this.info;
+    }catch(e){
+      this.close();throw e;
+    }
   }
   async run(task:string,cwd:string,signal:AbortSignal,onProgress?:(count:number)=>void):Promise<AgentResult>{
     if(typeof task!=='string'||!task.trim()||task.length>12000)throw new Error('执行任务应为1至12000字');

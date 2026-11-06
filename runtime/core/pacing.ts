@@ -40,7 +40,9 @@ const adaptive = (topics: InitiativeTopic[]) => topics.filter(t => !EXEMPT_TOPIC
 
 /** TA 刚主动说了一句话（真的说出口了才记）。 */
 export function noteInitiative(ledger: PacingLedger, topics: InitiativeTopic[], at: number): PacingLedger {
-  const recent = [...ledger.recent, { at, topics: [...new Set(topics)], answered: null }].slice(-RECENT);
+  const kept = adaptive([...new Set(topics)]);
+  if (!kept.length) return ledger;
+  const recent = [...ledger.recent, { at, topics: kept, answered: null }].slice(-RECENT);
   return { ...ledger, recent };
 }
 
@@ -59,7 +61,8 @@ export function noteUserReply(ledger: PacingLedger, at: number): PacingLedger {
 export function noteWelcome(ledger: PacingLedger, topics: InitiativeTopic[]): PacingLedger {
   const next = { ...ledger.topics };
   for (const t of topics) delete next[t];
-  return { ...ledger, topics: next };
+  const recent = ledger.recent.map(e => e.answered === null && e.topics.some(t => topics.includes(t)) ? { ...e, answered: true } : e);
+  return { ...ledger, recent, topics: next };
 }
 
 /** 过了回应窗口还没人理的，记为冷落；同一话题连续冷落达到阈值后按 2h、4h、8h… 退避，最长 3 天。 */

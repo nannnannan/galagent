@@ -31,19 +31,23 @@ async function toWav(blob: Blob): Promise<Uint8Array> {
 export function attachVoice(button: HTMLButtonElement, target: HTMLTextAreaElement | HTMLInputElement, opts: { onState?: (state: 'idle' | 'recording' | 'working') => void } = {}) {
   button.type = 'button'; button.classList.add('mic'); button.setAttribute('aria-label', '按住说话'); button.title = '按住说话，松开识别（最长 60 秒）';
   if (!button.querySelector('svg')) button.append(svgIcon('mic', 18)!);
-  let stream: MediaStream | undefined, recorder: MediaRecorder | undefined, chunks: Blob[] = [], startedAt = 0, limit: ReturnType<typeof setTimeout> | undefined, tick: ReturnType<typeof setInterval> | undefined, busy = false;
+  let stream: MediaStream | undefined, recorder: MediaRecorder | undefined, chunks: Blob[] = [], startedAt = 0, limit: ReturnType<typeof setTimeout> | undefined, tick: ReturnType<typeof setInterval> | undefined, busy = false, holding = false, opening = false;
   const set = (state: 'idle' | 'recording' | 'working') => { button.dataset.state = state; button.classList.toggle('recording', state === 'recording'); button.classList.toggle('working', state === 'working'); opts.onState?.(state); };
   const release = () => { clearTimeout(limit); clearInterval(tick); for (const t of stream?.getTracks() || []) t.stop(); stream = undefined; button.style.removeProperty('--elapsed'); };
   const start = async () => {
-    if (recorder || busy) return;
+    if (recorder || busy || opening) return;
+    holding = true; opening = true;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false }); }
-    catch { toast('打不开麦克风：请在「连接 → 语音输入」里打开按住说话，并允许系统麦克风权限。', 'error'); release(); return; }
+    catch { opening = false; holding = false; toast('打不开麦克风：请在「连接 → 语音输入」里打开按住说话，并允许系统麦克风权限。', 'error'); release(); return; }
+    opening = false;
+    if (!holding) { release(); return; }
     chunks = []; recorder = new MediaRecorder(stream); recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     recorder.start(); startedAt = performance.now(); set('recording');
     tick = setInterval(() => button.style.setProperty('--elapsed', `"${Math.floor((performance.now() - startedAt) / 1000)}s"`), 250);
     limit = setTimeout(() => void stop(), MAX_SECONDS * 1000);
   };
   const stop = async () => {
+    holding = false;
     const r = recorder; if (!r) return; recorder = undefined;
     const held = performance.now() - startedAt;
     const done = new Promise<void>(resolve => { r.onstop = () => resolve(); });

@@ -14,9 +14,10 @@ function inline(escaped: string): string {
   const tokens: string[] = [], codes: string[] = [];
   const token = (html: string) => `\u0000${tokens.push(html) - 1}\u0000`;
   const raw = (text: string) => text.replace(/\u0001(\d+)\u0001/g, (_, i: string) => `\`${codes[Number(i)]}\``);
-  let out = escaped.replace(/`([^`\n]+)`/g, (_, code: string) => { codes.push(code); return `\u0001${codes.length - 1}\u0001`; });
-  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, text: string, url: string) => token(`<span class="md-link" title="${raw(url)}">${emphasis(raw(text))}</span>`));
-  out = emphasis(out).replace(/\u0001(\d+)\u0001/g, (_, i: string) => `<code>${codes[Number(i)]}</code>`);
+  const code = (text: string) => text.replace(/\u0001(\d+)\u0001/g, (_, i: string) => `<code>${codes[Number(i)]}</code>`);
+  let out = escaped.replace(/`([^`\n]+)`/g, (_, c: string) => { codes.push(c); return `\u0001${codes.length - 1}\u0001`; });
+  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_, text: string, url: string) => token(`<span class="md-link" title="${raw(url)}">${code(emphasis(text))}</span>`));
+  out = code(emphasis(out));
   return out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => tokens[Number(i)]);
 }
 

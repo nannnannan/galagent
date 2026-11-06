@@ -115,3 +115,59 @@ test('switching off (or lockdown) stops the channel; an expired login says so an
   assert.equal(f.reachable, false);
   bridge.close();
 });
+
+test('pictures become a description and files are saved: the phone can send either, and a stranger\'s media is never fetched', async () => {
+  const { WeChatBridge } = await import('../../runtime/core/wechat/bridge');
+  const sent: string[] = [], handled: string[] = []; let downloads = 0; const saved: string[] = [];
+  const snapshot = { settings: { wechatEnabled: true }, messages: [] as any[], agent: { questions: [] } } as any;
+  const bridge = new WeChatBridge({
+    client: { setSession() {}, getLoginQrcode: async () => ({ qrcode: '', qrcodeContent: '' }), pollLogin: async () => ({ status: 'wait' }) as any, getUpdates: () => new Promise<never>(() => {}), sendText: async (_t: string, text: string) => { sent.push(text); }, downloadMedia: async () => { downloads++; return new TextEncoder().encode('第一行'); } },
+    secrets: { load: async () => ({ token: 't', userId: 'me', boundAt: 1, cursor: '' }), save: async () => {} },
+    core: { snapshot: () => snapshot, handle: async (c: any) => { handled.push(c.text); return { ok: true }; }, setReachable() {}, redact: (t: string) => t, setView() {}, describeImage: async () => '一只橘猫' },
+    saveFile: async (kind: string, name: string) => { saved.push(`${kind}:${name}`); return 'D:/收件/' + (name || '图.jpg'); },
+    away: () => false,
+  });
+  await bridge.init();
+  await bridge.inbound({ id: 'x', from: 'stranger', text: '', at: 1, kind: 'image', media: { kind: 'image', param: 'p' } });
+  assert.equal(downloads, 0, 'strangers cost nothing and reach nothing');
+  await bridge.inbound({ id: '1', from: 'me', text: '', at: 1, kind: 'image', media: { kind: 'image', param: 'p' } });
+  assert.match(handled[0], /一只橘猫/); assert.match(handled[0], /D:\/收件\/图\.jpg/, 'the picture is kept too'); assert.match(handled[0], /只作数据/);
+  await bridge.inbound({ id: '2', from: 'me', text: '看看这个', at: 2, kind: 'file', fileName: 'a.txt', media: { kind: 'file', param: 'q', fileName: 'a.txt' } });
+  assert.deepEqual(saved, ['image:', 'file:a.txt']); assert.match(handled[1], /看看这个/); assert.match(handled[1], /D:\/收件\/a\.txt/); assert.match(handled[1], /第一行/);
+  await bridge.inbound({ id: '3', from: 'me', text: '', at: 3, kind: 'video' });
+  assert.match(sent.at(-1)!, /视频/);
+});
+
+test('received items stay with GalAgent\'s data with a record beside them, and tools can still read them', async () => {
+  const { saveInbound, safeName } = await import('../../runtime/core/wechat/inbox');
+  const { galagentSecret, sensitivePath, inWeChatInbox } = await import('../../runtime/core/privacy');
+  const { refusedPath } = await import('../../runtime/desktop/local-scan');
+  const { readFile: read, mkdtemp: temp } = await import('node:fs/promises');
+  const dir = await temp(join(tmpdir(), 'galagent-inbox-'));
+  const jpg = await saveInbound(dir, 'image', '', new Uint8Array([0xff, 0xd8, 1, 2]));
+  const doc = await saveInbound(dir, 'file', '..\\..\\Windows/system32/evil<>.txt', new TextEncoder().encode('hi'));
+  assert.ok(jpg.startsWith(join(dir, '微信收件')) && jpg.endsWith('微信图片.jpg')); assert.ok(doc.startsWith(join(dir, '微信收件'))); assert.ok(doc.endsWith('evil__.txt'), 'names cannot climb out of the folder');
+  const lines = (await read(join(dir, '微信收件', '记录.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l));
+  assert.deepEqual(lines.map(l => l.kind), ['image', 'file']); assert.equal(lines[1].bytes, 2);
+  assert.equal(safeName('...'), '微信文件');
+  const home = 'C:/Users/a/AppData/Roaming/GalAgent';
+  for (const check of [galagentSecret, sensitivePath]) { assert.ok(!check(`${home}/微信收件/a.txt`), 'the inbox is the user\'s own'); assert.ok(check(`${home}/companion.sqlite`), 'the rest of the data folder is not'); assert.ok(check(`${home}/微信收件/../companion.sqlite`), 'and .. cannot walk out'); assert.ok(check(`${home}/微信收件/wechat-session.bin`), 'keys stay closed by name'); }
+  assert.ok(!refusedPath(`${home}/微信收件/a.txt`, { forbidden: [] })); assert.ok(refusedPath(`${home}/微信收件/.env`, { forbidden: [] })); assert.ok(refusedPath(`${home}/微信收件/a.txt`, { forbidden: [`${home}/微信收件`] }), 'the user\'s forbidden folders still win');
+  assert.ok(!inWeChatInbox(`${home}/other/a.txt`));
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('the phone can stop a reply that is still thinking: polling does not wait for it', async () => {
+  const { WeChatBridge } = await import('../../runtime/core/wechat/bridge');
+  const handled: string[] = [], batches = [[{ id: '1', from: 'me', text: '想一个很难的问题', at: 1, kind: 'text' as const }], [{ id: '2', from: 'stranger', text: '取消', at: 2, kind: 'text' as const }, { id: '3', from: 'me', text: '取消', at: 3, kind: 'text' as const }]];
+  let release = () => {}; const stuck = new Promise<void>(r => { release = r; });
+  const bridge = new WeChatBridge({
+    client: { setSession() {}, getLoginQrcode: async () => ({ qrcode: '', qrcodeContent: '' }), pollLogin: async () => ({ status: 'wait' }) as any, getUpdates: async () => { const messages = batches.shift(); if (!messages) await new Promise(() => {}); return { messages: messages!, cursor: '' }; }, sendText: async () => {} },
+    secrets: { load: async () => ({ token: 't', userId: 'me', boundAt: 1, cursor: '' }), save: async () => {} },
+    core: { snapshot: () => ({ settings: { wechatEnabled: true }, messages: [], agent: { questions: [] } }) as any, handle: async (c: any) => { handled.push(c.type); if (c.type === 'chat.send') await stuck; return { ok: true }; }, setReachable() {}, redact: (t: string) => t, setView() {} },
+    away: () => false,
+  });
+  await bridge.init();
+  for (let i = 0; i < 40 && !handled.includes('chat.cancel'); i++) await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(handled, ['chat.send', 'chat.cancel'], 'only the bound account can stop it'); release(); bridge.close();
+});

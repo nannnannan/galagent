@@ -11,7 +11,7 @@ parentPort.on('message', async ({ id, text, query, op }) => {
         env.cacheDir = workerData.cacheDir;
         env.allowRemoteModels = !workerData.modelPath;
         return pipeline('feature-extraction', workerData.modelPath || 'Xenova/multilingual-e5-small', { dtype: 'q8', device: 'cpu', session_options: { intraOpNumThreads: workerData.threads || 2, interOpNumThreads: 1, executionMode: 'sequential' } });
-      })();
+      })().catch(err => { extractorPromise = undefined; throw err; });
     const extractor = await extractorPromise;
     const output = await extractor(`${query ? 'query' : 'passage'}: ${text}`, { pooling: 'mean', normalize: true });
     parentPort.postMessage({ id, values: Array.from(output.data) });

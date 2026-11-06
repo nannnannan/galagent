@@ -27,6 +27,7 @@ export const freshVitality = (now: number): Vitality => ({ energy: circadianEner
 
 /** Advances the state to `now`. `present`: the user is at the computer and the character may expect attention. */
 export function advance(v: Vitality, now: number, present: boolean): Vitality {
+  if (now < v.updatedAt) return { ...v, updatedAt: now, lastTouchAt: Math.min(v.lastTouchAt, now) };
   const dt = Math.max(0, Math.min(48 * HOUR, now - v.updatedAt)) / HOUR;
   if (dt <= 0) return v;
   const next = { ...v, updatedAt: now };
@@ -35,14 +36,14 @@ export function advance(v: Vitality, now: number, present: boolean): Vitality {
   next.mood = clamp(v.mood + (BASE_MOOD - v.mood) * (1 - Math.exp(-dt / 4)));
   // Left alone while you are right there: mood sinks slowly (never below 25), recovering as soon as you come back.
   if (present && !next.asleepSince && now - v.lastTouchAt > LONELY_AFTER_MS) next.mood = clamp(Math.max(25, next.mood - 5 * dt));
-  // Sleep ends by itself in the morning.
-  if (next.asleepSince && new Date(now).getHours() >= 6 && new Date(now).getHours() < 12 && now - next.asleepSince > 4 * HOUR) { delete next.asleepSince; next.energy = clamp(next.energy + 10); }
+  // Sleep ends by itself in the morning or after a full night's rest.
+  if (next.asleepSince && ((new Date(now).getHours() >= 6 && new Date(now).getHours() < 12 && now - next.asleepSince > 4 * HOUR) || now - next.asleepSince >= 10 * HOUR)) { delete next.asleepSince; next.energy = clamp(next.energy + 10); }
   if (next.wokenAt && now - next.wokenAt > 20 * 60_000) delete next.wokenAt;
   return next;
 }
 
 export function react(v: Vitality, event: VitalityEvent, now: number): Vitality {
-  const next = { ...v, lastTouchAt: event === 'goodnight' ? v.lastTouchAt : now };
+  const next = { ...v, lastTouchAt: event === 'goodnight' || event === 'wake' ? v.lastTouchAt : now };
   const lonely = now - v.lastTouchAt > LONELY_AFTER_MS;
   switch (event) {
     // Being talked to after a long silence lifts the mood more ("finally!").
@@ -52,7 +53,7 @@ export function react(v: Vitality, event: VitalityEvent, now: number): Vitality 
     case 'drag': next.mood = clamp(v.mood + 2); next.energy = clamp(v.energy + 2); break;
     case 'poked-dizzy': next.mood = clamp(v.mood - 4); break;
     case 'goodnight': next.asleepSince = now; delete next.wokenAt; return next;
-    case 'wake': break;
+    case 'wake': if (next.asleepSince) { delete next.asleepSince; next.energy = clamp(next.energy + 10); } return next;
   }
   // Any interaction while asleep wakes the character up, groggy.
   if (next.asleepSince) { delete next.asleepSince; next.wokenAt = now; }

@@ -118,14 +118,19 @@ export class DesktopObserver {
     });
     // Drain errors without persisting script output or private process metadata.
     child.stderr?.resume();
-    child.on('error', () => { if (this.child === child) this.unavailable('helper-error'); });
-    child.once('close', () => {
-      if (this.child !== child) return;
-      const intentional = this.closing;
+    let handled = false;
+    const onDone = (isError: boolean) => {
+      if (handled || this.child !== child) return;
+      handled = true;
+      const intentional = this.closing && !isError;
       this.child = undefined; this.closing = false;
       this.clearTimers();
-      if (intentional) this.launch(); else this.failed();
-    });
+      if (intentional) this.launch(); else this.failed(isError ? 'helper-error' : 'helper-exited');
+    };
+    // 'error' without a pid means the helper never started; on a live child (e.g. a failed kill) wait for 'close'
+    // instead, so a second helper is never launched beside one that is still running.
+    child.on('error', () => { if (child.pid === undefined) onDone(true); });
+    child.once('close', () => onDone(false));
     this.watchdog = setInterval(() => {
       if (!this.closing && Date.now() - this.lastSample > 10_000 && !this.staleReported) {
         this.staleReported = true; this.unavailable('observation-stale');
@@ -133,8 +138,8 @@ export class DesktopObserver {
     }, 2000);
     this.watchdog.unref();
   }
-  private failed(): void {
-    this.unavailable('helper-exited');
+  private failed(reason = 'helper-exited'): void {
+    this.unavailable(reason);
     if (!this.active || !this.enabled) return;
     this.failures += 1;
     if (this.failures > 3) { this.unavailable('helper-retry-limit'); return; }

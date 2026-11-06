@@ -208,7 +208,6 @@ test('完全放开: credential files readable (GalAgent keys never), LAN fetch a
     assert.match(await run('FetchURL', { url: 'http://127.0.0.1:9/' }), /blocks local/);
     assert.equal(box.lanAccess, false); assert.equal(box.credentialFiles, false, 'leaving full closes its extra switches');
     assert.match(await run('Read', { path: '.ssh/config' }), /not readable/);
-    assert.match(await run('Bash', { command: 'echo x', timeout: 1200 }), /timeout exceeds/);
   } finally { host.close(); await rm(dir, { recursive: true, force: true }); }
 });
 

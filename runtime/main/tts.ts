@@ -152,30 +152,33 @@ function synthesizeWithWindowsSapi(text: string, speed = 1.0, signal?: AbortSign
       },
     );
     let out = '';
-    const abort = () => { child.kill(); resolve(null); };
+    let settled = false;
+    const finish = (val: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      resolve(val);
+    };
+    const abort = () => { try { child.stdout?.destroy(); child.kill(); } catch {} finish(null); };
     signal?.addEventListener('abort', abort, { once: true });
     if (signal?.aborted) abort();
     const timer = setTimeout(() => {
       try {
+        child.stdout?.destroy();
         child.kill();
       } catch {
         /* ignore */
       }
-      resolve(null);
+      finish(null);
     }, 8000);
     child.stdout.on('data', (chunk) => {
-      out += String(chunk);
+      if (out.length < 24 * 1024 * 1024) out += String(chunk);
     });
-    child.on('error', () => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      resolve(null);
-    });
+    child.on('error', () => finish(null));
     child.on('close', (code) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
       const trimmed = out.trim();
-      resolve(code === 0 && trimmed.length > 100 ? trimmed : null);
+      finish(code === 0 && trimmed.length > 100 ? trimmed : null);
     });
   });
 }
@@ -268,9 +271,18 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
         signal,
       });
       if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
         return { ok: false, error: `TTS 接口返回状态 ${res.status}` };
       }
+      const len = Number(res.headers.get('content-length') || 0);
+      if (len > 16 * 1024 * 1024) {
+        await res.body?.cancel().catch(() => {});
+        return { ok: false, error: 'TTS 接口返回的音频过大' };
+      }
       const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.byteLength > 16 * 1024 * 1024) {
+        return { ok: false, error: 'TTS 接口返回的音频过大' };
+      }
       if (signal.aborted) return { ok: false, error: '语音已停止' };
       if (buf.byteLength < 32) {
         return { ok: false, error: 'TTS 接口返回的音频为空' };

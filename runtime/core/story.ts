@@ -76,6 +76,16 @@ export class Story {
             if(JSON.stringify(episode)!==JSON.stringify(stored))this.store.put('episode',episode.id,episode);
         }
         for(const source of this.store.all<Source>('story-source'))if(this.store.dead(source.id))this.store.remove(source.id);
+        const rel=this.relation();
+        const keptGrants=rel.grants.filter(g=>{
+            if(g.key.startsWith('fact-source:'))return this.alive(g.key.slice('fact-source:'.length));
+            if(g.key.startsWith('reunion:'))return this.alive(g.key.slice('reunion:'.length).split(':')[0]);
+            return true;
+        });
+        if(keptGrants.length!==rel.grants.length){
+            this.store.put('state','relationship',{...rel.base,base:rel.base,grants:keptGrants});
+            this.updateRelation();
+        }
     }
     snapshot():StorySnapshot{
         const now=this.clock(),state=this.state(),remaining=state.mood.initial>0&&now>=state.mood.startedAt&&state.mood.expiresAt>now?(state.mood.expiresAt-now)/Math.max(1,state.mood.expiresAt-state.mood.startedAt):0;

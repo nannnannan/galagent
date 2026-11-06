@@ -2,7 +2,7 @@
 
 ## Windows 安装版
 
-在 GitHub Releases 下载 `GalAgent-Setup-0.4.0-x64.exe`，运行安装向导。升级沿用 `%APPDATA%/GalAgent` 存档，卸载默认保留数据。建议升级前备份存档。安装包未做可信发布者证书签名。
+在 GitHub Releases 下载 `GalAgent-Setup-0.99.0-x64.exe`，运行安装向导。升级沿用 `%APPDATA%/GalAgent` 存档，卸载默认保留数据。建议升级前备份存档。安装包未做可信发布者证书签名。
 
 Mira K3.1 Pro 需要用户自行安装并登录 Mira、运行兼容本地反代；安装包不含账号、密钥或个人存档。也可在设置中连接自己的 OpenAI 兼容接口。
 
@@ -50,7 +50,7 @@ Mira K3.1 Pro 需要用户自行安装并登录 Mira、运行兼容本地反代�
 
 ## 快速启动
 
-1. 双击「`启动 GalAgent.cmd`」（指向 `release/dual-core/win-unpacked/GalAgent.exe`，需先打包，见下）。
+1. 用安装版的桌面快捷方式，或在源码目录双击「`启动 GalAgent.cmd`」（指向 `release/win-unpacked`，需先 `npm run package`）。
 2. 右键小人 → 打开聊天 → 「连接」页填入任意 OpenAI 兼容接口（预设：Mira 本地反代、DeepSeek、Moonshot、通义千问、OpenAI、本地 Ollama）。
 3. 「角色」页挑一位角色，「小人」页挑一个形象，开始相处。
 

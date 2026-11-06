@@ -13,8 +13,6 @@ export type UpstreamCall = {
   signal: AbortSignal;
   /** Total attempts including the first; default 4. */
   attempts?: number;
-  /** Per-attempt timeout; streaming callers pass a larger one. */
-  timeoutMs?: number;
   /** Last check right before each send (e.g. the provider was not switched while queued); throwing aborts. */
   before?: () => void;
 };
@@ -41,7 +39,7 @@ export async function callUpstream(call: UpstreamCall): Promise<{ response: Resp
     let response: Response;
     try { call.before?.(); } catch (error) { release(); throw error; }
     try {
-      response = await call.fetch(call.url, { ...call.init, signal: AbortSignal.any([call.signal, AbortSignal.timeout(call.timeoutMs ?? 120_000)]) });
+      response = await call.fetch(call.url, { ...call.init, signal: call.signal });
     } catch (error) {
       release();
       if (call.signal.aborted || attempt + 1 >= attempts) throw error;
@@ -51,8 +49,7 @@ export async function callUpstream(call: UpstreamCall): Promise<{ response: Resp
     if (response.status === 429) call.pool?.penalize();
     if (RETRYABLE.has(response.status) && attempt + 1 < attempts) {
       const wait = retryAfterMs(response.headers.get('retry-after')) ?? backoffMs(attempt);
-      await response.body?.cancel().catch(() => {});
-      release();
+      try { await response.body?.cancel().catch(() => {}); } finally { release(); }
       await abortableDelay(wait, call.signal);
       continue;
     }

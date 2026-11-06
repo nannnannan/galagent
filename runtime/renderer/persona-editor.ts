@@ -367,10 +367,11 @@ export function openPersonaEditor(root: HTMLElement, s: AppSnapshot, base?: Pers
     const persona: PersonaDraft = { ...draft, name }; delete persona.card;
     // An emptied card on an existing character is cleared explicitly; otherwise an empty card is simply omitted.
     if (!isEmptyCard(cleaned)) persona.card = cleaned; else if (editable && !isEmptyCard(base?.card)) persona.card = emptyCard();
-    save.disabled = true;
+    save.disabled = true; form.dataset.saving = '1';
     const r = await command({ type: 'persona.save', ...(editable ? { id: editable } : {}), persona });
     save.disabled = false;
-    if (r.ok) { const id = (r.data as { id: string }).id; if (!editable) await command({ type: 'persona.select', id }); toast(editable ? '角色卡已更新。' : '新角色卡已保存并选中。'); }
+    if (r.ok) { form.remove(); const id = (r.data as { id: string }).id; if (!editable) await command({ type: 'persona.select', id }); toast(editable ? '角色卡已更新。' : '新角色卡已保存并选中。'); }
+    else delete form.dataset.saving;
   };
 
   form.append(head, guide, ai, questions, common, simpleHost, tavern, foot);

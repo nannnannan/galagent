@@ -39,7 +39,7 @@ Object.assign(snapshot, {
   activity: busy ? { kind: 'thinking', label: '思考中…' } : params.get('sleep') === '1' ? { kind: 'sleeping', label: '你不在，先眯一会儿' } : { kind: 'idle', label: '星野 · 星空时间', routine: '星空时间' },
   vitality: { energy: 46, mood: 81, tone: 'tired', label: '有点困' },
   pets: { catalog: builtinPixelPets.map(p => ({ id: p.id, name: p.name, description: p.description, builtin: true })), revision: 1 },
-  settings: { ...snapshot.settings, petId: params.get('pet') || '', mcpServers: [{ name: 'playwright', command: 'npx', args: ['-y', '@playwright/mcp@latest'], enabled: true }, { name: 'github', url: 'https://api.githubcopilot.com/mcp/', enabled: true, headerKeys: ['Authorization'] }], executor: { model: 'kimi-k3-coder', maxOutputTokens: 16384, maxTurns: 200 }, wechatEnabled: true, voiceInputEnabled: true, sttBaseUrl: 'https://api.siliconflow.cn/v1', sttModel: 'FunAudioLLM/SenseVoiceSmall', sttFormat: 'openai-transcriptions', sttLanguage: 'zh', sttKeySet: true, sandbox: { ...snapshot.settings.sandbox, ...(params.get('full') ? { level: 'full', fileScope: 'anywhere', shell: true, shellConfirm: false, lanAccess: true, credentialFiles: true } : {}) } },
+  settings: { ...snapshot.settings, petId: params.get('pet') || '', mcpServers: [{ name: 'playwright', command: 'npx', args: ['-y', '@playwright/mcp@0.0.84'], enabled: true }, { name: 'github', url: 'https://api.githubcopilot.com/mcp/', enabled: true, headerKeys: ['Authorization'] }], executor: { model: 'kimi-k3-coder', maxOutputTokens: 16384, maxTurns: 200 }, wechatEnabled: true, voiceInputEnabled: true, sttBaseUrl: 'https://api.siliconflow.cn/v1', sttModel: 'FunAudioLLM/SenseVoiceSmall', sttFormat: 'openai-transcriptions', sttLanguage: 'zh', sttKeySet: true, sandbox: { ...snapshot.settings.sandbox, ...(params.get('full') ? { level: 'full', fileScope: 'anywhere', shell: true, shellConfirm: false, lanAccess: true, credentialFiles: true } : {}) } },
   visual: { expression: 'pleased', action: params.get('action') || 'wave', bubble: params.get('bubble') ?? '嘿！今天也一起加油吧～要不要先喝口水？', revision: 1, intensity: 0.85 },
   stats: { conversations: 42, memories: 7, proactiveToday: 2, tokensToday: 12000 },
   bond: bond(),
@@ -66,7 +66,8 @@ Object.assign(snapshot, {
     { day: day(-3), title: '夜猫子之夜', summary: '凌晨还在赶项目，聊了几句就去睡了。', diary: '凌晨一点半，他终于说了晚安。', mood: '担心', topics: ['熬夜'], highlights: [], openThreads: ['答应以后早点睡'], messageCount: 9, createdAt: iso(-68 * 3600_000) },
   ],
   wechat: params.get('wx') === 'qr' ? { state: 'qr', qr: 'https://liteapp.weixin.qq.com/q/7GiQu1?qrcode=galagent-preview&bot_type=3' } : { state: 'connected', boundAt: iso(-3 * 86400_000), lastInboundAt: iso(-40 * 60_000), replyWindowUntil: iso(23 * 3600_000), sent: 18, received: 11 },
-  research: { enabled: true, runsToday: 2, lastPlanAt: iso(-5 * 3600_000),
+  usage: { today: { chat: 18400, proactive: 2100, helper: 9600, research: 14200, executor: 31000, upkeep: 3900 }, days: [{ day: day(-2), total: 52000 }, { day: day(-1), total: 91000 }, { day: day(0), total: 79200 }] },
+  research: { enabled: true, deepAccess: false, runsToday: 2, lastPlanAt: iso(-5 * 3600_000),
     channels: [{ id: 'chat', label: '聊天与记忆', count: 6 }, { id: 'archive', label: '每日档案', count: 3 }, { id: 'apps', label: '常用应用', count: 7 }, { id: 'browser', label: '浏览记录与书签', count: 0 }, { id: 'tasks', label: '交给 TA 的任务', count: 4 }, { id: 'schedule', label: '你设的提醒', count: 2 }, { id: 'manual', label: '你亲手加的', count: 1 }],
     daily: { summary: '工作日写代码到很晚，周末喜欢拿着胶片机出门扫街；最近在准备面试，压力有点大。', routines: ['晚睡'], focus: ['面试', '作品集'], at: iso(-5 * 3600_000) },
     interests: [
@@ -99,6 +100,8 @@ const bridge: GalAgentBridge = {
     if (command.type === 'endpoint.models') return { ok: true, data: { models: ['FunAudioLLM/SenseVoiceSmall', 'Qwen/Qwen2.5-7B-Instruct', 'deepseek-ai/DeepSeek-V3', 'fishaudio/fish-speech-1.5', 'FunAudioLLM/CosyVoice2-0.5B'] } };
     if (command.type === 'profile.rhythm') { const hours = [3, 1, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 4, 3, 4, 5, 6, 8, 10, 14, 16, 12, 7]; return { ok: true, data: { days: 22, messages: hours.reduce((a, b) => a + b, 0), hours, peak: [20, 0], lateNights: 5, weekend: 30, weekday: 84 } }; }
     if (command.type === 'memory.source') return { ok: true, data: { kind: 'message', role: 'user', text: '我还是喜欢不加糖的乌龙茶，太甜的喝不下', createdAt: iso(-86400_000) } };
+    if (command.type === 'history.search') return { ok: true, data: [{ id: 'brief:1', kind: 'brief', at: iso(-3 * 86400_000), title: '查周末杭州的摄影展', snippet: '浙江美术馆的摄影展周六开幕，票价 40 元，周一闭馆。' }, { id: 'm1', kind: 'chat', at: iso(-9 * 86400_000), who: '用户', channel: 'wechat', snippet: '上次说的那家拉面店在西湖边，下次一起去看看。' }, { id: 'task-run:1', kind: 'task', at: iso(-12 * 86400_000), title: '整理下载文件夹', snippet: '按类型分好了 214 个文件。' }] };
+    if (command.type === 'history.read') return { ok: true, data: { kind: 'brief', gist: '浙江美术馆的摄影展周六开幕，票价 40 元，周一闭馆。', points: ['地铁 1 号线可到'], sources: [{ title: '浙江美术馆', url: 'https://example.com/show' }] } };
     if (command.type === 'pet.get') return { ok: true, data: builtinPixelPets.find(p => p.id === command.id) };
     if (command.type === 'persona.generate') return { ok: true, data: { name: '阿澄', pronoun: '她', tagline: '会做饭的狼人管家，嘴硬心软。', card: { ...emptyCard(), identity: '狼人管家', base: '责任感', main: ['嘴硬', '会照顾人'], accents: ['怕打雷'] }, questions: ['她被你夸做饭好吃时，第一反应是什么动作？', '“嘴硬”在什么场合会突然失效？', '有没有一件她绝对不会替你做的事？为什么？'] } };
     return { ok: true };

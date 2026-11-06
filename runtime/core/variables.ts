@@ -17,7 +17,7 @@ const kinds: PracticeKind[] = ['conversation','expression','repair','play','plac
 const weights: Record<PracticeKind,number> = {conversation:2,expression:3,repair:2,play:2,placement:1};
 const caps: Record<PracticeKind,number> = {conversation:4,expression:3,repair:2,play:2,placement:1};
 const expressions: Expression[] = ['neutral','curious','pleased','flustered','annoyed','softened','blink'];
-const actions: PetAction[] = ['idle','nod','sway','peek','sulk','celebrate','wave','sparkle','doodle','run'];
+const actions: PetAction[] = ['idle','nod','sway','peek','sulk','celebrate','wave','sparkle','doodle','run','sleep','think','dizzy','love'];
 const day = (time:number) => new Date(time).toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'});
 const eventId = (kind: PracticeKind, ids: string[]) => createHash('sha256').update(JSON.stringify([kind,ids])).digest('hex');
 const rank = (stage: PersonaStage) => stages.indexOf(stage);

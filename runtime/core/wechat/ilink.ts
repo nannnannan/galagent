@@ -16,6 +16,10 @@
  * 服务端行为可能随时变化；这里只做协议层，不做文件读写、不存密钥、不记录消息内容或令牌。
  */
 
+import { createDecipheriv } from 'node:crypto';
+import { isIP } from 'node:net';
+import { isPrivateAddress } from '../net-guard';
+
 export const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com';
 /** 插件 package.json 顶层的 ilink_appid。 */
 export const ILINK_APP_ID = 'bot';
@@ -76,6 +80,28 @@ export function kindForCode(code: number, errmsg = ''): ILinkErrorKind {
 // 类型
 // ---------------------------------------------------------------------------
 
+/** Where a picture or file sent by the user sits on Tencent's CDN. */
+export type InboundMedia = { kind: 'image' | 'file'; param?: string; aesKey?: string; fullUrl?: string; fileName?: string };
+export const ILINK_CDN_URL = 'https://novac2c.cdn.weixin.qq.com/c2c';
+export const MEDIA_MAX_BYTES = 25 * 1024 * 1024;
+/** aes_key comes either as base64 of the 16 raw bytes, or as base64 of their hex spelling. */
+export function parseAesKey(value: string): Buffer {
+  const decoded = Buffer.from(value, 'base64');
+  if (decoded.length === 16) return decoded;
+  if (decoded.length === 32 && /^[0-9a-f]{32}$/i.test(decoded.toString('ascii'))) return Buffer.from(decoded.toString('ascii'), 'hex');
+  throw new ILinkError('protocol', 'media', '媒体密钥格式不对');
+}
+export function mediaUrl(m: InboundMedia): string {
+  if (m.fullUrl) {
+    const u = new URL(m.fullUrl);
+    // The URL comes off the wire: only Tencent's own HTTPS hosts may be fetched.
+    if (u.protocol !== 'https:' || !/(^|\.)(weixin\.qq\.com|wechat\.com)$/i.test(u.hostname)) throw new ILinkError('protocol', 'media', '媒体地址不是腾讯的');
+    return u.href;
+  }
+  if (!m.param) throw new ILinkError('protocol', 'media', '媒体没有下载地址');
+  return `${ILINK_CDN_URL}/download?encrypted_query_param=${encodeURIComponent(m.param)}`;
+}
+
 export type InboundKind = 'text' | 'image' | 'voice' | 'file' | 'video' | 'other';
 
 export interface InboundMessage {
@@ -90,6 +116,8 @@ export interface InboundMessage {
   kind: InboundKind;
   /** 文件消息的文件名（若有）。 */
   fileName?: string;
+  /** 图片或文件在腾讯 CDN 上的位置；只有绑定账号的消息才会真的去下载。 */
+  media?: InboundMedia;
 }
 
 export interface ILinkClientOptions {
@@ -227,13 +255,15 @@ const ITEM_TEXT = 1, ITEM_IMAGE = 2, ITEM_VOICE = 3, ITEM_FILE = 4, ITEM_VIDEO =
 const MESSAGE_TYPE_BOT = 2;
 const MESSAGE_STATE_FINISH = 2;
 
+interface RawMedia { encrypt_query_param?: string; aes_key?: string; full_url?: string }
 interface RawItem {
   type?: number;
   msg_id?: string;
   create_time_ms?: number;
   text_item?: { text?: string };
   voice_item?: { text?: string };
-  file_item?: { file_name?: string };
+  file_item?: { file_name?: string; media?: RawMedia };
+  image_item?: { aeskey?: string; media?: RawMedia };
 }
 interface RawMessage {
   seq?: number;
@@ -251,7 +281,8 @@ function toInbound(m: RawMessage): InboundMessage | null {
   const items = m.item_list ?? [];
   const texts: string[] = [];
   let kind: InboundKind | undefined;
-  let fileName: string | undefined;
+  let fileName: string | undefined, media: InboundMedia | undefined;
+  const ref = (kind: InboundMedia['kind'], m?: RawMedia, key?: string): InboundMedia | undefined => m && (m.encrypt_query_param || m.full_url) ? { kind, ...(m.encrypt_query_param ? { param: m.encrypt_query_param } : {}), ...(key ? { aesKey: key } : {}), ...(m.full_url ? { fullUrl: m.full_url } : {}) } : undefined;
   for (const it of items) {
     switch (it.type) {
       case ITEM_TEXT:
@@ -262,10 +293,14 @@ function toInbound(m: RawMessage): InboundMessage | null {
         if (it.voice_item?.text) texts.push(it.voice_item.text);
         if (!kind || kind === 'text') kind = 'voice';
         break;
-      case ITEM_IMAGE: if (!kind || kind === 'text') kind = 'image'; break;
+      case ITEM_IMAGE:
+        if (!kind || kind === 'text') kind = 'image';
+        media ??= ref('image', it.image_item?.media, it.image_item?.aeskey ? Buffer.from(it.image_item.aeskey, 'hex').toString('base64') : it.image_item?.media?.aes_key);
+        break;
       case ITEM_FILE:
         if (!kind || kind === 'text') kind = 'file';
         fileName ??= it.file_item?.file_name;
+        media ??= ref('file', it.file_item?.media, it.file_item?.media?.aes_key);
         break;
       case ITEM_VIDEO: if (!kind || kind === 'text') kind = 'video'; break;
       default: break;
@@ -282,6 +317,7 @@ function toInbound(m: RawMessage): InboundMessage | null {
   };
   if (m.context_token) out.contextToken = m.context_token;
   if (fileName) out.fileName = fileName;
+  if (media) out.media = fileName ? { ...media, fileName } : media;
   return out;
 }
 
@@ -320,8 +356,18 @@ export class ILinkClient {
   /** 登录确认后换上新的令牌与地址。 */
   setSession(session: { token: string; baseUrl?: string }): void {
     this.token = session.token.trim() || undefined;
-    if (session.baseUrl) this.baseUrl = session.baseUrl;
+    if (session.baseUrl) this.baseUrl = this.safeBaseUrl(session.baseUrl);
     this.typingTickets.clear();
+  }
+
+  private safeBaseUrl(raw: string): string {
+    let u: URL;
+    try { u = new URL(raw); } catch { throw new ILinkError('protocol', 'bad-url', 'iLink 地址无效'); }
+    const host = u.hostname.replace(/^\[|\]$/g, '');
+    if (u.protocol !== 'https:' || u.username || u.password || u.search || u.hash || !host || /(^|\.)localhost$/i.test(host) || (isIP(host) && isPrivateAddress(host))) {
+      throw new ILinkError('protocol', 'bad-url', `拒绝不安全的 iLink 地址 (${u.hostname})`);
+    }
+    return raw.trim().replace(/\/+$/, '');
   }
 
   get hasToken(): boolean { return Boolean(this.token); }
@@ -360,7 +406,7 @@ export class ILinkClient {
     switch (r.status) {
       case 'scaned': return { status: 'scanned' };
       case 'scaned_but_redirect':
-        if (r.redirect_host) this.loginRedirect.set(qrcode, `https://${r.redirect_host}`);
+        if (r.redirect_host) this.loginRedirect.set(qrcode, this.safeBaseUrl(`https://${r.redirect_host}`));
         return { status: 'scanned' };
       case 'need_verifycode': return { status: 'need-verify-code' };
       case 'verify_code_blocked': this.loginRedirect.delete(qrcode); return { status: 'verify-blocked' };
@@ -371,7 +417,7 @@ export class ILinkClient {
         if (!r.ilink_bot_id || !r.bot_token) throw new ILinkError('protocol', 'bad-response', 'get_qrcode_status: confirmed without bot id/token');
         const res: LoginPollResult = { status: 'confirmed', token: r.bot_token, botId: r.ilink_bot_id };
         if (r.ilink_user_id) res.userId = r.ilink_user_id;
-        if (r.baseurl) res.baseUrl = r.baseurl;
+        if (r.baseurl) res.baseUrl = this.safeBaseUrl(r.baseurl);
         return res;
       }
       default: return { status: 'wait' };
@@ -436,6 +482,49 @@ export class ILinkClient {
   }
 
   /** “对方正在输入”。需先用 getconfig 换 typing_ticket（按用户缓存 24h）；尽力而为，永不抛错。 */
+  /** Downloads and decrypts one picture or file. Called only for the bound account's messages. */
+  async downloadMedia(media: InboundMedia, signal?: AbortSignal): Promise<Uint8Array> {
+    const timer = AbortSignal.timeout(60_000);
+    const combined = signal ? AbortSignal.any([signal, timer]) : timer;
+    // Redirects are followed by hand so every hop is re-checked against Tencent's HTTPS hosts.
+    let url = mediaUrl(media), res: Response;
+    for (let hop = 0; ; hop++) {
+      res = await this.fetchImpl(url, { signal: combined, redirect: 'manual' });
+      const location = res.status >= 300 && res.status < 400 ? res.headers.get('location') : null;
+      if (!location) break;
+      await res.body?.cancel().catch(() => {});
+      if (hop >= 3) throw new ILinkError('protocol', 'media', '媒体地址跳转太多次');
+      url = mediaUrl({ ...media, fullUrl: new URL(location, url).href });
+    }
+    if (!res.ok) throw new ILinkError('network', 'media', `媒体下载失败 (${res.status})`);
+    if (Number(res.headers.get('content-length')) > MEDIA_MAX_BYTES) {
+      await res.body?.cancel().catch(() => {});
+      throw new ILinkError('protocol', 'media', '文件太大了');
+    }
+    let body: Buffer;
+    if (res.body) {
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          total += value.byteLength;
+          if (total > MEDIA_MAX_BYTES) throw new ILinkError('protocol', 'media', '文件太大了');
+          chunks.push(value);
+        }
+      } finally { await reader.cancel().catch(() => {}); }
+      body = Buffer.concat(chunks, total);
+    } else {
+      body = Buffer.from(await res.arrayBuffer());
+      if (body.length > MEDIA_MAX_BYTES) throw new ILinkError('protocol', 'media', '文件太大了');
+    }
+    if (!media.aesKey) return body;
+    const decipher = createDecipheriv('aes-128-ecb', parseAesKey(media.aesKey), null);
+    return Buffer.concat([decipher.update(body), decipher.final()]);
+  }
+
   async sendTyping(to: string, contextToken?: string, cancel = false): Promise<boolean> {
     try {
       const ticket = await this.typingTicket(to, contextToken);

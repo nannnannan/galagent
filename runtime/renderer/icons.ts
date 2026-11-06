@@ -58,7 +58,7 @@ const ALIAS: Record<string, string> = {
   '🎉': 'sparkles', '🚶': 'walk', '🔇': 'mute', '🔒': 'lock', '🏠': 'home', '🖥️': 'monitor', '📦': 'box', '🧭': 'compass', '👀': 'eye', '🧩': 'puzzle', '🌐': 'globe',
   '+': 'plus', '✓': 'check', '!': 'alert', '🌱': 'sprout', '🔥': 'flame', '📅': 'calendar', '🤲': 'hand', '⚡': 'zap', '🪁': 'send', '👉': 'pointer', '😵': 'spiral', '⌨️': 'keyboard', '◆': 'diamond', '🎯': 'target', '☀️': 'sun', '🔔': 'bell', '🤫': 'hush', '🎙️': 'mic',
 };
-export const iconName = (value: string) => P[value] ? value : ALIAS[value];
+export const iconName = (value: string) => Object.hasOwn(P, value) ? value : Object.hasOwn(ALIAS, value) ? ALIAS[value] : undefined;
 export function svgIcon(name: string, size = 18): SVGSVGElement | undefined {
   const key = iconName(name); if (!key) return undefined;
   const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');

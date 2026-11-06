@@ -14,7 +14,8 @@ release = (root / args.release).resolve()
 if not release.is_relative_to(root / 'release'):
     raise ValueError('Delivery output must stay inside this project release directory')
 source = release / 'win-unpacked'
-archive = release / 'GalAgent-0.1.0-windows-x64.zip'
+version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
+archive = release / f'GalAgent-{version}-windows-x64.zip'
 
 def sha256(file):
     digest = hashlib.sha256()

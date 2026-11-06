@@ -11,6 +11,9 @@ import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
 import { listModels, transcribe } from './stt';
 import { sameOrigin } from '../shared/endpoints';
+import { LocalAccess } from '../desktop/local-scan';
+import { saveInbound } from '../core/wechat/inbox';
+import { installNoDeadlineFetch } from './no-deadline';
 import { ILinkClient } from '../core/wechat/ilink';
 import { WeChatBridge, type WeChatSession } from '../core/wechat/bridge';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
@@ -19,6 +22,7 @@ import { PET_SIZE, PET_FOOTPRINT, clampPet, cornerPosition, roamRange, validFoot
 import type { ClipboardRead } from '../desktop/perception';
 
 app.setName('GalAgent');
+installNoDeadlineFetch();
 const override = process.env.GALAGENT_DATA_DIR;
 if (override) app.setPath('userData', path.resolve(override));
 if (process.env.GALAGENT_DEBUG_PORT && !app.isPackaged) app.commandLine.appendSwitch('remote-debugging-port', process.env.GALAGENT_DEBUG_PORT);
@@ -204,7 +208,7 @@ function wireWindowVisibility(win:BrowserWindow){
 }
 function sendSnapshot(snapshot: AppSnapshot) {
   if (wechat) { const w = wechat; wechatChain = wechatChain.then(() => w.onSnapshot(snapshot)).catch(() => {}); }
-  const nextPolicy = JSON.stringify([snapshot.settings.ttsEnabled, snapshot.settings.quietUntil, snapshot.settings.ttsBaseUrl, snapshot.settings.ttsModel, snapshot.settings.ttsVoice, snapshot.settings.ttsSpeed, snapshot.settings.companionMode]);
+  const nextPolicy = JSON.stringify([snapshot.settings.ttsEnabled, snapshot.settings.quietUntil, snapshot.settings.ttsBaseUrl, snapshot.settings.ttsModel, snapshot.settings.ttsVoice, snapshot.settings.ttsSpeed, snapshot.settings.ttsFormat, snapshot.settings.companionMode]);
   if (speechPolicy && speechPolicy !== nextPolicy) stopSpeech();
   speechPolicy = nextPolicy;
   for (const win of [pet, chat]) if (win && !win.isDestroyed() && !win.webContents.isLoading()) win.webContents.send('galagent:snapshot', snapshot);
@@ -462,7 +466,9 @@ else {
     const packagedModel = path.join(process.resourcesPath, 'models');
     const developmentModel = path.resolve(__dirname, '../../.cache/models/Xenova/multilingual-e5-small');
     const skillRoot = app.isPackaged ? path.join(process.resourcesPath, 'skills') : path.resolve(__dirname, '../../skills');
-    companion = new CompanionService({ dataDir, credentials, mcpSecrets, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true, research: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
+    const home = app.getPath('home'), env = process.env;
+    const local = new LocalAccess({ home, appData: env.APPDATA, localAppData: env.LOCALAPPDATA, programFiles: [env['ProgramFiles(x86)'], env.ProgramFiles].filter((p): p is string => !!p), drives: process.platform === 'win32' ? 'DEFGHIJ'.split('').map(d => `${d}:\\`) : [], dataDir });
+    companion = new CompanionService({ local, dataDir, credentials, mcpSecrets, skillRoots: [skillRoot], protectedWritePaths: [process.resourcesPath, path.join(app.getPath('desktop'), 'mira反代')], features: { attention: true, journal: true, life: true, research: true }, capture: captureScreen, embeddingWorkerPath: path.join(__dirname, 'embedding.mjs'), embeddingModelPath: existsSync(packagedModel) ? packagedModel : existsSync(developmentModel) ? developmentModel : undefined });
     await companion.init();
     void detectLimits();
     if (!override) {
@@ -476,7 +482,9 @@ else {
     wechat = new WeChatBridge({
       client: new ILinkClient({ botAgent: `GalAgent/${app.getVersion()}` }),
       secrets: wechatSecrets,
-      core: { snapshot: () => companion.getSnapshot(), handle: command => companion.handle(command), setReachable: r => companion.setRemoteReachable(r), redact: text => companion.redactForWeChat(text), setView: view => companion.setWeChatView(view) },
+      core: { snapshot: () => companion.getSnapshot(), handle: command => companion.handle(command), setReachable: r => companion.setRemoteReachable(r), redact: text => companion.redactForWeChat(text), describeImage: image => companion.describeImage(image), setView: view => companion.setWeChatView(view) },
+      // Pictures and files from the bound account stay with GalAgent's data, with a record beside them.
+      saveFile: (kind, name, bytes) => saveInbound(dataDir, kind, name, bytes),
       away: () => { try { return powerMonitor.getSystemIdleState(300) !== 'active'; } catch { return false; } },
     });
     await wechat.init();

@@ -27,6 +27,7 @@ export class Embeddings {
             let done = false;
             const finish = () => { if (done) return; done = true; clearTimeout(timer); void worker.terminate().then(() => resolve(), () => resolve()); };
             const timer = setTimeout(finish, 1500);
+            timer.unref();
             worker.on('message', data => { if (data.op === 'disposed') finish(); });
             worker.once('exit', finish);
             try { worker.postMessage({op:'dispose'}); } catch { finish(); }
@@ -61,6 +62,7 @@ export class Embeddings {
         return new Promise((resolve, reject) => {
             const id = randomUUID(), worker = this.worker!;
             const timer = setTimeout(() => { this.retire(worker, new Error('Embedding timeout')); }, 180000);
+            timer.unref();
             this.pending.set(id, { resolve, reject, timer });
             worker.postMessage({ id, text: text.slice(0, 3000), query });
         });

@@ -20,4 +20,13 @@ test('desktop IPC enforces message, memory and interaction boundaries', () => {
   assert.throws(()=>validateCommand({type:'pet.select',id:'../evil'}));
   assert.throws(()=>validateCommand({type:'persona.save',persona:'x'}));
   assert.equal(validateCommand({type:'chat.send',text:'你好'}).type,'chat.send');
+  assert.equal(validateCommand({type:'archive.rebuild',day:'2026-10-29'}).type,'archive.rebuild');
+  assert.throws(()=>validateCommand({type:'archive.rebuild',day:'not-a-date'}));
+  assert.equal(validateCommand({type:'achievement.unlock',id:'pat'}).type,'achievement.unlock');
+  assert.throws(()=>validateCommand({type:'achievement.unlock',id:'first-chat'}),'server-awarded achievements cannot be unlocked by the renderer');
+  assert.equal(validateCommand({type:'pet.emote',action:'run'}).type,'pet.emote');
+  assert.equal(validateCommand({type:'pet.emote',action:'think'}).type,'pet.emote');
+  assert.equal(validateCommand({type:'tts.configure',ttsFormat:''}).type,'tts.configure');
+  assert.equal(validateCommand({type:'config.save',baseUrl:'http://[::1]:18890/v1',model:'kimi-k3'}).type,'config.save');
+  assert.throws(()=>validateCommand({type:'mcp.secret',server:'   ',env:{A:'1'}}));
 });

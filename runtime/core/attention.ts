@@ -12,7 +12,7 @@ export type WatchItem = { id: string; title: string; condition?: string; created
 export type AttentionDecision = { decision: 'silent' | 'observe' | 'schedule' | 'wake'; reason: string; evidence: string[]; nextCheck: string | null; wakeHint?: string; screenSummary?: string; watch?: { title: string; condition?: string }; completeWatchIds?: string[] };
 export type AttentionInput = { now: string; events: AttentionEvent[]; watchlist: WatchItem[]; clipboard: { id: string; at: string; text: string }[]; screen?: { id: string; dataUrl: string }; brief: unknown };
 export type AttentionStatus = { enabled: boolean; running: boolean; paused?: string; lastAt?: string; lastDecision?: AttentionDecision['decision']; lastReason?: string; evaluations: number; skippedHeartbeats: number; wakes: number; pendingEvents: number; activeWatches: number; nextCheckAt?: string; lastScreenAt?: string; lastSkip?: string };
-export type WakeRequest = { id: string; decision: AttentionDecision; events: AttentionEvent[]; screenSummary?: string; createdAt: number; expiresAt: number };
+export type WakeRequest = { id: string; decision: AttentionDecision; events: AttentionEvent[]; screenSummary?: string; createdAt: number; expiresAt: number; /** Failed deliveries so far; a wake is retried at most twice so a failing model cannot loop paid calls. */ attempts?: number };
 export type AttentionDeps = {
     store: Store;
     clock?: () => number;
@@ -188,7 +188,6 @@ export class AttentionLoop {
         this.events = this.events.filter(e => !muted.includes(e));
         for (const e of this.dueWatches(now)) if (!this.deps.accepts || this.deps.accepts(e)) this.events.push(e);
         const scheduled = !!this.nextCheckAt && now >= this.nextCheckAt;
-        if (scheduled) { this.nextCheckAt = 0; this.deps.store.put('state', 'attention-next', 0); }
         // Important events may skip a short backoff, but repeated failures must not turn into one paid request per minute for a day.
         if (now < this.backoffUntil && (trigger === 'heartbeat' ? (!this.events.some(e => e.important) || this.failures >= 3) : this.failures >= 3)) { this.status.skippedHeartbeats++; this.publish(); return; }
         this.running = true; this.status.running = true; this.publish();
@@ -243,7 +242,7 @@ export class AttentionLoop {
         if (screen && decision.screenSummary) this.deps.store.put('perception-note', screen.id, { id: screen.id, at: new Date(screen.at).toISOString(), text: decision.screenSummary });
         this.trimNotes();
         for (const id of decision.completeWatchIds || []) { const w = this.deps.store.get<WatchItem>(id); if (w && w.status === 'active') this.deps.store.put('watch', id, { ...w, status: 'done', lastResult: decision.reason }); }
-        for (const e of events) if (e.kind === 'watch' && typeof e.data?.watchId === 'string') { const w = this.deps.store.get<WatchItem>(e.data.watchId); if (w && w.status === 'active') this.deps.store.put('watch', w.id, { ...w, lastResult: decision.reason, nextCheckAt: decision.nextCheck ? Date.parse(decision.nextCheck) : w.expiresAt }); }
+        for (const e of events) if (e.kind === 'watch' && typeof e.data?.watchId === 'string') { const w = this.deps.store.get<WatchItem>(e.data.watchId); if (w && w.status === 'active') this.deps.store.put('watch', w.id, { ...w, lastResult: decision.reason, nextCheckAt: decision.nextCheck ? Date.parse(decision.nextCheck) : Math.min(w.expiresAt, now + 30 * 60_000) }); }
         if (decision.watch) {
             const dedupeKey = decision.watch.title.replace(/\s+/g, '').toLowerCase();
             const existing = this.watches().find(w => w.dedupeKey === dedupeKey);
@@ -267,8 +266,17 @@ export class AttentionLoop {
         if (this.lastWakeAt && now - this.lastWakeAt < (this.deps.minWakeIntervalMs?.() || 0)) return;
         if (this.deps.eligible() || !this.deps.canWake()) return;
         this.pendingWake = undefined;
-        try { if (await this.deps.wake(request)) { this.lastWakeAt = this.clock(); this.deps.store.put('state', 'attention-last-wake', this.lastWakeAt); this.status.wakes++; this.publish(); } }
-        catch { /* wake failure is surfaced by the main character status */ }
+        const version = this.version;
+        // Kept for another try only if nothing newer (user input, a new decision) replaced it meanwhile, and only twice.
+        const keep = () => { if (!this.pendingWake && !this.closed && version === this.version && request.expiresAt > this.clock() && (request.attempts ?? 0) < 2) this.pendingWake = { ...request, attempts: (request.attempts ?? 0) + 1 }; };
+        try {
+            if (await this.deps.wake(request)) {
+                this.lastWakeAt = this.clock();
+                this.deps.store.put('state', 'attention-last-wake', this.lastWakeAt);
+                this.status.wakes++;
+                this.publish();
+            } else keep();
+        } catch { keep(); }
     }
     private markHandled(ids: string[]) {
         for (const id of ids) { if (!this.handled.includes(id)) this.handled.push(id); if (this.deps.store.kind(id) === 'attention-event') this.deps.store.remove(id); }

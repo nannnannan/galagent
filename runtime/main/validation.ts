@@ -1,13 +1,15 @@
 import type { AppCommand } from '../shared/contracts';
 import { validMode, validTopic } from '../shared/companionship';
 import { checkBaseUrl } from '../shared/endpoints';
+import { clientAchievement } from '../shared/achievements';
+import { PIXEL_ACTIONS } from '../shared/pixel-sprite';
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const bounded = (value: unknown, length: number): value is string => typeof value === 'string' && value.length <= length;
 // Numbers the user types are accepted as long as they are finite; the core clamps them into a sane range.
 const settingNumbers = new Set(['quietUntil', 'proactiveIntervalMinutes', 'proactiveHourlyLimit', 'proactiveDailyLimit', 'petScale', 'ttsSpeed', 'heartbeatSeconds', 'unansweredMinutes', 'reunionHours', 'screenIntervalSeconds', 'idleSleepMinutes', 'bubbleSeconds', 'roamSpeed', 'shareDailyLimit', 'recallEveryDays', 'contextWindow', 'maxOutputTokens']);
 const strings = (value: unknown, count: number, width: number) => Array.isArray(value) && value.length <= count && value.every(item => bounded(item, width));
 const slug = (value: unknown) => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{1,39}$/.test(value);
-const id = (value: unknown) => bounded(value, 100) && !!value.trim();
+const id = (value: unknown, length = 100) => bounded(value, length) && !!value.trim();
 const settingFlags = new Set(['observationEnabled', 'windowTitlesEnabled', 'initiativeEnabled', 'mischiefEnabled', 'reducedMotion', 'screenCaptureEnabled', 'clipboardEnabled', 'roamingEnabled', 'ttsEnabled', 'funCaptions', 'splitReplies', 'afterthoughts', 'moodEnabled', 'routineEnabled', 'murmursEnabled', 'adaptivePacing', 'researchEnabled']);
 // Shared by tts.configure and settings.update so neither path can point TTS at a plaintext or credential-bearing URL.
 function checkTtsUrl(value: unknown) {
@@ -37,7 +39,7 @@ export function validateCommand(value: unknown): AppCommand {
       break;
     case 'mcp.pickFolder': break;
     case 'mcp.secret':
-      if (!bounded(command.server, 32) || [command.env, command.headers].some(m => m !== undefined && (!plain(m) || Object.keys(m).length > 30 || Object.entries(m).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000)))) throw new Error('MCP 密钥格式不正确。'); break;
+      if (!id(command.server, 32) || [command.env, command.headers].some(m => m !== undefined && (!plain(m) || Object.keys(m).length > 30 || Object.entries(m).some(([k, v]) => !/^[A-Za-z0-9_.-]{1,100}$/.test(k) || typeof v !== 'string' || v.length > 8000)))) throw new Error('MCP 密钥格式不正确。'); break;
     case 'agent.answer':
       if(!bounded(command.id,100)||!plain(command.answers)||Object.entries(command.answers).some(([key,val])=>key.length>3000||!bounded(val,3000)))throw new Error('任务回答格式无效。');break;
     case 'chat.send':
@@ -49,19 +51,26 @@ export function validateCommand(value: unknown): AppCommand {
     case 'research.pinInterest': if (!id(command.id) || typeof command.pinned !== 'boolean') throw new Error('兴趣无效。'); break;
     case 'research.rateFinding': if (!id(command.id) || !['up', 'down'].includes(String(command.rating))) throw new Error('评价无效。'); break;
     case 'research.run': case 'wechat.login': case 'wechat.logout': break;
+    case 'research.deepAccess': if (typeof command.enabled !== 'boolean') throw new Error('开关无效。'); break;
+    case 'history.search': if (typeof command.query !== 'string' || command.query.length > 200 || (command.scope !== undefined && !['all', 'chat', 'brief', 'task', 'archive'].includes(String(command.scope))) || (command.limit !== undefined && (!Number.isInteger(command.limit) || Number(command.limit) < 1 || Number(command.limit) > 50))) throw new Error('搜索条件无效。'); break;
+    case 'history.read': if (!bounded(command.id, 200)) throw new Error('记录无效。'); break;
     case 'wechat.verify': if (!(typeof command.code === 'string' && /^\d{1,12}$/.test(command.code))) throw new Error('验证码是一串数字。'); break;
     case 'wechat.enable': if (typeof command.enabled !== 'boolean') throw new Error('开关无效。'); break;
     case 'memory.remember':
-      if (!bounded(command.text, 2000) || !command.text.trim()) throw new Error('记忆内容过长或为空。'); break;
+      if (!bounded(command.text, 1500) || !command.text.trim()) throw new Error('记忆内容过长或为空。'); break;
     case 'memory.correct':
-      if (!bounded(command.id, 100) || !bounded(command.text, 2000) || !command.text.trim()) throw new Error('记忆格式不正确。'); break;
+      if (!id(command.id) || !bounded(command.text, 1500) || !command.text.trim()) throw new Error('记忆格式不正确。'); break;
     case 'memory.source':
       if (!id(command.id)) throw new Error('记忆标识无效。'); break;
     case 'portrait.update':
       if (!bounded(command.text, 600) || !command.text.trim()) throw new Error('印象为空或超过 600 字。'); break;
     case 'portrait.clear': case 'profile.rhythm': break;
+    case 'archive.rebuild':
+      if (typeof command.day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(command.day)) throw new Error('档案日期无效。'); break;
+    case 'achievement.unlock':
+      if (!id(command.id, 64) || !clientAchievement(command.id)) throw new Error('成就无效。'); break;
     case 'memory.delete':
-      if (!bounded(command.id, 100)) throw new Error('记忆格式不正确。'); break;
+      if (!id(command.id)) throw new Error('记忆格式不正确。'); break;
     case 'watch.add':
       if (!bounded(command.title, 120) || !command.title.trim()) throw new Error('关注事项标题不能为空或过长。');
       if (command.condition !== undefined && !bounded(command.condition, 300)) throw new Error('关注事项条件过长。');
@@ -79,7 +88,7 @@ export function validateCommand(value: unknown): AppCommand {
     case 'initiative.topic':
       if (!validTopic(command.topic) || typeof command.enabled !== 'boolean') throw new Error('话题设置无效。'); break;
     case 'pet.emote':
-      if (!['idle', 'nod', 'sway', 'peek', 'sulk', 'celebrate', 'wave', 'sparkle', 'doodle', 'sleep', 'dizzy', 'love'].includes(String(command.action)) || (command.bubble !== undefined && !bounded(command.bubble, 80))) throw new Error('动作无效。'); break;
+      if (!(PIXEL_ACTIONS as readonly string[]).includes(String(command.action)) || (command.bubble !== undefined && !bounded(command.bubble, 80))) throw new Error('动作无效。'); break;
     case 'pet.roam':
       if (command.active !== undefined && typeof command.active !== 'boolean') throw new Error('漫步状态无效。');
       if (command.direction !== undefined && command.direction !== -1 && command.direction !== 1) throw new Error('漫步方向无效。');
@@ -103,22 +112,22 @@ export function validateCommand(value: unknown): AppCommand {
       checkBaseUrl(command.baseUrl);
       if (command.apiKey !== undefined && !bounded(command.apiKey, 4000)) throw new Error('密钥过长。'); break;
     case 'tts.configure': {
-      if (command.ttsFormat !== undefined && !['openai-speech', 'mimo-chat-audio'].includes(String(command.ttsFormat))) throw new Error('TTS 格式无效。');
+      if (command.ttsFormat !== undefined && !['', 'openai-speech', 'mimo-chat-audio'].includes(String(command.ttsFormat))) throw new Error('TTS 格式无效。');
       if (command.ttsEnabled !== undefined && typeof command.ttsEnabled !== 'boolean') throw new Error('TTS 开关无效。');
       if (command.ttsBaseUrl !== undefined && !bounded(command.ttsBaseUrl, 400)) throw new Error('TTS 地址无效。');
       checkTtsUrl(command.ttsBaseUrl);
       if (command.ttsModel !== undefined && !bounded(command.ttsModel, 100)) throw new Error('TTS 模型无效。');
       if (command.ttsVoice !== undefined && !bounded(command.ttsVoice, 100)) throw new Error('TTS 音色无效。');
       if (command.ttsSpeed !== undefined && (typeof command.ttsSpeed !== 'number' || !Number.isFinite(command.ttsSpeed) || command.ttsSpeed < 0.5 || command.ttsSpeed > 2.0)) throw new Error('TTS 语速超出范围。');
-      if (command.ttsApiKey !== undefined && !bounded(command.ttsApiKey, 512)) throw new Error('TTS 密钥格式无效。');
+      if (command.ttsApiKey !== undefined && !bounded(command.ttsApiKey, 4000)) throw new Error('TTS 密钥格式无效。');
       break;
     }
     case 'config.save': {
-      if (!bounded(command.baseUrl, 400) || !bounded(command.model, 100) || (command.apiKey !== undefined && !bounded(command.apiKey, 512))) throw new Error('模型配置格式不正确。');
+      if (!bounded(command.baseUrl, 400) || !bounded(command.model, 100) || (command.apiKey !== undefined && !bounded(command.apiKey, 4000))) throw new Error('模型配置格式不正确。');
       if (command.mode !== undefined && command.mode !== 'mira-proxy' && command.mode !== 'native-api') throw new Error('API 接入模式无效。');
+      checkBaseUrl(command.baseUrl, '模型');
       const url = new URL(command.baseUrl);
-      if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error('远程模型接入需要 HTTPS。');
-      if (url.username || url.password || url.search || url.hash) throw new Error('模型地址不能包含凭据或查询参数。'); break;
+      if (url.search || url.hash) throw new Error('模型地址不能包含凭据或查询参数。'); break;
     }
     case 'settings.update':
       if (!plain(command.settings)) throw new Error('相处设置格式不正确。');

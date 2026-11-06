@@ -18,7 +18,7 @@ export const MAX_PAGE_BYTES = 2_000_000;
 
 /** GET with manual redirects (≤5), each hop re-checked; body capped and decoded by declared or sniffed charset. */
 export async function fetchText(input: string | URL, guards: WebGuards, options: { maxBytes?: number; timeoutMs?: number; accept?: string } = {}): Promise<FetchedPage> {
-  const doFetch = guards.fetch || fetch, signal = AbortSignal.any([guards.signal, AbortSignal.timeout(options.timeoutMs ?? 30_000)]);
+  const doFetch = guards.fetch || fetch, signal = options.timeoutMs ? AbortSignal.any([guards.signal, AbortSignal.timeout(options.timeoutMs)]) : guards.signal;
   let url = new URL(input), response!: Response;
   for (let hop = 0; ; hop++) {
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('URL must be HTTP(S) without credentials');
@@ -90,7 +90,7 @@ export function htmlToText(html: string): { title: string; text: string } {
 function bingTarget(href: string): string {
   try {
     const url = new URL(decodeEntities(href), 'https://www.bing.com');
-    const u = url.hostname.endsWith('bing.com') && url.pathname.startsWith('/ck/') ? url.searchParams.get('u') : null;
+    const u = (url.hostname === 'bing.com' || url.hostname.endsWith('.bing.com')) && url.pathname.startsWith('/ck/') ? url.searchParams.get('u') : null;
     if (u?.startsWith('a1')) return Buffer.from(u.slice(2).replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
     return url.toString();
   } catch { return ''; }

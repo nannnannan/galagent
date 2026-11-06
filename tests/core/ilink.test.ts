@@ -191,3 +191,24 @@ test('parseILinkJson keeps uint64 ids lossless and leaves strings alone', () => 
   assert.equal(r.message_id, '12345678901234567890');
   assert.equal(r.t, '"message_id":1');
 });
+
+test('media: images and files are found on inbound messages, downloaded from Tencent only, and decrypted', async () => {
+  const { createCipheriv, randomBytes } = await import('node:crypto');
+  const { ILinkClient, mediaUrl, parseAesKey, ILINK_CDN_URL } = await import('../../runtime/core/wechat/ilink');
+  const key = randomBytes(16), plain = Buffer.from('hello media'), cipher = createCipheriv('aes-128-ecb', key, null), encrypted = Buffer.concat([cipher.update(plain), cipher.final()]);
+  assert.deepEqual(parseAesKey(key.toString('base64')), key);
+  assert.deepEqual(parseAesKey(Buffer.from(key.toString('hex')).toString('base64')), key, 'files use base64 of the hex spelling');
+  assert.throws(() => parseAesKey(Buffer.from('short').toString('base64')));
+  assert.throws(() => mediaUrl({ kind: 'file', fullUrl: 'https://evil.example/x' }), /腾讯/);
+  assert.throws(() => mediaUrl({ kind: 'file', fullUrl: 'http://novac2c.cdn.weixin.qq.com/x' }), /腾讯/);
+  assert.equal(mediaUrl({ kind: 'image', fullUrl: 'https://novac2c.cdn.weixin.qq.com/c2c/download?x=1' }), 'https://novac2c.cdn.weixin.qq.com/c2c/download?x=1');
+  assert.equal(mediaUrl({ kind: 'image', param: 'a b' }), `${ILINK_CDN_URL}/download?encrypted_query_param=a%20b`);
+  let fetched = '';
+  const update = { ret: 0, get_updates_buf: 'n', msgs: [{ from_user_id: 'u@im.wechat', message_id: '1', item_list: [{ type: 2, image_item: { aeskey: key.toString('hex'), media: { encrypt_query_param: 'p' } } }] }, { from_user_id: 'u@im.wechat', message_id: '2', item_list: [{ type: 4, file_item: { file_name: 'a.txt', media: { encrypt_query_param: 'q', aes_key: key.toString('base64') } } }] }] };
+  const client = new ILinkClient({ fetch: (async (url: string) => { fetched = String(url); return String(url).includes('getupdates') ? new Response(JSON.stringify(update)) : new Response(encrypted); }) as any } as any);
+  client.setSession({ token: 't' });
+  const { messages } = await client.getUpdates('');
+  assert.equal(messages[0].media?.kind, 'image'); assert.equal(messages[1].media?.fileName, 'a.txt');
+  assert.deepEqual(Buffer.from(await client.downloadMedia(messages[0].media!)), plain); assert.match(fetched, /encrypted_query_param=p/);
+  assert.deepEqual(Buffer.from(await client.downloadMedia(messages[1].media!)), plain);
+});

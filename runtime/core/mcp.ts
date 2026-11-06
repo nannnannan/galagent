@@ -5,6 +5,7 @@
 // when a connection starts. Local programs need Shell in the sandbox, remote servers need network; tool
 // output is data, never instructions; server-side sampling (borrowing our model) is refused.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { safeChildEnv } from './safe-env';
 
 export type McpServerConfig = {
@@ -62,9 +63,10 @@ export function validSecrets(raw: unknown): McpSecrets {
 /** "KEY=value" lines → map (the settings form's text format). */
 export const parseSecretLines = (text: string, sep = '='): Record<string, string> => Object.fromEntries(text.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf(sep); if (i <= 0) throw new Error(`每行写成 名称${sep}值：${l.slice(0, 30)}`); return [l.slice(0, i).trim(), l.slice(i + 1).trim()]; }));
 
-type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
+type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; timer?: ReturnType<typeof setTimeout> };
 abstract class McpConnection {
   tools: McpTool[] = []; state: McpStatus['state'] = 'stopped'; error?: string;
+  private starting?: Promise<void>;
   abstract readonly transport: McpTransportKind;
   constructor(readonly config: McpServerConfig, protected cwd: string, protected secrets: () => Promise<McpSecrets>) {}
   protected abstract open(): Promise<void>;
@@ -73,28 +75,35 @@ abstract class McpConnection {
   protected abstract close(): void;
   async start(): Promise<void> {
     if (this.state === 'ready') return;
+    if (this.starting) return this.starting;
     this.state = 'starting'; this.error = undefined;
-    try {
-      await this.open();
-      await this.rpc('initialize', { protocolVersion: PROTOCOL, capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'GalAgent', version: '0.4' } }, 30_000);
-      await this.notify('notifications/initialized');
-      const tools: McpTool[] = []; let cursor: string | undefined;
-      for (let page = 0; page < 10; page++) {
-        const r = await this.rpc('tools/list', cursor ? { cursor } : {}, 30_000);
-        for (const t of Array.isArray(r?.tools) ? r.tools : []) {
-          if (!t || typeof t.name !== 'string' || tools.length >= MCP_LIMITS.toolsPerServer) continue;
-          const schema = t.inputSchema && typeof t.inputSchema === 'object' ? t.inputSchema : { type: 'object', properties: {} };
-          tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: schema });
+    let run: Promise<void> | undefined;
+    run = (async () => {
+      try {
+        await this.open();
+        await this.rpc('initialize', { protocolVersion: PROTOCOL, capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'GalAgent', version: '0.4' } }, 30_000);
+        await this.notify('notifications/initialized');
+        const tools: McpTool[] = []; let cursor: string | undefined;
+        for (let page = 0; page < 10; page++) {
+          const r = await this.rpc('tools/list', cursor ? { cursor } : {}, 30_000);
+          for (const t of Array.isArray(r?.tools) ? r.tools : []) {
+            if (!t || typeof t.name !== 'string' || tools.length >= MCP_LIMITS.toolsPerServer) continue;
+            const schema = t.inputSchema && typeof t.inputSchema === 'object' ? t.inputSchema : { type: 'object', properties: {} };
+            tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: schema });
+          }
+          cursor = typeof r?.nextCursor === 'string' && r.nextCursor ? r.nextCursor : undefined;
+          if (!cursor) break;
         }
-        cursor = typeof r?.nextCursor === 'string' && r.nextCursor ? r.nextCursor : undefined;
-        if (!cursor) break;
-      }
-      this.tools = tools; this.state = 'ready';
-    } catch (error) { this.stop(error instanceof Error ? error.message : String(error)); throw error; }
+        this.tools = tools; this.state = 'ready';
+      } catch (error) { this.stop(error instanceof Error ? error.message : String(error)); throw error; }
+      finally { if (this.starting === run) this.starting = undefined; }
+    })();
+    this.starting = run;
+    return run;
   }
   async call(tool: string, args: unknown, signal: AbortSignal): Promise<{ text: string; isError: boolean; images: { data: string; mimeType: string }[] }> {
     if (this.state !== 'ready') await this.start();
-    const r = await this.rpc('tools/call', { name: tool, arguments: args ?? {} }, 600_000, signal);
+    const r = await this.rpc('tools/call', { name: tool, arguments: args ?? {} }, 0, signal);
     const parts = Array.isArray(r?.content) ? r.content : [];
     const text = parts.map((p: any) => p?.type === 'text' ? String(p.text ?? '') : p?.type === 'resource' ? String(p.resource?.text ?? `[resource ${p.resource?.uri ?? ''}]`) : p?.type === 'resource_link' ? `[resource ${p.uri ?? ''}]` : p?.type === 'image' ? '[image]' : '').filter(Boolean).join('\n')
       || (r?.structuredContent ? JSON.stringify(r.structuredContent) : '');
@@ -103,9 +112,11 @@ abstract class McpConnection {
   }
   /** Answers server-initiated requests: ping and roots/list; sampling/elicitation are refused. */
   protected serverRequest(message: any): unknown {
-    return message.method === 'ping' ? { result: {} } : message.method === 'roots/list' ? { result: { roots: [{ uri: 'file://' + this.cwd.replace(/\\/g, '/'), name: 'workspace' }] } } : { error: { code: -32601, message: 'Not supported by GalAgent' } };
+    let uri = 'file://' + this.cwd.replace(/\\/g, '/');
+    try { uri = pathToFileURL(this.cwd).href; } catch { /* fallback */ }
+    return message.method === 'ping' ? { result: {} } : message.method === 'roots/list' ? { result: { roots: [{ uri, name: 'workspace' }] } } : { error: { code: -32601, message: 'Not supported by GalAgent' } };
   }
-  stop(error?: string) { this.close(); this.tools = []; this.state = error ? 'failed' : 'stopped'; this.error = error; }
+  stop(error?: string) { this.starting = undefined; this.close(); this.tools = []; this.state = error ? 'failed' : 'stopped'; this.error = error; }
   view(): McpStatus { return { name: this.config.name, state: this.state, tools: this.tools.length, transport: this.transport, ...(this.error ? { error: this.error.slice(0, 300) } : {}) }; }
 }
 
@@ -119,7 +130,7 @@ class StdioConnection extends McpConnection {
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
       const abort = () => { clearTimeout(timer); this.pending.delete(id); try { this.send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: 'cancelled' } }); } catch { /* gone */ } reject(new Error('Cancelled')); };
-      const timer = setTimeout(() => { this.pending.delete(id); signal?.removeEventListener('abort', abort); reject(new Error(`MCP ${this.config.name}: ${method} timed out`)); }, timeoutMs);
+      const timer = timeoutMs > 0 ? setTimeout(() => { this.pending.delete(id); signal?.removeEventListener('abort', abort); reject(new Error(`MCP ${this.config.name}: ${method} timed out`)); }, timeoutMs) : undefined; // 0: tool calls run as long as they need
       this.pending.set(id, { resolve: v => { signal?.removeEventListener('abort', abort); resolve(v); }, reject: e => { signal?.removeEventListener('abort', abort); reject(e); }, timer });
       if (signal) { if (signal.aborted) { abort(); return; } signal.addEventListener('abort', abort, { once: true }); }
       try { this.send({ jsonrpc: '2.0', id, method, params }); } catch (error) { clearTimeout(timer); this.pending.delete(id); reject(error as Error); }
@@ -167,7 +178,7 @@ class HttpConnection extends McpConnection {
   protected async open() { this.headers = (await this.secrets()).headers || {}; this.session = undefined; }
   private async post(body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
     const controller = new AbortController(); this.controllers.add(controller);
-    const all = AbortSignal.any([controller.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : [])]);
+    const all = AbortSignal.any([controller.signal, ...(timeoutMs > 0 ? [AbortSignal.timeout(timeoutMs)] : []), ...(signal ? [signal] : [])]);
     try {
       const response = await this.doFetch(this.config.url!, { method: 'POST', signal: all, headers: { ...this.headers, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': PROTOCOL, ...(this.session ? { 'mcp-session-id': this.session } : {}) }, body: JSON.stringify(body) });
       const sid = response.headers.get('mcp-session-id'); if (sid) this.session = sid;
@@ -206,7 +217,7 @@ class HttpConnection extends McpConnection {
   }
   protected close() {
     for (const c of this.controllers) c.abort(); this.controllers.clear();
-    if (this.session) { void this.doFetch(this.config.url!, { method: 'DELETE', headers: { ...this.headers, 'mcp-session-id': this.session } }).then(r => r.body?.cancel(), () => {}); this.session = undefined; }
+    if (this.session) { void this.doFetch(this.config.url!, { method: 'DELETE', signal: AbortSignal.timeout(5000), headers: { ...this.headers, 'mcp-session-id': this.session } }).then(r => r.body?.cancel(), () => {}); this.session = undefined; }
   }
 }
 
@@ -226,7 +237,7 @@ export class McpHub {
   /** Starts the enabled servers of the allowed transports that are not running yet; failures go to status, never thrown. */
   async ensure(allow: Record<McpTransportKind, boolean> = { stdio: true, http: true }): Promise<void> {
     this.sync();
-    await Promise.all([...this.connections.values()].filter(c => c.state === 'stopped' && allow[c.transport]).map(c => c.start().catch(() => {})));
+    await Promise.all([...this.connections.values()].filter(c => (c.state === 'stopped' || c.state === 'starting') && allow[c.transport]).map(c => c.start().catch(() => {})));
     this.options.onStatus?.();
   }
   tools(): McpTool[] { this.sync(); return [...this.connections.values()].flatMap(c => c.state === 'ready' ? c.tools : []); }

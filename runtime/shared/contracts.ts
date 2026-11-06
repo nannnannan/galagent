@@ -33,9 +33,13 @@ export type VitalityTone = 'asleep' | 'sleepy' | 'tired' | 'sulky' | 'happy' | '
 /** One executor task, kept locally for the 任务 page (newest first in snapshots). */
 export type TaskRunView = { id: string; task: string; status: 'done' | 'failed' | 'cancelled'; startedAt: string; completedAt: string; durationMs: number; toolCount: number; changedFiles: number; undoable: boolean; undone?: boolean };
 export type TaskRunDetail = TaskRunView & { task: string; cwd: string; summary: string; tools: Record<string, number>; files: string[]; runId?: string; undo?: { at: string; restored: number; conflicts: string[]; skipped: number } };
-export type ResearchFinding = { id: string; interestId: string; topic: string; angle: string; title: string; summary: string; why: string; sources: { title: string; url: string }[]; freshness: 'new' | 'evergreen'; confidence: number; at: number; sharedAt?: number; rating?: 'up' | 'down' };
-export type InterestView = { id: string; topic: string; kind: string; why: string; sources: string[]; weight: number; pinned?: boolean; lastResearchedAt?: string };
-export type ResearchView = { enabled: boolean; blocked?: string; channels: { id: string; label: string; count: number }[]; interests: InterestView[]; findings: ResearchFinding[]; daily?: { summary: string; routines: string[]; focus: string[]; at: string }; lastPlanAt?: string; runsToday: number };
+export type HistoryScope = 'all' | 'chat' | 'brief' | 'task' | 'archive';
+export type HistoryHit = { id: string; kind: 'chat' | 'brief' | 'task' | 'archive'; at: string; who?: string; title?: string; channel?: 'wechat'; snippet: string };
+export type UsageCategory = 'chat' | 'proactive' | 'helper' | 'research' | 'executor' | 'upkeep';
+export type UsageView = { today: Partial<Record<UsageCategory, number>>; days: { day: string; total: number }[] };
+export type ResearchFinding = { id: string; interestId: string; topic: string; angle: string; title: string; summary: string; why: string; sources: { title: string; url: string }[]; freshness: 'new' | 'evergreen'; confidence: number; at: number; sharedAt?: number; rating?: 'up' | 'down'; reaction?: 'replied' | 'ignored' | 'rejected' };
+export type InterestView = { id: string; topic: string; kind: string; why: string; sources: string[]; weight: number; pinned?: boolean; lastResearchedAt?: string; restUntil?: string };
+export type ResearchView = { enabled: boolean; deepAccess?: boolean; blocked?: string; channels: { id: string; label: string; count: number }[]; interests: InterestView[]; findings: ResearchFinding[]; daily?: { summary: string; routines: string[]; focus: string[]; at: string }; lastPlanAt?: string; runsToday: number };
 /** 微信（腾讯 iLink）连接状态；凭据只在桌面进程里。 */
 export type WeChatView = { state: 'off' | 'unbound' | 'qr' | 'scanned' | 'verify' | 'connected' | 'expired' | 'error'; qr?: string; boundAt?: string; lastInboundAt?: string; replyWindowUntil?: string; error?: string; sent?: number; received?: number };
 export type PacingView = { enabled: boolean; factor: number; ignoreRate: number; samples: number; paused: { topic: InitiativeTopic; until: number; ignored: number }[] };
@@ -101,6 +105,8 @@ export type Settings = {
   adaptivePacing?: boolean;
   /** 主动研究：按兴趣联网研究（需要沙箱允许联网）。缺省为开。 */
   researchEnabled?: boolean;
+  /** 深度访问: research and helpers may read browsers, file names, text files and installed software. User-only, off by default. */
+  researchDeepAccess?: boolean;
   /** 对话模型的上下文窗口（token）。不填用接口报告的值，再不行默认 100 万。 */
   contextWindow?: number;
   /** 对话模型单次输出上限（token）。不填用接口报告的值。 */
@@ -210,6 +216,7 @@ export type AppSnapshot = {
   /** 自适应节奏的当前状态（只有类别与时间）。 */
   pacing?: PacingView;
   research?: ResearchView;
+  usage?: UsageView;
   wechat?: WeChatView;
   /** Finished executor tasks (newest first, at most 40 here; details via agent.task). */
   taskHistory?: TaskRunView[];
@@ -262,7 +269,7 @@ export type AppCommand =
   | { type: 'pet.roam'; active?: boolean; direction?: -1 | 1 }
   | { type: 'tts.speak'; text: string }
   | { type: 'tts.stop' }
-  | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string; ttsFormat?: 'openai-speech' | 'mimo-chat-audio' }
+  | { type: 'tts.configure'; ttsEnabled?: boolean; ttsBaseUrl?: string; ttsModel?: string; ttsVoice?: string; ttsSpeed?: number; ttsApiKey?: string; ttsFormat?: 'openai-speech' | 'mimo-chat-audio' | '' }
   | { type: 'stt.configure'; voiceInputEnabled?: boolean; sttBaseUrl?: string; sttModel?: string; sttFormat?: 'openai-transcriptions' | 'chat-input-audio'; sttLanguage?: string; sttApiKey?: string; sttKeySet?: boolean }
   | { type: 'voice.transcribe'; audio: Uint8Array }
   | { type: 'endpoint.models'; kind: 'chat' | 'tts' | 'stt'; baseUrl: string; apiKey?: string }
@@ -288,6 +295,9 @@ export type AppCommand =
   | { type: 'research.pinInterest'; id: string; pinned: boolean }
   | { type: 'research.rateFinding'; id: string; rating: 'up' | 'down' }
   | { type: 'research.run' }
+  | { type: 'research.deepAccess'; enabled: boolean }
+  | { type: 'history.search'; query: string; scope?: HistoryScope; limit?: number }
+  | { type: 'history.read'; id: string }
   | { type: 'wechat.login' }
   | { type: 'wechat.verify'; code: string }
   | { type: 'wechat.logout' }
