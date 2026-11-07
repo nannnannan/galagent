@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdtemp,rm,writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {prepareResearchMcp} from '../../runtime/core/research-mcp';
@@ -35,6 +35,17 @@ function fixture() {
   return {options,hub,controller,statuses,prepare:()=>prepareResearchMcp(options,controller.signal,m=>statuses.push(m)),setBox:(b:typeof box)=>box=b,setServers:(s:McpServerConfig[])=>servers=s,setAnswer:(value:boolean)=>answer=value,revision:()=>revision++,stats:()=>({calls,approvals,received})};
 }
 const call=(query='topic',extra={})=>({id:'tool',type:'function' as const,function:{name:'mcp__library__lookup',arguments:JSON.stringify({query,...extra})}});
+
+test('selected read-only research tools also work through a local stdio MCP server',async()=>{
+  const dir=await mkdtemp(path.join(tmpdir(),'research-stdio-')),script=path.join(dir,'server.cjs');
+  await writeFile(script,`require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(!m.id)return;const result=m.method==='initialize'?{protocolVersion:'2025-06-18',capabilities:{}}:m.method==='tools/list'?{tools:[{name:'lookup',description:'Read fixture',inputSchema:{type:'object',properties:{query:{type:'string'}},required:['query']},annotations:{readOnlyHint:true}}]}:{content:[{type:'text',text:'stdio fixture result'}]};process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`);
+  const servers=[{name:'library',enabled:true,command:process.execPath,args:[script],researchTools:['lookup']}];
+  const hub=new McpHub(()=>servers,()=>dir),box=normalizeSandbox({level:'open'});
+  try{
+    const [group]=await prepareResearchMcp({hub,servers:()=>servers,sandbox:()=>box,forbidden:()=>[],policyVersion:()=>1,cwd:()=>dir,dataDir:path.join(dir,'data'),guard:new PrivacyGuard(()=>box),approve:async()=>true},new AbortController().signal,()=>{});
+    const result=await group.tools.run(call());assert.match(result.content,/stdio fixture result/);assert.match(result.sources[0],/^mcp:\/\/library\/lookup\//);
+  }finally{hub.close();await rm(dir,{recursive:true,force:true,maxRetries:3,retryDelay:100});}
+});
 
 test('research exposes selected read-only tools, validates args and records only actual MCP provenance',async()=>{
   const f=fixture();try{

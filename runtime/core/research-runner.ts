@@ -107,7 +107,8 @@ export class ResearchRunner {
         const http = /HTTP\s*(\d{3})/i.exec(text)?.[1];
         const reason = /截断|输出预算|可见回答/.test(text) ? '模型没有完整输出研究结果，可能耗尽了输出预算'
           : /结构无效|无效 JSON/.test(text) ? '模型返回的格式不正确，没能整理成研究笔记'
-          : http ? `模型接口返回 HTTP ${http}` : '研究请求未能完成，可能是模型或联网服务出错';
+          : /private network|内网/.test(text) ? '联网地址被当前网络权限拦截，未能读取资料'
+          : http ? `接口返回 HTTP ${http}` : '研究请求未能完成，可能是模型或联网服务出错';
         this.report('failed', reason + '。可以立即重试；自动研究稍后重试。');
       }
     } finally {

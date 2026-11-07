@@ -1121,10 +1121,10 @@ export class CompanionService extends EventEmitter {
     private taskResultText(status: 'done' | 'failed' | 'cancelled', gist: string, summary: string) {
         return `[执行代理${status === 'done' ? '结束' : status === 'cancelled' ? '取消' : '未完成'}]\n${gist}${gist !== summary ? '\n（完整汇报在「任务」页）' : ''}`;
     }
-    /** Key-free search and page reading for the main character; every URL passes the privacy guard and the public-address check. */
+    /** Every hop passes privacy checks; private addresses follow the user's LAN permission, as in the executor. */
     private mainWeb(signal: AbortSignal): MainToolDeps['web'] {
         if (!this.networkAllowed()) return undefined;
-        const guards = { fetch: this.options.webFetch, signal, checkUrl: (url: URL) => this.guard.assertUrl(url, 'main-web'), assertPublic: this.options.webFetch ? undefined : assertPublicUrl };
+        const guards = { fetch: this.options.webFetch, signal, checkUrl: (url: URL) => this.guard.assertUrl(url, 'main-web'), assertPublic: this.options.webFetch || this.state.settings.sandbox?.lanAccess ? undefined : assertPublicUrl };
         return {
             search: (query, limit) => webSearch(query, guards, limit),
             read: async url => { const page = await fetchText(url, guards); const html = /html|xml/i.test(page.contentType) || /^\s*<(!doctype|html)/i.test(page.text); const r = html ? htmlToText(page.text) : { title: '', text: page.text }; return { title: r.title, url: page.url, text: r.text }; },

@@ -165,6 +165,7 @@ export class HelperRunner {
             : undefined),
       transcript: HelperSession['messages'] | undefined;
     const openedPages = new Set<string>();
+    let researchToolError: string | undefined;
     const deps = this.tools(signal);
     if (options.web) deps.web = options.web;
     const researchMcp = options.by === 'research' ? options.mcp : undefined;
@@ -179,6 +180,8 @@ export class HelperRunner {
           if (!researchMcp.defs.some(t => t.function.name === call.function.name)) throw new Error('这个工具没有授权给主动研究');
           taint = 'private';
           const result = await researchMcp.run(call);
+          const output = JSON.parse(result.content);
+          if (output.isError) researchToolError = 'MCP 查询失败';
           for (const source of result.sources) { openedPages.add(source); seen.add(source); }
           return result.content;
         }
@@ -186,6 +189,9 @@ export class HelperRunner {
         if (want && taint && want !== taint) return JSON.stringify({ error: TAINT_ERROR[taint] });
         taint = want || taint;
         const out = await runMainTool(call, deps);
+        if (options.by === 'research') {
+          try { const result = JSON.parse(out); if (typeof result.error === 'string') researchToolError = result.error; } catch { /* a non-JSON tool result is handled by the model */ }
+        }
         if (options.by === 'research' && call.function.name === 'read_webpage') {
           const page = JSON.parse(out);
           if (typeof page.url === 'string' && typeof page.text === 'string' && page.text.trim()) openedPages.add(page.url);
@@ -237,6 +243,7 @@ export class HelperRunner {
         options.by === 'research' ? 'research' : 'helper',
       );
       const brief = parseBrief(raw, goal, options.by === 'research' ? openedPages : seen, randomUUID(), Date.now(), options.by || 'helper');
+      if (options.by === 'research' && !openedPages.size && researchToolError) brief.gist = '没查成：' + this.guard.text(researchToolError, 'research-error').slice(0, 120);
       if (taint) brief.taint = taint;
       if (transcript) {
         this.saveHelperSession({
