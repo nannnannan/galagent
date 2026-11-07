@@ -50,7 +50,7 @@ export function validateCommand(value: unknown): AppCommand {
     case 'research.removeInterest': if (!id(command.id)) throw new Error('兴趣无效。'); break;
     case 'research.pinInterest': if (!id(command.id) || typeof command.pinned !== 'boolean') throw new Error('兴趣无效。'); break;
     case 'research.rateFinding': if (!id(command.id) || !['up', 'down'].includes(String(command.rating))) throw new Error('评价无效。'); break;
-    case 'research.run': case 'wechat.login': case 'wechat.logout': break;
+    case 'research.run': case 'research.cancel': case 'wechat.login': case 'wechat.logout': break;
     case 'research.deepAccess': if (typeof command.enabled !== 'boolean') throw new Error('开关无效。'); break;
     case 'history.search': if (typeof command.query !== 'string' || command.query.length > 200 || (command.scope !== undefined && !['all', 'chat', 'brief', 'task', 'archive'].includes(String(command.scope))) || (command.limit !== undefined && (!Number.isInteger(command.limit) || Number(command.limit) < 1 || Number(command.limit) > 50))) throw new Error('搜索条件无效。'); break;
     case 'history.read': if (!bounded(command.id, 200)) throw new Error('记录无效。'); break;

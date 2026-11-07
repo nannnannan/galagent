@@ -39,7 +39,8 @@ export type UsageCategory = 'chat' | 'proactive' | 'helper' | 'research' | 'exec
 export type UsageView = { today: Partial<Record<UsageCategory, number>>; days: { day: string; total: number }[] };
 export type ResearchFinding = { id: string; interestId: string; topic: string; angle: string; title: string; summary: string; why: string; sources: { title: string; url: string }[]; freshness: 'new' | 'evergreen'; confidence: number; at: number; sharedAt?: number; rating?: 'up' | 'down'; reaction?: 'replied' | 'ignored' | 'rejected' };
 export type InterestView = { id: string; topic: string; kind: string; why: string; sources: string[]; weight: number; pinned?: boolean; lastResearchedAt?: string; restUntil?: string };
-export type ResearchView = { enabled: boolean; deepAccess?: boolean; blocked?: string; channels: { id: string; label: string; count: number }[]; interests: InterestView[]; findings: ResearchFinding[]; daily?: { summary: string; routines: string[]; focus: string[]; at: string }; lastPlanAt?: string; runsToday: number };
+export type ResearchProgress = { running: boolean; stage: 'idle' | 'preparing' | 'planning' | 'reading' | 'waiting' | 'summarizing' | 'done' | 'failed' | 'cancelled'; message: string; startedAt?: string; updatedAt?: string };
+export type ResearchView = { enabled: boolean; deepAccess?: boolean; blocked?: string; progress?: ResearchProgress; channels: { id: string; label: string; count: number }[]; interests: InterestView[]; findings: ResearchFinding[]; daily?: { summary: string; routines: string[]; focus: string[]; at: string }; lastPlanAt?: string; runsToday: number };
 /** 微信（腾讯 iLink）连接状态；凭据只在桌面进程里。 */
 export type WeChatView = { state: 'off' | 'unbound' | 'qr' | 'scanned' | 'verify' | 'connected' | 'expired' | 'error'; qr?: string; boundAt?: string; lastInboundAt?: string; replyWindowUntil?: string; error?: string; sent?: number; received?: number };
 export type PacingView = { enabled: boolean; factor: number; ignoreRate: number; samples: number; paused: { topic: InitiativeTopic; until: number; ignored: number }[] };
@@ -295,6 +296,7 @@ export type AppCommand =
   | { type: 'research.pinInterest'; id: string; pinned: boolean }
   | { type: 'research.rateFinding'; id: string; rating: 'up' | 'down' }
   | { type: 'research.run' }
+  | { type: 'research.cancel' }
   | { type: 'research.deepAccess'; enabled: boolean }
   | { type: 'history.search'; query: string; scope?: HistoryScope; limit?: number }
   | { type: 'history.read'; id: string }

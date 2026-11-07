@@ -892,7 +892,8 @@ function memoryRow(item: MemoryItem) {
 /** 主动研究：TA 从哪些渠道了解你、整理出的兴趣、替你查到的新鲜事。都能删、能改、能打分。 */
 function researchSection(s: AppSnapshot) {
   const r = s.research;
-  const run = button('现在研究一下', async () => { const res = await command({ type: 'research.run' }); if (res.ok) toast('TA 去查了，结果会出现在这里。'); }, 'btn ghost small');
+  const run = button(r?.progress?.running ? '正在研究…' : '现在研究一下', async () => { await command({ type: 'research.run' }); }, 'btn ghost small');
+  run.disabled = r?.progress?.running === true;
   const box = section('TA 在研究你喜欢的东西', 'TA 会从下面这些渠道慢慢了解你的日常，整理出你的兴趣，再从不同角度、不同网站去查新鲜事，攒成笔记；聊天时会自然提起，你不在电脑前时会合成一份小报发到微信。', ...(r && !r.blocked ? [run] : []));
   box.classList.add('research');
   box.append(field('主动研究', toggle(s.settings.researchEnabled !== false, v => void settings({ researchEnabled: v })), '需要沙箱允许联网；每天最多研究 4 次，用后台额度，不打扰聊天'));
@@ -902,6 +903,14 @@ function researchSection(s: AppSnapshot) {
   }), '让 TA 直接读这台电脑上的浏览记录、文件和软件，不用装浏览器扩展；默认关闭'));
   if (!r) return box;
   if (r.blocked) box.append(notice(r.blocked, 'warn'));
+  if (r.progress) {
+    const progress = el('div', 'research-progress');
+    progress.setAttribute('role', 'status');
+    const started = r.progress.running && r.progress.startedAt ? ` · ${new Date(r.progress.startedAt).toLocaleTimeString()} 开始` : '';
+    progress.append(notice(r.progress.message + started, r.progress.stage === 'failed' ? 'warn' : undefined));
+    if (r.progress.running) progress.append(button('停止本次研究', () => void command({ type: 'research.cancel' }), 'btn ghost small'));
+    box.append(progress);
+  }
   // channels
   const ch = el('div', 'research-channels');
   const hint: Record<string, string> = { apps: '打开「隐私与沙箱 → 桌面观察」后才有', browser: '打开上面的深度访问，或连上浏览器扩展', files: '打开上面的深度访问后才有', software: '打开上面的深度访问后才有', manual: '在下面加' };

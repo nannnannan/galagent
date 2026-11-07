@@ -92,7 +92,7 @@ export const PLAN_PROMPT = `你是桌面陪伴角色的“兴趣研究员”。�
 请据此整理用户真实的兴趣与日常，输出严格 JSON：
 {"interests":[{"topic":"具体到能搜索的兴趣（如“原神 4.x 版本”“胶片相机”“杭州周末展览”），不要空泛词","kind":"hobby|work|learning|life|people|place","why":"一句话说明依据","sources":["chat|archive|apps|browser|files|software|tasks|schedule|manual"],"weight":1-5,"angles":[{"angle":"新动态|活动与日程|深度解读|实用技巧|社区讨论|入门与推荐","query":"给搜索引擎的中文查询词"}]}],"dailyLife":{"summary":"两三句话的日常画像","routines":["作息/习惯"],"focus":["最近在忙的事"]}}
 feedback 是用户对之前分享的反应：liked 里的可以加深、换新角度；ignored 里的降低权重；rejected 里的不要再写。
-规则：只写有证据的兴趣，至少一个渠道支持，多个渠道都出现的权重更高；manual 里的必须保留且 weight≥4；每个兴趣给 2-4 个不同角度的查询；查询里不要出现用户的名字、公司、住址、账号等个人信息；不要编造；工作类兴趣只研究公开的行业/技术动态，不研究具体同事或公司内部事务；兴趣最多 ${RESEARCH_LIMITS.interests} 个。`;
+规则：只写有证据的兴趣，至少一个渠道支持，多个渠道都出现的权重更高；manual 里的必须保留且 weight≥4；每个兴趣给 2 个不同角度的查询；查询里不要出现用户的名字、公司、住址、账号等个人信息；不要编造；工作类兴趣只研究公开的行业/技术动态，不研究具体同事或公司内部事务；本轮最多整理 6 个最有把握的兴趣，保持简短，避免输出过长被截断。`;
 
 export function parsePlan(raw: unknown): { interests: Omit<Interest, 'id' | 'createdAt'>[]; daily?: ResearchLedger['daily'] } {
   let v: unknown = raw;
@@ -130,9 +130,9 @@ export function mergePlan(ledger: ResearchLedger, plan: ReturnType<typeof parseP
 
 // ---------------------------------------------------------------- research
 /** Highest weight first, never-researched first, then the longest since last time; pinned ones get a boost. */
-export function pickInterest(ledger: ResearchLedger, now: number): Interest | undefined {
+export function pickInterest(ledger: ResearchLedger, now: number, includeRecent = false): Interest | undefined {
   const score = (i: Interest) => (i.weight + (i.pinned ? 2 : 0)) * (i.lastResearchedAt ? Math.min(4, (now - i.lastResearchedAt) / 86400_000) : 5);
-  return [...ledger.interests].filter(i => (!i.restUntil || i.restUntil <= now) && (!i.lastResearchedAt || now - i.lastResearchedAt > 12 * 3600_000)).sort((a, b) => score(b) - score(a))[0];
+  return [...ledger.interests].filter(i => (!i.restUntil || i.restUntil <= now) && (includeRecent || !i.lastResearchedAt || now - i.lastResearchedAt > 12 * 3600_000)).sort((a, b) => score(b) - score(a))[0];
 }
 export function canRun(ledger: ResearchLedger, now: number): boolean {
   const today = ledger.runs.filter(t => now - t < 86400_000);

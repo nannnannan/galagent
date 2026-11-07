@@ -3,7 +3,8 @@ import type { MainToolDeps } from './main-tools';
 import type { ModelGateway } from './model-gateway';
 import type { Brief } from './helpers';
 import type { HelperOptions } from './helper-runner';
-import { abortableDelay, type PoolPriority } from './pool';
+import { abortable, abortableDelay, type PoolPriority } from './pool';
+import type { ResearchProgress } from '../shared/contracts';
 import {
   PLAN_PROMPT,
   RESEARCH_PROMPT,
@@ -61,7 +62,13 @@ export function shareResearchWeb(web: NonNullable<MainToolDeps['web']>): NonNull
 export class ResearchRunner {
   private active?: AbortController;
   private researchBackoffUntil = 0;
+  private progress: ResearchProgress = { running: false, stage: 'idle', message: '尚未开始研究' };
   constructor(private options: ResearchOptions) {}
+  get status(): ResearchProgress { return { ...this.progress, running: this.running }; }
+  private report(stage: ResearchProgress['stage'], message: string) {
+    this.progress = { ...this.progress, stage, message, updatedAt: new Date().toISOString() };
+    this.options.changed();
+  }
   get running() {
     return !!this.active;
   }
@@ -85,14 +92,28 @@ export class ResearchRunner {
     // Claim the slot before scanning: a manual run and a heartbeat can arrive together.
     const controller = new AbortController();
     this.active = controller;
+    this.progress = { running: true, stage: 'preparing', message: '正在整理可用的兴趣线索', startedAt: new Date().toISOString() };
+    this.report('preparing', '正在整理可用的兴趣线索');
     try {
-      await this.options.prepare();
+      await abortable(this.options.prepare(), controller.signal);
       if (controller.signal.aborted || this.options.blocked() || (!force && this.options.busy())) return;
-      await this.research(now, force, controller);
-    } catch {
-      if (!controller.signal.aborted) this.researchBackoffUntil = now + 15 * 60000;
+      await abortable(this.research(now, force, controller), controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        this.researchBackoffUntil = Date.now() + 15 * 60000;
+        // Only bounded, known categories reach the UI; never expose arbitrary upstream bodies or paths.
+        const text = error instanceof Error ? error.message : '';
+        const http = /HTTP\s*(\d{3})/i.exec(text)?.[1];
+        const reason = /截断|输出预算|可见回答/.test(text) ? '模型没有完整输出研究结果，可能耗尽了输出预算'
+          : /结构无效|无效 JSON/.test(text) ? '模型返回的格式不正确，没能整理成研究笔记'
+          : http ? `模型接口返回 HTTP ${http}` : '研究请求未能完成，可能是模型或联网服务出错';
+        this.report('failed', reason + '。可以立即重试；自动研究稍后重试。');
+      }
     } finally {
       this.active = undefined;
+      if (controller.signal.aborted || this.options.blocked()) this.report('cancelled', '本次研究已停止，已保存的笔记保留');
+      else if (!['done', 'failed'].includes(this.progress.stage)) this.report('done', '本次没有开始联网研究，稍后可重试');
+      else this.options.changed();
     }
   }
   private async waitForConversation(signal: AbortSignal) {
@@ -109,6 +130,7 @@ export class ResearchRunner {
     if (!planDue && !(force || canRun(this.options.ledger(), now))) return;
 
     if (planDue) {
+      this.report('planning', '正在请模型整理兴趣与查询方向');
       const { counts: _c, ...data } = signals;
       const raw = await this.options.gateway.request(
         [
@@ -130,6 +152,7 @@ export class ResearchRunner {
         'research',
       );
       if (controller.signal.aborted || this.options.blocked()) return;
+      if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { interests?: unknown }).interests)) throw new Error('模型返回的结构无效');
       const plan = parsePlan(raw);
       plan.interests = plan.interests
         .map((candidate) => ({
@@ -147,10 +170,13 @@ export class ResearchRunner {
       this.options.save(mergePlan(this.options.ledger(), plan, now, randomUUID));
       this.researchBackoffUntil = 0;
       this.options.changed();
-      if (!force) return; // planning is this step's work; research waits for the next tick
+      if (!force) { this.report('done', '兴趣已整理，下一轮将继续查资料'); return; }
     }
-    const interest = pickInterest(this.options.ledger(), now);
-    if (!interest) return;
+    const interest = pickInterest(this.options.ledger(), now, force);
+    if (!interest) {
+      this.report('done', this.options.ledger().interests.length ? '兴趣还在休息或近期已研究过，暂时没有新的研究任务' : '还没有可研究的兴趣，可以先在下面添加一个');
+      return;
+    }
 
     // One helper per angle, side by side: each reads its own pages and hands back points + sources only.
     const earlier = this.options
@@ -159,7 +185,8 @@ export class ResearchRunner {
       .slice(0, 5)
       .map((f) => ({ title: f.title, detail: f.summary, shared: !!f.sharedAt }));
     const availableWeb = this.options.web(controller.signal);
-    if (!availableWeb) return;
+    if (!availableWeb) { this.report('done', '当前无法使用联网研究，请检查联网设置'); return; }
+    this.report('reading', '正在搜索并阅读原文，模型和网站较慢时可以停止后重试');
     const web = shareResearchWeb(availableWeb);
     const angles = anglesFor(interest, this.options.ledger().runs.length);
     const briefs = await Promise.all(
@@ -187,7 +214,9 @@ export class ResearchRunner {
     )
       return;
     if (!urls.size) {
+      if (briefs.length && briefs.every(b => b.gist.startsWith('没查成：'))) throw new Error(briefs[0].gist);
       this.options.save(addFindings(this.options.ledger(), interest.id, [], now));
+      this.report('done', '这次没有找到能核对原文的新消息，未生成研究笔记');
       return;
     }
     const material = briefs.map((b, i) => ({
@@ -197,8 +226,10 @@ export class ResearchRunner {
       sources: b.sources,
       gaps: b.gaps,
     }));
+    if (this.options.busy()) this.report('waiting', '资料已找到，等当前对话结束后整理');
     await this.waitForConversation(controller.signal);
     if (this.options.blocked()) return;
+    this.report('summarizing', '正在把已核对来源的资料整理成笔记');
     const raw = await this.options.gateway.request(
       [
         { role: 'system', content: RESEARCH_PROMPT },
@@ -220,15 +251,16 @@ export class ResearchRunner {
       'research',
     );
     if (controller.signal.aborted || this.options.blocked()) return;
+    const findings = parseFindings(raw, interest, angles.map((a) => a.angle).join(' · '), urls, now, randomUUID);
     this.options.save(
       addFindings(
         this.options.ledger(),
         interest.id,
-        parseFindings(raw, interest, angles.map((a) => a.angle).join(' · '), urls, now, randomUUID),
+        findings,
         now,
       ),
     );
     this.researchBackoffUntil = 0;
-    this.options.changed();
+    this.report('done', findings.length ? `研究完成，整理了 ${findings.length} 条笔记` : '研究完成，这次没有值得新增的消息');
   }
 }
