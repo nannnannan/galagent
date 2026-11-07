@@ -1,4 +1,5 @@
-import {test} from 'node:test';
+import {test, mock} from 'node:test';
+import { TaskSupervisor } from '../../runtime/core/task-supervisor';
 import assert from 'node:assert/strict';
 import {mkdtemp,rm,writeFile,readFile,mkdir,stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -204,9 +205,12 @@ test('forbiddenPaths enforces canonical path, relative traversal, junction and N
   for(const command of ['bash task.sh','p=../secret-vault; cat "$p/credentials.txt"','echo harmless'])
    assert.match((await host.execute(session,'Bash',{command},signal())).content,/Bash is disabled/);
   // Search subprocesses receive individual checked files, never the unchecked parent tree.
-  const originalSpawn=(host as any).spawnTask, searchArgs:string[][]=[];
-  (host as any).spawnTask=(_s:unknown,_d:unknown,_e:unknown,args:string[])=>{searchArgs.push(args);return{finished:Promise.resolve({status:'done',exitCode:0,output:''})};};
-  try{await host.execute(session,'Grep',{path:dir,pattern:'secret'},signal());}finally{(host as any).spawnTask=originalSpawn;}
+  const searchArgs: string[][] = [];
+  const spy = mock.method(TaskSupervisor.prototype, 'spawnTask', (_s: unknown, _d: unknown, _e: unknown, args: string[]) => {
+   searchArgs.push(args);
+   return {finished: Promise.resolve({status: 'done', exitCode: 0, output: ''})};
+  });
+  try { await host.execute(session, 'Grep', {path:dir,pattern:'secret'}, signal()); } finally { spy.mock.restore(); }
   assert.ok(searchArgs.length>0);
   for(const args of searchArgs){assert.ok(args.includes(path.join(publicDir,'readme.txt')));assert.equal(args.includes(dir),false);assert.equal(args.includes(secretFile),false);assert.equal(args.includes(hardlinkPath),false);}
 
@@ -242,4 +246,39 @@ test('SSE parser accepts bare CR line endings, CR split across chunks, and choic
  const response=new Response(new ReadableStream({start(controller){controller.enqueue(bytes.subarray(0,cut));controller.enqueue(bytes.subarray(cut));controller.close();}}),{headers:{'content-type':'text/event-stream'}});
  const result=await parseModelReply(response);
  assert.equal(result.message.content,'你好');
+});
+test('stopping one session leaves the other session’s live shell able to finish', async () => {
+  const f = await hostFixture();
+  const other = f.host.session(f.dir);
+  const start = async (session: HostSession) => JSON.parse((await f.host.execute(session, 'Bash', {
+    command: 'while [ ! -f release-shell ]; do sleep 0.1; done; echo FINISHED',
+    description: 'wait for local fixture', run_in_background: true,
+  }, signal())).content).task_id as string;
+  try {
+    const [a, b] = await Promise.all([start(f.session), start(other)]);
+    assert.notEqual(a, b);
+    assert.match((await f.host.execute(f.session, 'TaskStop', {task_id:b}, signal())).content, /Unknown task/);
+    f.host.cancelSession(f.session.id);
+    await writeFile(path.join(f.dir, 'release-shell'), 'ready');
+    const result = await f.host.execute(other, 'TaskOutput', {task_id:b,block:true,timeout:10}, signal());
+    assert.equal(f.host.tasks.get(a)?.status, 'cancelled');
+    assert.equal(JSON.parse(result.content).status, 'done');
+    assert.match(JSON.parse(result.content).output, /FINISHED/);
+  } finally { await f.cleanup(); }
+});
+test('cancelling a background question finishes it even if the UI never dismisses the form', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(),'gal-question-cancel-'));
+  let answer!: (value: Record<string,string>) => void;
+  let notices=0;
+  const host=new ToolHost({save(){},ask:()=>new Promise(resolve=>{answer=resolve}),child:async()=>'',onBackground:()=>{notices++;}});
+  try {
+    const session=host.session(dir), parent=new AbortController();
+    const out=await host.execute(session,'AskUserQuestion',{questions:[{question:'继续吗？',options:[{label:'继续'},{label:'停止'}]}],background:true},parent.signal);
+    const id=JSON.parse(out.content).task_id;
+    assert.equal(host.tasks.get(id)?.status,'running');
+    parent.abort();
+    assert.equal(host.tasks.get(id)?.status,'cancelled');
+    answer({'继续吗？':'继续'});await Promise.resolve();
+    assert.equal(host.tasks.get(id)?.status,'cancelled');assert.equal(notices,1);
+  } finally {host.close();await rm(dir,{recursive:true,force:true});}
 });

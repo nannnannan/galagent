@@ -46,6 +46,7 @@ test('update_settings: ordinary settings apply at once; widening privacy waits f
   let patch: Record<string, unknown> = {};
   const { core, cleanup } = await make((_b, results) => results.length ? say({ text: JSON.stringify(results.at(-1)), expression: 'neutral', action: 'idle' }) : calls([['update_settings', { patch, reason: '方便我看看你在忙什么' }]]));
   try {
+    await core.handle({ type: 'settings.update', settings: { observationEnabled: false } });
     patch = { proactiveIntervalMinutes: 30, topics: { clipboard: false }, splitReplies: false, aiControl: 'full' };
     await core.handle({ type: 'chat.send', text: '主动别太频繁，半小时一次，剪贴板话题关掉' });
     let s = core.getSnapshot();

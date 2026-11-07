@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { CompanionService } from '../../runtime/core/companion';
 import { RequestPool } from '../../runtime/core/pool';
 import { callUpstream, retryAfterMs } from '../../runtime/core/upstream';
+import { Store } from '../../runtime/core/store';
+import { SelfWakeScheduler } from '../../runtime/core/scheduler';
+import { executorWakeups } from '../../runtime/core/executor-wakeups';
 import { ToolHost } from '../../runtime/core/tool-host';
 
 const credentials = { get: async () => 'fixture-key', set: async () => {} };
@@ -78,6 +81,27 @@ test('recall_day returns the local transcript of a past day for the main charact
   } finally { await cleanup(); }
 });
 
+test('executor alarms share the main scheduler and publish committed changes only', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'galagent-main-wake-'));
+  const store = new Store(dir);
+  t.after(async () => { store.close(); await rm(dir, { recursive: true, force: true }); });
+  const scheduler = new SelfWakeScheduler(store);
+  let notifications = 0;
+  const hook = executorWakeups(scheduler, () => { notifications++; });
+  const existing = scheduler.add({ note: '站会', cron: '0 9 * * *' }, 'character');
+  const recurring = hook.create({ prompt: '站会', cron: '0 9 * * *', recurring: true });
+  assert.equal(recurring.id, existing.id);
+  assert.equal(scheduler.list()[0].createdBy, 'user');
+  const once = hook.create({ prompt: '一次提醒', cron: '* * * * *', recurring: false });
+  assert.deepEqual(hook.list().find(item => item.id === once.id), {
+    id: once.id, prompt: '一次提醒', nextAt: once.nextAt, cron: undefined, recurring: false,
+  });
+  assert.equal(hook.list().find(item => item.id === recurring.id)?.recurring, true);
+  assert.throws(() => hook.create({ prompt: '非法提醒', cron: 'invalid', recurring: false }));
+  assert.equal(hook.delete(once.id), true);
+  assert.equal(hook.delete(once.id), false);
+  assert.equal(notifications, 3);
+});
 test('executor CronCreate wakes the main character instead of its own session', async () => {
   const jobs: any[] = [];
   const host = new ToolHost({ save: () => {}, ask: async () => ({}), child: async () => '', mainCron: { create: job => { jobs.push(job); return { id: 'w1', nextAt: Date.now() + 60_000 }; }, list: () => [], delete: () => true } });

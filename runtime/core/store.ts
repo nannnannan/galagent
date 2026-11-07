@@ -24,7 +24,7 @@ export class Store {
     constructor(dir: string) {
         mkdirSync(dir, { recursive: true });
         this.db = new DatabaseSync(join(dir, 'companion.sqlite'));
-        this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;
+        this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS tombstones(id TEXT PRIMARY KEY);
       CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(id UNINDEXED, terms);
@@ -99,6 +99,10 @@ export class Store {
         id: string;
         values: number[];
     }[] { return this.sql('SELECT * FROM vectors').all().map(r => ({ id: String(r.id), values: JSON.parse(String(r.body)) })); }
+    saveState(values: Record<string, unknown>) {
+        const write = () => { for (const [id, value] of Object.entries(values)) this.put('state',id,value); };
+        if (this.db.isTransaction) write(); else this.transaction(write);
+    }
     transaction<T>(fn: () => T): T { this.db.exec('BEGIN IMMEDIATE'); try {
         const result = fn();
         this.db.exec('COMMIT');

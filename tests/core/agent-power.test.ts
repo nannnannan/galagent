@@ -262,3 +262,19 @@ test('executor settings: separate model, output budget and turn limit reach the 
     assert.equal((await core.handle({ type: 'mcp.secret', server: 'nope', env: {} })).ok, false);
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });
+test('two parallel writes retain both checkpoints; an edited file survives undo', async () => {
+  const dir = await tmp('parallel-checkpoints');
+  const {host, session, run} = await hostWith(dir);
+  try {
+    const files = ['one.txt','two.txt'].map(name => path.join(dir, name));
+    const results = await Promise.all(files.map(file => run('Write', { path: file, content: 'generated', mode: 'overwrite' })));
+    for (const result of results) assert.match(result, /Write succeeded/);
+    assert.deepEqual((await host.runChanges(session)).sort(), [...files].sort());
+    await writeFile(files[1], 'user edit');
+    const result = await host.undoRun(session.runId);
+    assert.deepEqual(result.restored, [files[0]]);
+    assert.deepEqual(result.conflicts, [files[1]]);
+    assert.equal(existsSync(files[0]), false);
+    assert.equal(await readFile(files[1], 'utf8'), 'user edit');
+  } finally { host.close(); await rm(dir, {recursive:true,force:true}); }
+});

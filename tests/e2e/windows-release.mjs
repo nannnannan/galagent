@@ -12,6 +12,15 @@ await mkdir(profile, { recursive: true }); await mkdir(workspace, { recursive: t
 await writeFile(path.join(workspace, 'probe.txt'), 'WINDOWS_READ_OK');
 const seen = { chat: 0, executor: 0, read: false, k31: false };
 const server = createServer(async (req, res) => {
+  if (req.method === 'GET' && req.url === '/v1/models') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ data: [{ id: 'kimi-k3.1-pro' }] }));
+    return;
+  }
+  if (req.method !== 'POST' || req.url !== '/v1/chat/completions') {
+    res.writeHead(404).end();
+    return;
+  }
   let raw = ''; for await (const chunk of req) raw += chunk;
   const body = JSON.parse(raw); seen.k31 ||= body.model === 'kimi-k3.1-pro';
   let message, finish = 'stop';
@@ -32,7 +41,7 @@ const env = { ...process.env, GALAGENT_DATA_DIR: profile, GALAGENT_API_KEY: '', 
 delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try {
-  app = await _electron.launch({ executablePath: path.resolve(process.env.GALAGENT_TEST_EXE || 'release/v0.4.0/win-unpacked/GalAgent.exe'), env, timeout: 60000 });
+  app = await _electron.launch({ executablePath: path.resolve(process.env.GALAGENT_TEST_EXE || 'release/win-unpacked/GalAgent.exe'), env, timeout: 60000 });
   const page = await app.firstWindow();
   await page.waitForFunction(() => !!window.galagent);
   const send = async command => { const r = await page.evaluate(c => window.galagent.dispatch(c), command); assert.equal(r.ok, true, r.error); };
@@ -51,8 +60,7 @@ try {
   assert.equal(snapshot.status.contextBudget, 1_000_000);
   assert.equal(seen.k31, true);
   const report = { passed: true, version: await app.evaluate(({ app }) => app.getVersion()), ...seen, contextBudget: snapshot.status.contextBudget, isolatedProfile: true };
-  await mkdir(path.join(root, 'docs/evidence/windows'), { recursive: true });
-  await writeFile(path.join(root, 'docs/evidence/windows/v0.4.0-smoke.json'), JSON.stringify(report, null, 2) + '\n');
+  await writeFile(path.join(folder, 'smoke.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
 } finally {
   await app?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, rm, writeFile, symlink } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../../runtime/core/store';
 import { readHistory, searchHistory, snippet } from '../../runtime/core/recall';
@@ -110,8 +110,12 @@ test('a helper that read the web is refused local tools in the same session', as
   await service.close(); await rm(dir, { recursive: true, force: true });
 });
 
-test('browsers are read directly: history, search terms, bookmarks; URLs lose their query; secrets are never opened', async () => {
-  const dir = await temp('local'), home = join(dir, 'home'), local = join(dir, 'Local'), roaming = join(dir, 'Roaming');
+test('browsers are read directly: history, search terms, bookmarks; URLs lose their query; secrets are never opened', async t => {
+  // Windows TEMP normally lives under AppData, which the file scanner deliberately excludes.
+  const root = refusedPath(tmpdir(), { forbidden: [] }) ? homedir() : tmpdir();
+  const dir = await mkdtemp(join(root, 'galagent-local-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const home = join(dir, 'home'), local = join(dir, 'Local'), roaming = join(dir, 'Roaming');
   const chrome = join(local, 'Google/Chrome/User Data/Default'), firefox = join(roaming, 'Mozilla/Firefox/Profiles/abc.default');
   await mkdir(chrome, { recursive: true }); await mkdir(firefox, { recursive: true });
   const now = BigInt(Date.now()) * 1000n + 11644473600_000_000n;
@@ -140,9 +144,21 @@ test('browsers are read directly: history, search terms, bookmarks; URLs lose th
   assert.match((await scan.readFile(join(home, 'Documents/胶片/iso400.md'), { forbidden: [] })).text, /胶片笔记/);
   await assert.rejects(scan.readFile(join(home, 'Documents/胶片/iso400.md'), policy), /不开放/);
   await assert.rejects(scan.readFile(join(home, 'Documents/.env'), { forbidden: [] }), /不开放/);
-  await symlink(join(chrome, 'Login Data'), join(home, 'Documents/notes.txt'));
-  await assert.rejects(scan.readFile(join(home, 'Documents/notes.txt'), { forbidden: [] }), /不开放/, 'a link cannot lead into a refused place');
-  await rm(dir, { recursive: true, force: true });
+  await t.test('a link cannot lead into a refused place', async t => {
+    const link = join(home, 'Documents/notes.txt');
+    try {
+      await symlink(join(chrome, 'Login Data'), link);
+    } catch (error) {
+      if (process.platform !== 'win32' || (error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+      // Junctions exercise realpath on Windows without requiring the file-symlink privilege.
+      const junction = join(home, 'Documents/browser');
+      await symlink(chrome, junction, 'junction');
+      await assert.rejects(scan.readFile(join(junction, 'Login Data'), { forbidden: [] }), /不开放/);
+      t.diagnostic('Windows denied file-symlink creation; verified directory junction traversal instead');
+      return;
+    }
+    await assert.rejects(scan.readFile(link, { forbidden: [] }), /不开放/);
+  });
   assert.equal(cleanUrl('https://a.com/b?c=1#d'), 'https://a.com/b'); assert.equal(cleanUrl('file:///c:/x'), undefined);
   for (const p of ['C:/Users/a/Documents/WeChat Files/wxid/Msg/x.txt', 'C:/Users/a/AppData/Roaming/x/token.txt', 'C:/Users/a/Documents/Tencent Files/1/a.txt', 'D:/x/stt-key.bin', 'D:/x/wechat-session.bin']) assert.ok(refusedPath(p, { forbidden: [] }), p);
   assert.ok(!refusedPath('C:/Users/a/Documents/notes.txt', { forbidden: [] }));

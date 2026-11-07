@@ -314,11 +314,11 @@ test('closed loop: delegated task result → attention judges → main character
 });
 test('daily archive: a finished day is archived once after midnight, replaces yesterday’s transcript in context, survives restart and stays idempotent', async () => {
     const realNow = Date.now; let now = new Date(2026, 9, 28, 21, 0).getTime(); Date.now = () => now;
-    let archives = 0; const contexts: any[] = [];
+    let archives = 0, failNext = false; const contexts: any[] = [];
     const isDaily = (body: any) => String(body.messages[0].content).includes('每日档案');
     const handler = (body: any) => {
         if (isExtract(body)) return { ops: [], diary: '' };
-        if (isDaily(body)) { archives++; return { title: '面试前夜', summary: '用户说明天上午有面试，有点紧张，想早点睡。', diary: '今天他说明天要面试，我陪他聊了一会儿，希望他睡个好觉。', mood: '期待', topics: ['面试'], highlights: ['约好明天问结果'], openThreads: ['问面试结果'], portrait: '正在找工作，认真又容易紧张。' }; }
+        if (isDaily(body)) { archives++; if (failNext) { failNext = false; return { summary: '' }; } return { title: '面试前夜', summary: '用户说明天上午有面试，有点紧张，想早点睡。', diary: '今天他说明天要面试，我陪他聊了一会儿，希望他睡个好觉。', mood: '期待', topics: ['面试'], highlights: ['约好明天问结果'], openThreads: ['问面试结果'], portrait: '正在找工作，认真又容易紧张。' }; }
         if (isAttention(body)) return { decision: 'silent', reason: '无', evidence: [], nextCheck: null };
         const system = String(body.messages[0].content); if (system.includes('状态数据：')) contexts.push(JSON.parse(system.split('\n状态数据：')[1]));
         return chatReply();
@@ -341,11 +341,20 @@ test('daily archive: a finished day is archived once after midnight, replaces ye
         f = await service(handler, undefined, f.dir);
         now += 120_000; await f.core.tick(); await f.core.waitForBackground();
         assert.equal(archives, 1, 'restart does not archive the same day again');
+        failNext = true;
         const again = await f.core.handle({ type: 'archive.rebuild', day: '2026-10-28' });
         assert.equal(again.ok, true);
         const twice = await f.core.handle({ type: 'archive.rebuild', day: '2026-10-28' });
         assert.equal(twice.ok, true); await f.core.waitForBackground();
         assert.equal(archives, 2, 'double-click rebuild runs once');
+        now += 60_001;
+        await f.core.tick(); await f.core.waitForBackground();
+        assert.equal(archives, 3, 'failed rebuild is retried once after backoff');
+        const rebuilt = f.core.getSnapshot();
+        assert.equal(rebuilt.archives!.length, 1);
+        assert.deepEqual(rebuilt.diary.find(d => d.kind === 'journal')!.sourceIds, snap.diary.find(d => d.kind === 'journal')!.sourceIds);
+        assert.deepEqual(rebuilt.diary.filter(d => d.kind === 'journal').map(d => d.id),
+            snap.diary.filter(d => d.kind === 'journal').map(d => d.id), 'retry replaces the same journal entry');
         assert.equal((await f.core.handle({ type: 'archive.rebuild', day: '2026-10-29' })).ok, false, 'today cannot be archived early');
         now = new Date(2026, 9, 29, 9, 0).getTime();
         await f.core.handle({ type: 'chat.send', text: '我面试回来了' }); await f.core.waitForBackground();
@@ -778,3 +787,34 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
 });
 
 
+test('after first meeting, a foreground event can prompt a check-in without another chat or click', async () => {
+    const originalNow=Date.now; let now=originalNow(); Date.now=()=>now;
+    let f = await service(body => {
+        if (isExtract(body)) return {ops: [], diary: ''};
+        if (isAttention(body)) {
+            const input = JSON.parse(body.messages[1].content);
+            const event = input.events.find((e: {kind: string}) => e.kind === 'window');
+            return event ? {decision:'wake', reason:'桌面发生变化', evidence:[event.id], wakeHint:'主动问候', nextCheck:null}
+                : {decision:'silent', reason:'无变化', evidence:[], nextCheck:null};
+        }
+        return chatReply('需要我帮你看一下吗？');
+    });
+    try {
+        assert.equal(f.core.getSnapshot().settings.observationEnabled, true);
+        assert.ok((await f.core.handle({type:'chat.send', text:'你好'})).ok);
+        await f.core.waitForBackground();
+        f.core.setObservation({available:true, observedAt:new Date().toISOString(), appName:'FixtureEditor', idleSeconds:1});
+        now += 2*60000;
+        await f.core.tick();
+        await f.core.attentionIdle();
+        await until(() => f.core.getSnapshot().messages.some(m => m.source === 'initiative'), 5000);
+        const proactive = f.core.getSnapshot().messages.filter(m => m.source === 'initiative');
+        assert.equal(proactive.length, 1);
+        assert.equal(proactive[0].text, '需要我帮你看一下吗？');
+        assert.ok(proactive[0].initiativeTopics?.includes('window'));
+        await f.core.handle({type:'settings.update', settings:{observationEnabled:false}});
+        await f.core.close();
+        f = await service(() => chatReply(), undefined, f.dir);
+        assert.equal(f.core.getSnapshot().settings.observationEnabled, false);
+    } finally { Date.now=originalNow; await f.cleanup(); }
+});

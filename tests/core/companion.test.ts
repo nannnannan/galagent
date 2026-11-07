@@ -367,3 +367,34 @@ test('a summary arriving after a source correction or deletion cannot restore an
         } finally { if(finish)finish(new Response(JSON.stringify({choices:[{message:{content:'{"summary":""}'}}]})));await cleanup(); }
     }
 });
+test('a cancelled desktop reply cannot write into a newer WeChat turn or clear its busy state', async () => {
+    function gate<T>() {
+        let resolve!: (value: T) => void;
+        const promise = new Promise<T>(done => { resolve = done; });
+        return { promise, resolve };
+    }
+    const old = gate<Response>(), next = gate<Response>();
+    const startedOld = gate<void>(), startedNext = gate<void>();
+    let count = 0;
+    const {core, cleanup} = await setup(async (_url, init) => {
+        if (isMemoryRequest(init)) return emptyMemory();
+        if (++count === 1) { startedOld.resolve(); return old.promise; }
+        if (count === 2) { startedNext.resolve(); return next.promise; }
+        return new Response('{}', {status: 400});
+    });
+    try {
+        const first = core.handle({type: 'chat.send', text: '旧问题'});
+        await startedOld.promise;
+        await core.handle({type: 'chat.cancel'});
+        const second = core.handle({type: 'chat.send', channel: 'wechat', text: '新问题'});
+        await startedNext.promise;
+        old.resolve(reply('迟到的旧答复'));
+        assert.equal((await first).ok, false);
+        assert.equal(core.getSnapshot().status.busy, true);
+        next.resolve(reply('新答复'));
+        assert.ok((await second).ok);
+        assert.deepEqual(core.getSnapshot().messages.map(m => [m.text, m.channel]), [['新问题','wechat'],['新答复','wechat']]);
+        assert.equal((await core.handle({type:'chat.send',text:'模拟上游失败'})).ok, false);
+        assert.equal(core.getSnapshot().status.busy, false);
+    } finally { old.resolve(reply()); next.resolve(reply()); await cleanup(); }
+});

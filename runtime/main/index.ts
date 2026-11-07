@@ -1,6 +1,8 @@
-import type { McpSecrets } from '../core/mcp';
-import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, safeStorage, screen, shell, Tray } from 'electron';
-import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
+import { selectProfile } from './profile';
+import { atomicWrite } from './atomic-write';
+import { createCredentials } from './credentials';
+import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerMonitor, screen, shell, Tray } from 'electron';
+import { readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { CompanionService } from '../core/companion';
@@ -10,12 +12,11 @@ import { SoakRecorder } from './soak';
 import { ensureLocalProxyRunning } from './proxy-autostart';
 import { synthesizeTtsSpeech } from './tts';
 import { listModels, transcribe } from './stt';
-import { sameOrigin } from '../shared/endpoints';
 import { LocalAccess } from '../desktop/local-scan';
 import { saveInbound } from '../core/wechat/inbox';
 import { installNoDeadlineFetch } from './no-deadline';
 import { ILinkClient } from '../core/wechat/ilink';
-import { WeChatBridge, type WeChatSession } from '../core/wechat/bridge';
+import { WeChatBridge } from '../core/wechat/bridge';
 import type { AppSnapshot, CommandResult } from '../shared/contracts';
 import { companionModes } from '../shared/companionship';
 import { PET_SIZE, PET_FOOTPRINT, clampPet, cornerPosition, roamRange, validFootprint, type Footprint } from '../shared/pet-geometry';
@@ -23,8 +24,18 @@ import type { ClipboardRead } from '../desktop/perception';
 
 app.setName('GalAgent');
 installNoDeadlineFetch();
-const override = process.env.GALAGENT_DATA_DIR;
-if (override) app.setPath('userData', path.resolve(override));
+let profile: ReturnType<typeof selectProfile>;
+try {
+  profile = selectProfile({appData:app.getPath('appData'),argv:process.argv,
+    environment:process.env.GALAGENT_DATA_DIR,applicationDir:path.dirname(process.execPath)});
+} catch (error) {
+  dialog.showErrorBox('无法打开当前存档', error instanceof Error ? error.message : String(error));
+  app.exit(1);
+  throw error;
+}
+const override = profile.isolated ? profile.directory : undefined;
+app.setPath('userData', profile.directory);
+app.setPath('sessionData', profile.directory);
 if (process.env.GALAGENT_DEBUG_PORT && !app.isPackaged) app.commandLine.appendSwitch('remote-debugging-port', process.env.GALAGENT_DEBUG_PORT);
 const rootDir = path.resolve(__dirname, '..');
 /** Pet window at scale 1 lives in shared/pet-geometry: it is big on purpose — the empty sky around the
@@ -90,67 +101,10 @@ function setNativeInteractive(interactive:boolean){
 }
 const dataDir = app.getPath('userData');
 const positionFile = path.join(dataDir, 'window-state.json');
-async function atomicWrite(file: string, data: string | Uint8Array) { await mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.new`; await writeFile(temporary, data); await rename(temporary, file); }
-const credentials = {
-  async get() {
-    const fromEnv = process.env.GALAGENT_API_KEY || process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY;
-    if (fromEnv) return fromEnv;
-    try { const encrypted = await readFile(path.join(dataDir, 'provider-key.bin')); if (safeStorage.isEncryptionAvailable()){const key=safeStorage.decryptString(encrypted);if(key)return key;} } catch { /* no saved application key */ }
-    const provider=companion?.getSnapshot().provider;
-    if(!override&&provider?.mode!=='native-api'&&provider?.baseUrl==='http://127.0.0.1:18890/v1')try{return (await readFile(path.join(app.getPath('desktop'),'mira反代','kimi-api','.local-api-key'),'utf8')).trim()||undefined;}catch{/* existing proxy has no key file */}
-    return undefined;
-  },
-  async set(key: string) { if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存密钥。'); await atomicWrite(path.join(dataDir, 'provider-key.bin'), safeStorage.encryptString(key)); },
-};
-const ttsCredentials = {
-  async get() {
-    if (process.env.MIMO_API_KEY || process.env.TTS_API_KEY) return process.env.MIMO_API_KEY || process.env.TTS_API_KEY;
-    try {
-      const encrypted = await readFile(path.join(dataDir, 'tts-key.bin'));
-      if (safeStorage.isEncryptionAvailable()) {
-        const key = safeStorage.decryptString(encrypted);
-        if (key) return key;
-      }
-    } catch { /* no separate tts key */ }
-    // Only reuse the provider key for a TTS endpoint on the same origin; never send it to a third-party TTS host.
-    const snap = companion?.getSnapshot();
-    try { if (snap?.settings.ttsBaseUrl && new URL(snap.settings.ttsBaseUrl.trim()).origin === new URL(snap.provider.baseUrl).origin) return await credentials.get(); } catch { /* invalid URL */ }
-    return undefined;
-  },
-  async set(key: string) {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存 TTS 密钥。');
-    await atomicWrite(path.join(dataDir, 'tts-key.bin'), safeStorage.encryptString(key));
-  },
-};
-/** MCP server secrets (env vars / headers), one DPAPI-encrypted JSON map; never sent to the renderer. */
-/** 微信绑定（bot 令牌、绑定的微信号、回复窗口）：整份用 DPAPI 加密，只在桌面进程里。 */
-const wechatSecrets = {
-  async load(): Promise<WeChatSession | undefined> {
-    try { const encrypted = await readFile(path.join(dataDir, 'wechat-session.bin')); if (safeStorage.isEncryptionAvailable()) return JSON.parse(safeStorage.decryptString(encrypted)) as WeChatSession; } catch { /* not bound */ }
-    return undefined;
-  },
-  async save(session: WeChatSession | undefined) {
-    const file = path.join(dataDir, 'wechat-session.bin');
-    if (!session) { await writeFile(file, '').catch(() => {}); return; }
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存微信绑定。');
-    await atomicWrite(file, safeStorage.encryptString(JSON.stringify(session)));
-  },
-};
 let wechat: WeChatBridge | undefined;
 let wechatChain: Promise<void> = Promise.resolve();
-const mcpSecrets = {
-  async all(): Promise<Record<string, McpSecrets>> {
-    try { const encrypted = await readFile(path.join(dataDir, 'mcp-secrets.bin')); if (safeStorage.isEncryptionAvailable()) return JSON.parse(safeStorage.decryptString(encrypted)) || {}; } catch { /* none saved */ }
-    return {};
-  },
-  async get(server: string): Promise<McpSecrets> { return (await mcpSecrets.all())[server] || {}; },
-  async set(server: string, secrets: McpSecrets) {
-    if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存 MCP 密钥。');
-    const all = await mcpSecrets.all();
-    if (Object.keys(secrets.env || {}).length || Object.keys(secrets.headers || {}).length) all[server] = secrets; else delete all[server];
-    await atomicWrite(path.join(dataDir, 'mcp-secrets.bin'), safeStorage.encryptString(JSON.stringify(all)));
-  },
-};
+const { credentials, ttsCredentials, sttCredentials, mcpSecrets, wechatSecrets, keyFor } =
+  createCredentials(dataDir, override, () => companion?.getSnapshot());
 /** Title-bar overlay colours = the renderer's --bg / --muted for the current theme (style.css). */
 const chrome = () => nativeTheme.shouldUseDarkColors ? { color: '#111017', symbolColor: '#c9c4da', height: 44 } : { color: '#f5f4f9', symbolColor: '#4f4a62', height: 44 };
 function publishRoamState(active: boolean, direction: -1 | 0 | 1) {
@@ -280,27 +234,6 @@ async function makeWindows() {
   // The desktop character is the entry point. Connection and long-form views
   // remain available from the menu rather than replacing her on first launch.
   screen.on('display-removed', () => { if (pet && !pet.isDestroyed()) pet.setBounds(clamp(pet.getBounds())); });
-}
-/** 语音输入的密钥：单独 DPAPI 加密；没有单独密钥时，只在地址与语音输出 / 对话模型同源时借用它们的密钥。 */
-const sttCredentials = {
-  async get() {
-    if (process.env.STT_API_KEY) return process.env.STT_API_KEY;
-    try { const encrypted = await readFile(path.join(dataDir, 'stt-key.bin')); if (safeStorage.isEncryptionAvailable()) { const key = safeStorage.decryptString(encrypted); if (key) return key; } } catch { /* none */ }
-    const snap = companion?.getSnapshot(), url = snap?.settings.sttBaseUrl;
-    if (sameOrigin(url, snap?.settings.ttsBaseUrl)) return await ttsCredentials.get();
-    if (sameOrigin(url, snap?.provider.baseUrl)) return await credentials.get();
-    return undefined;
-  },
-  async set(key: string) { if (!safeStorage.isEncryptionAvailable()) throw new Error('系统密钥保护不可用，未保存语音输入密钥。'); await atomicWrite(path.join(dataDir, 'stt-key.bin'), safeStorage.encryptString(key)); },
-};
-/** The key to try against `baseUrl` when listing models: the one typed in the form, else a saved key for exactly that origin. */
-async function keyFor(kind: 'chat' | 'tts' | 'stt', baseUrl: string, typed?: string) {
-  if (typed?.trim()) return typed.trim();
-  const snap = companion.getSnapshot();
-  const saved: [string | undefined, () => Promise<string | undefined>][] = [[snap.provider.baseUrl, () => credentials.get()], [snap.settings.ttsBaseUrl, () => ttsCredentials.get()], [snap.settings.sttBaseUrl, () => sttCredentials.get()]];
-  const order = kind === 'chat' ? saved : kind === 'tts' ? [saved[1], saved[0], saved[2]] : [saved[2], saved[1], saved[0]];
-  for (const [url, get] of order) if (sameOrigin(url, baseUrl)) { const k = await get(); if (k) return k; }
-  return undefined;
 }
 let transcribing: AbortController | undefined;
 /** Reads the saved chat model's context / output limits from its /models list, when the API reports them. */

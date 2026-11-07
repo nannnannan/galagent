@@ -66,7 +66,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
         </button>
       </div>
       <nav class="nav" aria-label="页面"></nav>
-      <footer class="sidebar-foot"><span id="foot-stats"></span><button id="pet-return" class="btn ghost small" type="button">回到桌面</button></footer>
+      <footer class="sidebar-foot"><span id="foot-stats"></span><span id="save-status" role="status"></span><button id="pet-return" class="btn ghost small" type="button">回到桌面</button></footer>
     </aside>
     <section class="workspace">
       <header class="titlebar"><div class="title"><h1 id="page-title"></h1><p id="page-intro"></p></div><div id="page-tools" class="page-tools"><button id="palette-open" class="btn ghost small" type="button"><span>快捷操作</span><kbd>Ctrl</kbd><kbd>K</kbd></button></div></header>
@@ -367,6 +367,9 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     app.querySelector('#page-title')!.textContent = current.title; app.querySelector('#page-intro')!.textContent = current.intro;
     // chat
     const error = app.querySelector<HTMLElement>('#runtime-error')!; error.textContent = next.status.error || (!next.provider.configured ? '还没有连接模型：到「连接」页填入 API 地址、模型和 Key 就能开始真实对话。' : ''); error.hidden = !error.textContent;
+    const saved = app.querySelector<HTMLElement>('#save-status')!;
+    saved.textContent = next.status.storage?.savedAt ? '自动保存 · ' + new Date(next.status.storage.savedAt).toLocaleTimeString('zh-CN') : '';
+    saved.title = next.status.storage ? '当前存档：' + next.status.storage.directory : '';
     app.querySelector('#thinking')!.toggleAttribute('hidden', !next.status.busy);
     app.querySelector<HTMLButtonElement>('#send')!.disabled = next.status.busy;
     app.querySelector<HTMLButtonElement>('#mic')!.hidden = !next.settings.voiceInputEnabled;
@@ -1118,6 +1121,8 @@ function renderAchievements(root: HTMLElement, s: AppSnapshot) {
 }
 
 function renderConfig(root: HTMLElement, s: AppSnapshot) {
+  if (s.status.storage) root.append(el('p','muted profile-location', '当前存档：' + s.status.storage.directory));
+
   const model = section('对话模型', '任何 OpenAI 兼容接口都可以（/chat/completions，支持 JSON 输出）。');
   const form = el('form', 'form-grid');
   const mode = select(s.provider.mode || 'native-api', [['native-api', '标准 OpenAI 兼容接口'], ['mira-proxy', 'Mira 本地反代（自动拉起）']], () => {});

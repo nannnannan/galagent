@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Store } from '../../runtime/core/store';
 import { CompanionService } from '../../runtime/core/companion';
 import { contextBriefs, fallbackDigest, needsDigest, parseBrief, urlsIn } from '../../runtime/core/helpers';
 import type { AgentRunner } from '../../runtime/core/kimi-agent';
@@ -77,6 +78,9 @@ test('a long executor report reaches the main agent as a gist; the full report s
     await core.handle({ type: 'chat.send', text: '进度怎么样' });
     assert.ok(boardSeen, 'the running task is on the board in the main context');
     release(); await core.waitForAgent();
+    const deadline = Date.now() + 1500;
+    while (core.getSnapshot().agent!.lastResult!.gist !== '整理完成，结果在 D:/out。' && Date.now() < deadline)
+      await new Promise(resolve => setTimeout(resolve, 10));
     const msg = core.getSnapshot().messages.find(m => m.text.startsWith('[执行代理结束]'))!;
     assert.match(msg.text, /整理完成，结果在 D:\/out。/); assert.ok(msg.text.length < 120, 'the chat line is the gist, not the whole report');
     assert.equal(core.getSnapshot().agent!.lastResult!.gist, '整理完成，结果在 D:/out。');
@@ -89,8 +93,16 @@ test('a long executor report reaches the main agent as a gist; the full report s
 test('limits: the API-reported window and output cap are used, the user can override them, and briefs survive a restart', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'galagent-limits-'));
   const bodies: any[] = [];
+  let readOldBrief = false;
+  let retrieved: { gist: string } | undefined;
   const opts = { dataDir: dir, workingDir: dir, credentials: { get: async () => 'k', set: async () => {} }, embeddings: { encode: async () => [1, 0], close: async () => {} },
-    fetch: (async (_u: string, init?: RequestInit) => { const body = JSON.parse(String(init?.body)); if (String(body.messages[0].content).includes('facts每项')) return json({ choices: [{ message: { content: '{"facts":[],"diary":""}' } }] }); bodies.push(body); return say({ text: '好', expression: 'neutral', action: 'idle' }); }) as typeof fetch };
+    fetch: (async (_u: string, init?: RequestInit) => { const body = JSON.parse(String(init?.body)); if (String(body.messages[0].content).includes('facts每项')) return json({ choices: [{ message: { content: '{"facts":[],"diary":""}' } }] }); bodies.push(body);
+      if (readOldBrief) {
+        const tool = body.messages.find((m: { role: string }) => m.role === 'tool');
+        if (!tool) return calls([['open_brief', { id: 'b-old' }]]);
+        retrieved = JSON.parse(tool.content);
+      }
+      return say({ text: '好', expression: 'neutral', action: 'idle' }); }) as typeof fetch };
   let core = new CompanionService(opts); await core.init();
   try {
     await core.handle({ type: 'config.save', baseUrl: 'https://api.example.com/v1', model: 'm-1' });
@@ -107,10 +119,14 @@ test('limits: the API-reported window and output cap are used, the user can over
     assert.equal(core.contextWindow(), 2_000_000, 'the user value applies to any model');
     await core.handle({ type: 'settings.update', settings: { contextWindow: 0, maxOutputTokens: 0 } });
     assert.equal(core.contextWindow(), 1_000_000, 'detected limits belong to m-1 only');
-    (core as any).saveBrief({ id: 'b-old', by: 'helper', goal: '很久以前查的', gist: '长'.repeat(5000), points: [], sources: [], at: Date.now() - 400 * 86400_000 });
     await core.close();
+    const saved = new Store(dir);
+    try {
+      saved.put('state', 'briefs', [{ id: 'b-old', by: 'helper', goal: '很久以前查的', gist: '长'.repeat(5000), points: [], sources: [], at: Date.now() - 400 * 86400_000 }]);
+    } finally { saved.close(); }
     core = new CompanionService(opts); await core.init();
-    const opened = (core as any).openBrief('b-old');
-    assert.equal(opened.gist.length, 5000, 'kept whole, kept for good');
+    readOldBrief = true;
+    assert.ok((await core.handle({ type: 'chat.send', text: '打开以前的梗概' })).ok);
+    assert.equal(retrieved?.gist.length, 5000, 'legacy briefs survive a restart and reach the tool in full');
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });

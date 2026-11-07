@@ -140,7 +140,8 @@ export class AttentionLoop {
         this.immediate.unref?.();
     }
     /** User input, quiet, pause or settings change: drop in-flight conclusions. */
-    invalidate(reason = 'invalidated') {
+    invalidate(reason = 'invalidated', forget: Partial<Record<AttentionEventKind, boolean>> = {}) {
+        this.events = this.events.filter(event => !forget[event.kind]);
         this.version++;
         this.controller?.abort();
         this.pendingWake = undefined;
@@ -271,6 +272,7 @@ export class AttentionLoop {
         const keep = () => { if (!this.pendingWake && !this.closed && version === this.version && request.expiresAt > this.clock() && (request.attempts ?? 0) < 2) this.pendingWake = { ...request, attempts: (request.attempts ?? 0) + 1 }; };
         try {
             if (await this.deps.wake(request)) {
+                if (this.closed || version !== this.version) return;
                 this.lastWakeAt = this.clock();
                 this.deps.store.put('state', 'attention-last-wake', this.lastWakeAt);
                 this.status.wakes++;

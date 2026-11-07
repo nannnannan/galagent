@@ -134,3 +134,22 @@ test('end to end: TA plans interests from its channels, researches one from seve
     assert.equal(core.getSnapshot().research!.findings.length, 0);
   } finally { await core.close(); await rm(dir, { recursive: true, force: true }); }
 });
+test('a search result without an opened page is not a source for a proactive finding', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'galagent-search-only-'));
+  let calls = 0;
+  const core = new CompanionService({dataDir:dir,workingDir:dir, credentials:{get:async()=>'k',set:async()=>{}},
+    embeddings:{encode:async()=>[1,0], close:async()=>{}}, features:{research:true},
+    webFetch: (async()=>new Response(bing([['https://film.example/unopened','搜索摘要','没有读过原文']]), {headers:{'content-type':'text/html'}})) as typeof fetch,
+    fetch: async (_url, init) => {
+      calls++;
+      const b=JSON.parse(String(init?.body));
+      if (!b.messages.some((m:any)=>m.role==='tool')) return sayTool();
+      return say({gist:'摘要看似有新品',points:[],sources:[{url:'https://film.example/unopened',title:'搜索摘要'}]});
+    }});
+  function sayTool() {return json({choices:[{message:{role:'assistant',content:null,tool_calls:[{id:'search',type:'function',function:{name:'web_search',arguments:JSON.stringify({query:'胶片'})}}]},finish_reason:'tool_calls'}]});}
+  try {
+    await core.init();
+    const result=await core.runHelper('查胶片',new AbortController().signal,'background',{by:'research',tools:['web_search','read_webpage']});
+    assert.equal(calls,2);assert.deepEqual(result.sources,[]);
+  } finally {await core.close();await rm(dir,{recursive:true,force:true});}
+});

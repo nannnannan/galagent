@@ -3,7 +3,8 @@ param(
     [string]$PackageDirectory,
     [string]$InstallRoot,
     [string]$ProfileDirectory,
-    [switch]$PrepareOnly
+    [switch]$PrepareOnly,
+    [ValidateRange(1, 10)][int]$KeepVersions = 2
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,10 +45,88 @@ function Assert-NoReparseAncestors([string]$Directory) {
     }
 }
 
+function Get-PackageFiles([string]$Directory) {
+    $paths = [string[]]@(Get-ChildItem -LiteralPath $Directory -File -Recurse -Force |
+        Where-Object { $_.FullName -ne (Join-Path $Directory '.galagent-install.json') } |
+        ForEach-Object { $_.FullName.Substring($Directory.Length + 1) })
+    [Array]::Sort($paths, [StringComparer]::Ordinal)
+    foreach ($relative in $paths) {
+        [pscustomobject]@{ path = $relative; sha256 = Get-Sha256 (Join-Path $Directory $relative) }
+    }
+}
+function Get-Fingerprint($Files) {
+    $text = ($Files | ForEach-Object { $_.path + '|' + $_.sha256 }) -join "`n"
+    $hash = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)))).Replace('-', '') }
+    finally { $hash.Dispose() }
+}
+function Assert-PackageFiles([string]$Directory, $Files) {
+    Assert-NoReparseAncestors $Directory
+    if (@(Get-ChildItem -LiteralPath $Directory -Recurse -Force -Attributes ReparsePoint).Count) { throw 'The runtime contains a symbolic link or junction.' }
+    foreach ($file in $Files) {
+        $full = [IO.Path]::GetFullPath((Join-Path $Directory $file.path))
+        Assert-InstallChild $full $Directory
+        if (!(Test-Path -LiteralPath $full -PathType Leaf) -or (Get-Sha256 $full) -ne $file.sha256) {
+            throw ('Runtime file differs from package: ' + $file.path)
+        }
+    }
+}
+function Remove-OldVersions([string]$Root, [string]$Current, [int]$Keep) {
+    $removed = @()
+    $skipped = @()
+    try {
+        $processes = @(Get-CimInstance Win32_Process -Filter "Name='GalAgent.exe'" -ErrorAction Stop)
+        if (@($processes | Where-Object { !$_.ExecutablePath }).Count) { throw 'Process paths unavailable' }
+    } catch { return @{ removed = @(); skipped = @('Process inventory unavailable; cleanup skipped') } }
+    $candidates = @()
+    foreach ($dir in @(Get-ChildItem -LiteralPath $Root -Directory -Force)) {
+        if ($dir.Name -notmatch '^build-[a-f0-9]{24}$' -or $dir.FullName -eq $Current) { continue }
+        try {
+            Assert-InstallChild $dir.FullName $Root
+            Assert-NoReparseAncestors $dir.FullName
+            if (@(Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -Attributes ReparsePoint).Count) { throw 'linked content' }
+            $manifest = Get-Content -LiteralPath (Join-Path $dir.FullName '.galagent-install.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($manifest.buildId -ne $dir.Name -or $manifest.version -notin @(1, 2)) { throw 'unrecognized manifest' }
+            if (Test-Path -LiteralPath (Join-Path $dir.FullName '.galagent-keep')) { throw 'pinned for rollback' }
+            if ($manifest.version -eq 1) {
+                $identityHash = [Security.Cryptography.SHA256]::Create()
+                try { $identity = ([BitConverter]::ToString($identityHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($manifest.exeSha256 + $manifest.asarSha256)))).Replace('-', '') }
+                finally { $identityHash.Dispose() }
+            } else { $identity = [string]$manifest.packageSha256 }
+            if ($identity -notmatch '^[a-fA-F0-9]{64}$' -or ('build-' + $identity.Substring(0, 24).ToLowerInvariant()) -ne $dir.Name) { throw 'unrecognized build identity' }
+            if ((Get-Sha256 (Join-Path $dir.FullName 'GalAgent.exe')) -ne $manifest.exeSha256 -or
+                (Get-Sha256 (Join-Path $dir.FullName 'resources\app.asar')) -ne $manifest.asarSha256) { throw 'changed runtime' }
+            if (@($processes | Where-Object { Test-Within $_.ExecutablePath $dir.FullName }).Count) { throw 'running version' }
+            $used = [DateTime]::Parse($manifest.preparedAt).ToUniversalTime()
+            if ($manifest.PSObject.Properties['lastUsedAt']) { $used = [DateTime]::Parse($manifest.lastUsedAt).ToUniversalTime() }
+            $candidates += [pscustomobject]@{ path = $dir.FullName; used = $used }
+        } catch { $skipped += $dir.Name + ': ' + $_.Exception.Message }
+    }
+    foreach ($entry in @($candidates | Sort-Object used -Descending | Select-Object -Skip ($Keep - 1))) {
+        try {
+            $live = @(Get-CimInstance Win32_Process -Filter "Name='GalAgent.exe'" -ErrorAction Stop)
+            if (@($live | Where-Object { !$_.ExecutablePath -or (Test-Within $_.ExecutablePath $entry.path) }).Count) { throw 'running version' }
+            Assert-InstallChild $entry.path $Root
+            Assert-NoReparseAncestors $entry.path
+            Remove-Item -LiteralPath $entry.path -Recurse -Force -ErrorAction Stop
+            $removed += [IO.Path]::GetFileName($entry.path)
+        } catch { $skipped += [IO.Path]::GetFileName($entry.path) + ': ' + $_.Exception.Message }
+    }
+    return @{ removed = $removed; skipped = $skipped }
+}
+
 $mutex = $null
 $locked = $false
 $staging = $null
 try {
+    $defaultPackage = !$PackageDirectory
+    $explicitProfile = [bool]$ProfileDirectory
+    $selectionFile = Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'GalAgent-profile.json'
+    if (!$PrepareOnly -and !$ProfileDirectory -and !$env:GALAGENT_DATA_DIR -and (Test-Path -LiteralPath $selectionFile)) {
+        $selection = Get-Content -LiteralPath $selectionFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($selection.version -ne 1 -or ![IO.Path]::IsPathRooted($selection.directory)) { throw 'Invalid current profile selection.' }
+        $ProfileDirectory = $selection.directory
+    }
     if (!$PackageDirectory) { $PackageDirectory = Join-Path $PSScriptRoot '..\release\win-unpacked' }
     if (!$InstallRoot) { $InstallRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'GalAgent\app' }
     if ($ProfileDirectory) {
@@ -55,8 +134,28 @@ try {
         if (!(Test-Path -LiteralPath $ProfileDirectory -PathType Container)) { throw 'Selected profile directory was not found.' }
         Assert-NoReparseAncestors $ProfileDirectory
     }
+    if ($defaultPackage -and !$PrepareOnly) {
+        $installed = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSObject.Properties['DisplayName'] -and $_.DisplayName -match '^GalAgent(?: |$)' -and $_.PSObject.Properties['DisplayIcon'] } |
+            Select-Object -First 1
+        if ($installed) {
+            $exe = ([string]$installed.DisplayIcon -replace ',\d+$', '').Trim('"')
+            if (!(Test-Path -LiteralPath $exe -PathType Leaf) -or [IO.Path]::GetFileName($exe) -ne 'GalAgent.exe') { throw 'The installed GalAgent entry is missing.' }
+            Assert-NoReparseAncestors $exe
+            $launch = @{ FilePath = $exe; WorkingDirectory = (Split-Path -Parent $exe); WindowStyle = 'Normal'; PassThru = $true }
+            if ($ProfileDirectory) {
+                if (Test-Within $ProfileDirectory (Split-Path -Parent $exe)) { throw 'The profile must be outside the program directory.' }
+                $launch.ArgumentList = @('--profile-directory="' + $ProfileDirectory + '"')
+                if ($explicitProfile) { $launch.ArgumentList += '--remember-profile' }
+            }
+            $application = Start-Process @launch
+            [pscustomobject]@{ ok = $true; installed = $true; executablePath = $exe; processId = $application.Id; profileDirectory = $ProfileDirectory } | ConvertTo-Json -Compress
+            return
+        }
+    }
     $source = Get-FullDirectory (Resolve-Path -LiteralPath $PackageDirectory).Path
     $root = Get-FullDirectory $InstallRoot
+    if ($ProfileDirectory -and (Test-Within $ProfileDirectory $root)) { throw 'The profile must be outside the managed runtime directory.' }
     if ((Test-Within $root $source) -or (Test-Within $source $root)) {
         throw 'Package and installation directories must be separate.'
     }
@@ -72,11 +171,13 @@ try {
     $links = @(Get-ChildItem -LiteralPath $source -Recurse -Force -Attributes ReparsePoint)
     if ($links.Count) { throw 'The package contains external links; installation was stopped.' }
 
+    $files = @(Get-PackageFiles $source)
+    $fingerprint = Get-Fingerprint $files
     $exeHash = Get-Sha256 $sourceExe
     $asarHash = Get-Sha256 $sourceAsar
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
-        $buildId = 'build-' + ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($exeHash + $asarHash))).Replace('-', '').Substring(0, 24).ToLowerInvariant())
+        $buildId = 'build-' + $fingerprint.Substring(0, 24).ToLowerInvariant()
         $lockId = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($root.ToLowerInvariant())))).Replace('-', '').Substring(0, 24)
     } finally { $sha.Dispose() }
     $target = Get-FullDirectory (Join-Path $root $buildId)
@@ -96,11 +197,8 @@ try {
         New-Item -ItemType Directory -Path $staging | Out-Null
         # Copy content only; the runtime inherits the normal application directory permissions.
         Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $staging -Recurse
-        if ((Get-Sha256 (Join-Path $staging 'GalAgent.exe')) -ne $exeHash -or
-            (Get-Sha256 (Join-Path $staging 'resources\app.asar')) -ne $asarHash) {
-            throw 'The copied runtime failed its integrity check.'
-        }
-        @{ version = 1; buildId = $buildId; exeSha256 = $exeHash; asarSha256 = $asarHash; preparedAt = [DateTime]::UtcNow.ToString('o') } |
+        Assert-PackageFiles $staging $files
+        @{ version = 2; buildId = $buildId; packageSha256 = $fingerprint; exeSha256 = $exeHash; asarSha256 = $asarHash; preparedAt = [DateTime]::UtcNow.ToString('o') } |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $staging '.galagent-install.json') -Encoding UTF8
         Assert-InstallChild $staging $root
         Assert-InstallChild $target $root
@@ -109,12 +207,13 @@ try {
     }
     Assert-NoReparseAncestors $target
     $installedExe = Join-Path $target 'GalAgent.exe'
-    if ((Get-Sha256 $installedExe) -ne $exeHash -or
-        (Get-Sha256 (Join-Path $target 'resources\app.asar')) -ne $asarHash) {
-        throw 'The installed runtime has changed. The original package was not modified.'
+    Assert-PackageFiles $target $files
+    $installedManifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    if ($installedManifest.buildId -ne $buildId -or $installedManifest.version -ne 2 -or $installedManifest.packageSha256 -ne $fingerprint) {
+        throw 'The runtime manifest does not match the package.'
     }
-    $mutex.ReleaseMutex()
-    $locked = $false
+    $installedManifest | Add-Member -NotePropertyName lastUsedAt -NotePropertyValue ([DateTime]::UtcNow.ToString('o')) -Force
+    $installedManifest | ConvertTo-Json | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     $result = [ordered]@{ ok = $true; executablePath = $installedExe; installDirectory = $target; buildId = $buildId; reused = [bool]$reused; started = $false }
     if ($ProfileDirectory) { $result.profileDirectory = $ProfileDirectory }
     if (!$PrepareOnly) {
@@ -122,7 +221,12 @@ try {
         $previousProfile = $env:GALAGENT_DATA_DIR
         try {
             if ($ProfileDirectory) { $env:GALAGENT_DATA_DIR = $ProfileDirectory }
-            $application = Start-Process -FilePath $installedExe -WorkingDirectory $target -WindowStyle Normal -PassThru
+            $launch = @{ FilePath = $installedExe; WorkingDirectory = $target; WindowStyle = 'Normal'; PassThru = $true }
+            if ($ProfileDirectory) {
+                $launch.ArgumentList = @('--profile-directory="' + $ProfileDirectory + '"')
+                if ($explicitProfile) { $launch.ArgumentList += '--remember-profile' }
+            }
+            $application = Start-Process @launch
         } finally {
             if ($null -eq $previousProfile) { Remove-Item Env:GALAGENT_DATA_DIR -ErrorAction SilentlyContinue }
             else { $env:GALAGENT_DATA_DIR = $previousProfile }
@@ -133,7 +237,11 @@ try {
         $result.started = $true
         $result.processId = $application.Id
     }
-    [pscustomobject]$result | ConvertTo-Json -Compress
+    $cleanup = Remove-OldVersions $root $target $KeepVersions
+    $result.keepVersions = $KeepVersions
+    $result.removedVersions = @($cleanup.removed)
+    $result.skippedCleanup = @($cleanup.skipped)
+    [pscustomobject]$result | ConvertTo-Json -Depth 5 -Compress
 } catch {
     if (!$PrepareOnly) {
         try {

@@ -86,3 +86,13 @@ export class RequestPool {
     }
     close() { this.closed = true; if (this.drainTimer) clearTimeout(this.drainTimer); for (const waiter of this.waiters.splice(0)) waiter.abort(); }
 }
+
+export function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!signal) return promise;
+    return new Promise<T>((resolve,reject) => {
+        const aborted = () => reject(new Error('已取消'));
+        if (signal.aborted) { promise.catch(() => {}); aborted(); return; }
+        signal.addEventListener('abort', aborted, { once: true });
+        promise.then(value => { signal.removeEventListener('abort', aborted); signal.aborted ? aborted() : resolve(value); }, error => { signal.removeEventListener('abort', aborted); reject(error); });
+    });
+}

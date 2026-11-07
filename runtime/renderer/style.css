@@ -302,6 +302,9 @@ kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; 
 .nav-item:hover .nav-key, .nav-item:focus-visible .nav-key { opacity: 1; }
 .nav-sep { height: 1px; margin: 6px 8px; background: var(--line-soft); flex: none; }
 .sidebar-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px; color: var(--faint); font-size: var(--fs-xs); padding: 8px 2px 0; border-top: 1px solid var(--line-soft); }
+.sidebar-foot { flex-wrap: wrap; }
+.sidebar-foot #save-status { flex-basis: 100%; order: 3; }
+.profile-location { overflow-wrap: anywhere; }
 .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
 /* Title bar: page title + tools; padding on the right leaves room for the Windows caption buttons. */
 .titlebar { display: flex; align-items: center; gap: var(--s3); height: var(--titlebar); flex: none; padding: 0 calc(var(--caption-gap) + 8px) 0 var(--s6); -webkit-app-region: drag; border-bottom: 1px solid transparent; transition: border-color .2s, background .2s; }

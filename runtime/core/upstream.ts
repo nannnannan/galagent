@@ -1,7 +1,7 @@
 // One place for every chat-completions call: pool slot, retry policy and backoff.
 // A slot is held only while a request is actually in flight (including reading its
 // body); backoff waits happen with the slot released so retries never pin capacity.
-import { abortableDelay, type PoolPriority, type RequestPool } from './pool';
+import { abortable, abortableDelay, type PoolPriority, type RequestPool } from './pool';
 
 const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 export type UpstreamCall = {
@@ -39,7 +39,11 @@ export async function callUpstream(call: UpstreamCall): Promise<{ response: Resp
     let response: Response;
     try { call.before?.(); } catch (error) { release(); throw error; }
     try {
-      response = await call.fetch(call.url, { ...call.init, signal: call.signal });
+      const pending = call.fetch(call.url, { ...call.init, signal: call.signal }).then(result => {
+        if (call.signal.aborted) void result.body?.cancel().catch(() => {});
+        return result;
+      });
+      response = await abortable(pending, call.signal);
     } catch (error) {
       release();
       if (call.signal.aborted || attempt + 1 >= attempts) throw error;

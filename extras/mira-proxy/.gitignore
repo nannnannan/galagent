@@ -1,0 +1,6 @@
+.local-api-key
+*.log
+*.pid
+runtime-selection.json
+validation*.json
+backups/

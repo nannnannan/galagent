@@ -3,7 +3,7 @@
 // 规则只朝“更安静”的方向走——用户设的间隔、每小时 / 每天上限是硬上限，这里只会把间隔拉长、把某类话题暂停，
 // 永远不会让 TA 比用户设定的更频繁。被冷落的话题按次数退避，用户一回应（或点「这种挺好」）就立刻恢复。
 // 只记录时间戳、话题类别与“有没有回应”，不保存任何消息原文。
-import type { InitiativeTopic, PacingView } from '../shared/contracts';
+import type { InitiativeTopic, PacingView, Observation, Message } from '../shared/contracts';
 
 /** 用户点名要的、或用户自己设的事：不参与退避（任务结果、关注事项、定时提醒、连接状态）。 */
 export const EXEMPT_TOPICS: ReadonlySet<InitiativeTopic> = new Set<InitiativeTopic>(['task', 'watch', 'schedule', 'system']);
@@ -48,13 +48,11 @@ export function noteInitiative(ledger: PacingLedger, topics: InitiativeTopic[], 
 
 /** 用户说话了：窗口内还没结论的主动开口都算回应，它们的话题清零恢复。 */
 export function noteUserReply(ledger: PacingLedger, at: number): PacingLedger {
+  const latest = [...ledger.recent].reverse().find(e => e.answered === null && at >= e.at && at - e.at <= REPLY_WINDOW_MS);
+  if (!latest) return ledger;
   const topics = { ...ledger.topics };
-  const recent = ledger.recent.map(e => {
-    if (e.answered !== null || at < e.at || at - e.at > REPLY_WINDOW_MS) return e;
-    for (const t of adaptive(e.topics)) delete topics[t];
-    return { ...e, answered: true };
-  });
-  return { ...ledger, recent, topics };
+  for (const topic of adaptive(latest.topics)) delete topics[topic];
+  return { ...ledger, topics, recent: ledger.recent.map(e => e === latest ? { ...e, answered:true } : e) };
 }
 
 /** 用户点了「这种挺好」：这些话题立刻恢复。 */
@@ -99,4 +97,17 @@ export function pacingView(ledger: PacingLedger, enabled: boolean, now: number):
     .map(([topic, v]) => ({ topic, until: v.backoffUntil, ignored: v.ignored }))
     .sort((a, b) => a.until - b.until);
   return enabled ? { enabled, factor, ignoreRate, samples, paused } : { enabled, factor: 1, ignoreRate, samples, paused: [] };
+}
+
+
+export function optionalInterruption(observation: Observation, observing: boolean, messages: Message[], changedAt: number, now: number): string | undefined {
+  const recent = observing && observation.available && Math.abs(now-Date.parse(observation.observedAt))<=30000;
+  if (recent && observation.fullscreen) return 'fullscreen';
+  if (observing && changedAt && now>=changedAt && now-changedAt<30000) return 'switching-apps';
+  const user = [...messages].reverse().find(m => m.role==='user' && m.source==='chat');
+  if (user && now>=Date.parse(user.createdAt) && now-Date.parse(user.createdAt)<90000) return 'conversation-active';
+  const last = [...messages].reverse().find(m => m.source!=='scene');
+  if (last?.role==='assistant' && last.source==='initiative' && now>=Date.parse(last.createdAt) && now-Date.parse(last.createdAt)<20*60000)
+    return 'waiting-for-reply';
+  return undefined;
 }

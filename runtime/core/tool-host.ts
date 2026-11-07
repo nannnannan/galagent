@@ -1,17 +1,18 @@
-import {spawn,type ChildProcess} from 'node:child_process';
-import {readFile,writeFile,mkdir,stat,readdir,realpath,rename,mkdtemp,unlink,rmdir} from 'node:fs/promises';
-import {existsSync,realpathSync,statSync,readdirSync} from 'node:fs';
+import { ExecutorSessionTools } from './executor-session-tools';
+import { FileCheckpoints } from './file-checkpoints';
+import { TaskSupervisor } from './task-supervisor';
+import {readFile,writeFile,mkdir,stat,readdir,realpath,rename,unlink} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
-import {homedir,tmpdir} from 'node:os';
-import {lookup} from 'node:dns/promises';
-import {isIP} from 'node:net';
-import {isPrivateAddress} from './net-guard';
-export {isPrivateAddress};
-import {safeChildEnv} from './safe-env';
+import {homedir} from 'node:os';
+import { assertPublicUrl } from './net-guard';
+export { assertPublicUrl, isPrivateAddress } from './net-guard';
+import { canonicalizePath, isForbiddenPath } from './file-policy';
+export { canonicalizePath, isForbiddenPath } from './file-policy';
 import Ajv from 'ajv';
-import sharp from 'sharp';
-import ffmpeg from 'ffmpeg-static';
+import { readMedia } from './media-reader';
+export { detectVideoMime } from './media-reader';
 import kimiDefinitions from '../assets/protocol/kimi-code-tools-0.29.2.json';
 import {fetchText,htmlToText,webSearch,formatResults} from './web';
 import {APPLY_PATCH_TOOL,applyChunks,boundedMiddle,parsePatch} from './agent-kit';
@@ -33,96 +34,42 @@ type CronJob={id:string;cron:string;prompt:string;recurring:boolean;nextAt:numbe
 export type HostTask={id:string;owner:string;kind:'shell'|'agent'|'question';description:string;status:'queued'|'running'|'done'|'failed'|'cancelled'|'lost';output:string;createdAt:number;exitCode?:number;pid?:number;agentId?:string};
 export type VideoUpload={data:Buffer;mimeType:string;filename:string;session:HostSession};
 type ToolOutput={content:string;attachments?:unknown[];parts?:unknown[]};
-export type CheckpointManifest={runId:string;sessionId:string;label:string;cwd:string;createdAt:number;undoneAt?:number;files:Record<string,{existed:boolean;blob:string|null;after?:string|null}>};
+export type { CheckpointManifest } from './file-checkpoints';
 export type HostHooks={save:(session:HostSession)=>void;saveTask?:(task:HostTask)=>void;ask:(questions:Question[],signal:AbortSignal)=>Promise<Record<string,string>>;child:(session:HostSession,prompt:string,signal:AbortSignal)=>Promise<string>;onBackground?:(task:HostTask)=>void;uploadVideo?:(upload:VideoUpload,signal:AbortSignal)=>Promise<{id:string}|undefined>;forbiddenPaths?:()=>string[];/** Paths no tool may write: GalAgent executes or trusts files there. */protectedWritePaths?:()=>string[];/** Tests only: permit FetchURL to loopback/private addresses. */allowPrivateFetch?:boolean;/** GalAgent sandbox: file scope, shell and network switches. */sandbox?:()=>Pick<SandboxSettings,'fileScope'|'shell'|'network'>&{shellConfirm?:boolean;lanAccess?:boolean;credentialFiles?:boolean;level?:string};/** Outbound URL guard (allow-list, secrets in URL); throws to block. */checkUrl?:(url:URL)=>void;/** Extra read-only skill folders shipped with GalAgent. */skillRoots?:()=>string[];/** When set, Cron tools schedule wake-ups of the MAIN character instead of re-entering this executor session. */mainCron?:{create(job:{cron:string;prompt:string;recurring:boolean}):{id:string;nextAt:number};list():{id:string;cron?:string;prompt:string;nextAt:number;recurring:boolean}[];delete(id:string):boolean};policyVersion?:()=>number;/** Connected MCP servers (tools appear as mcp__server__tool). */mcp?:Pick<McpHub,'tools'|'find'|'call'>;/** Folder for per-task file checkpoints (undo). */checkpointDir?:()=>string|undefined;/** Applied to MCP call arguments before they leave GalAgent (secret redaction). */outboundText?:(text:string)=>string};
-const VIDEO_EXT_MIMES:Record<string,string>={'.mp4':'video/mp4','.mpeg':'video/mpeg','.mpg':'video/mpeg','.mov':'video/quicktime','.webm':'video/webm','.mkv':'video/x-matroska','.avi':'video/x-msvideo','.flv':'video/x-flv','.3gp':'video/3gpp'};
-export function detectVideoMime(file:string,header?:Buffer):string|undefined {
- if(header&&header.length>=12&&header.subarray(4,8).toString('ascii')==='ftyp'){const brand=header.subarray(8,12).toString('ascii');return brand==='qt  '?'video/quicktime':brand.startsWith('3gp')?'video/3gpp':'video/mp4';}
- if(header&&header.length>=4&&header[0]===0x1a&&header[1]===0x45&&header[2]===0xdf&&header[3]===0xa3)return header.subarray(0,64).toString('latin1').toLowerCase().includes('webm')?'video/webm':'video/x-matroska';
- if(header&&header.length>=12&&header.subarray(0,4).toString('ascii')==='RIFF'&&header.subarray(8,12).toString('ascii')==='AVI ')return'video/x-msvideo';
- if(header&&header.length>=3&&header.subarray(0,3).toString('ascii')==='FLV')return'video/x-flv';
- if(header&&header.length>=4&&header[0]===0x00&&header[1]===0x00&&header[2]===0x01&&(header[3]===0xba||header[3]===0xb3))return'video/mpeg';
- return VIDEO_EXT_MIMES[path.extname(file).toLowerCase()];
-}
-const hasVideoMagic=(header:Buffer)=>Boolean(detectVideoMime('',header));
 const digest=(text:string|Buffer)=>createHash('sha256').update(text).digest('hex');
 const bounded=boundedMiddle;
 const secret=(file:string)=>/^(\.env(?:\..*)?|id_rsa|id_ed25519|id_ecdsa|credentials\.json)$/i.test(path.basename(file));
-// FetchURL must not let a prompt-injected model reach loopback, LAN or link-local services (local proxies, router pages, metadata endpoints).
-export async function assertPublicUrl(url:URL){
- const host=url.hostname.replace(/^\[|\]$/g,'');
- if(!host||/^localhost$/i.test(host)||/\.localhost$/i.test(host))throw new Error('FetchURL blocks local and private network addresses');
- const addresses=isIP(host)?[{address:host}]:await lookup(host,{all:true});
- if(!addresses.length||addresses.some(a=>isPrivateAddress(a.address)))throw new Error('FetchURL blocks local and private network addresses');
-}
-const active=(task:HostTask)=>['queued','running'].includes(task.status);
 const failure=(message:string)=>({content:'ToolError: '+message});
-export function canonicalizePath(target:string,cwd=process.cwd()):string {
- let raw=target.trim();
- if(process.platform==='win32'&&/^\/[a-z](?:\/|$)/i.test(raw))raw=raw[1]+':'+raw.slice(2);
- if(raw==='~'||raw.startsWith('~/')||raw.startsWith('~\\'))raw=path.join(homedir(),raw.slice(1));
- const abs=path.resolve(cwd,raw);
- let cur=abs;
- const suffix:string[]=[];
- while(true){
-  try{
-   const real=(realpathSync.native||realpathSync)(cur);
-   return path.normalize(suffix.length?path.join(real,...suffix.reverse()):real);
-  }catch{
-   const parent=path.dirname(cur);
-   if(parent===cur)return path.normalize(abs);
-   suffix.push(path.basename(cur));
-   cur=parent;
-  }
- }
-}
-const normCompare=(p:string)=>process.platform==='win32'?p.replace(/\//g,'\\').replace(/\\+$/,'').toLowerCase():p.replace(/\/+$/,'');
-const isSubOrEqual=(cand:string,rule:string)=>{const c=normCompare(cand),r=normCompare(rule);return Boolean(r)&&(c===r||c.startsWith(r+(process.platform==='win32'?'\\':'/')));};
-function sharesForbiddenHardlink(resolvedFile:string,canonicalRules:string[]):boolean {
- if(!canonicalRules.length)return false;
- try{
-  const st=statSync(resolvedFile,{bigint:true,throwIfNoEntry:false});
-  // A bounded directory scan cannot prove where every hardlink points.
-  // In guarded mode, refuse multiply-linked files instead of failing open.
-  return Boolean(st?.isFile()&&st.nlink>1n);
- }catch(e){return (e as NodeJS.ErrnoException)?.code!=='ENOENT';}
-}
-export function isForbiddenPath(candidate:string,forbiddenPaths:readonly string[],cwd=process.cwd(),checkHardlinks=true):boolean {
- if(!forbiddenPaths.length||!candidate.trim())return false;
- const candReal=canonicalizePath(candidate,cwd);
- const candLex=path.resolve(cwd,process.platform==='win32'&&/^\/[a-z](?:\/|$)/i.test(candidate)?candidate[1]+':'+candidate.slice(2):candidate);
- const canonicalRules:string[]=[];
- for(const raw of forbiddenPaths){
-  if(!raw||!raw.trim())continue;
-  const ruleReal=canonicalizePath(raw,cwd);
-  const ruleLex=path.resolve(cwd,raw.trim());
-  canonicalRules.push(ruleReal);
-  if(isSubOrEqual(candReal,ruleReal)||isSubOrEqual(candLex,ruleLex)||isSubOrEqual(candReal,ruleLex))return true;
- }
- return checkHardlinks&&sharesForbiddenHardlink(candReal,canonicalRules);
-}
-
 export class ToolHost {
  /** Local (stdio) MCP servers are programs: Shell must be allowed and no folder forbidden. Remote (HTTP) ones need network. */
  mcpTransports(){const box=this.hooks.sandbox?.();return{stdio:(!box||box.shell)&&!this.forbiddenList().length,http:!box||box.network};}
  get definitions(){const allow=this.mcpTransports(),mcp=(this.hooks.mcp?.tools()||[]).filter(t=>allow[t.transport]);return mcp.length?[...definitions,...mcp.map(t=>({type:'function',function:{name:t.qualified,description:`[MCP · ${t.server}] ${t.description}`.slice(0,2000),parameters:t.inputSchema}}))] as unknown as typeof definitions:definitions;}
  private mcpSchemas=new Map<string,{key:string;validate?:Ajv.ValidateFunction}>();
  readonly sessions=new Map<string,HostSession>();
- readonly tasks=new Map<string,HostTask>();
+ private sessionTools: ExecutorSessionTools;
+ private supervisor: TaskSupervisor;
+ private checkpoints: FileCheckpoints;
+ get tasks(){return this.supervisor.tasks;}
  private schemas=new Map<string,Ajv.ValidateFunction>();
- private controllers=new Map<string,AbortController>();
- private processes=new Map<string,ChildProcess>();
  private locks=new Map<string,Promise<unknown>>();
- private stopped=false;
+
  constructor(private hooks:HostHooks,private clock=()=>Date.now(),sessions:HostSession[]=[],tasks:HostTask[]=[]){
   const ajv=new Ajv({allErrors:true,useDefaults:true,jsonPointers:true});for(const tool of definitions)this.schemas.set(tool.function.name,ajv.compile(tool.function.parameters));
   for(const session of sessions)this.sessions.set(session.id,session);
-  for(const task of tasks){if(active(task)){task.status='lost';task.output='Previous process ended; side effects may exist. Do not replay automatically.';}this.tasks.set(task.id,task);this.hooks.saveTask?.(task);}
+  this.checkpoints = new FileCheckpoints(
+   () => this.hooks.checkpointDir?.(), this.clock,
+   (file, cwd) => !isForbiddenPath(file, this.forbiddenList(), cwd) &&
+     !isForbiddenPath(file, this.hooks.protectedWritePaths?.() || [], cwd, false) &&
+     !galagentSecret(file) && (!sensitivePath(file) || this.credentialsOpen()),
+   restored => { for (const session of this.sessions.values()) for (const file of restored) delete session.reads[file]; }
+  );
+  this.supervisor = new TaskSupervisor(this.sessions, this.clock, task => this.hooks.saveTask?.(task), () => this.policyVersion(), tasks);
+  this.sessionTools = new ExecutorSessionTools(this.supervisor, hooks, clock, session => this.save(session));
  }
  session(cwd:string,parentId?:string,profile='coder'):HostSession {
   const id=randomUUID(),session:HostSession={id,cwd,parentId,profile,messages:[],reads:{},todos:[],plan:false,planFile:path.join(cwd,'.galagent',`plan-${id}.md`),crons:[],usage:0,turns:0,createdAt:this.clock()};this.sessions.set(id,session);this.save(session);return session;
  }
- save(session:HostSession){if(!this.stopped)this.hooks.save(structuredClone(session));}
+ save(session:HostSession){if(!this.supervisor.stopped)this.hooks.save(structuredClone(session));}
  validate(name:string,args:unknown):Record<string,any>{
   if(name.startsWith('mcp__'))return this.validateMcp(name,args);
   const validate=this.schemas.get(name);
@@ -158,52 +105,9 @@ export class ToolHost {
  }
  private credentialsOpen(){return !!this.hooks.sandbox?.().credentialFiles;}
  private rootOf(session:HostSession){let s=session;for(let i=0;i<8&&s.parentId;i++){const p=this.sessions.get(s.parentId);if(!p)break;s=p;}return s;}
- /** First touch of a file in a run stores its original bytes (≤5 MiB) so the whole run can be undone. */
- private async checkpoint(session:HostSession,file:string,before:Buffer|undefined){
-  const base=this.hooks.checkpointDir?.(),root=this.rootOf(session);if(!base||!root.runId)return;
-  const dir=path.join(base,root.id,root.runId),manifestFile=path.join(dir,'manifest.json');await mkdir(dir,{recursive:true});
-  const manifest:CheckpointManifest=await readFile(manifestFile,'utf8').then(JSON.parse,()=>({runId:root.runId!,sessionId:root.id,label:root.runLabel||'',cwd:root.cwd,createdAt:this.clock(),files:{}}));
-  if(!manifest.files[file]){
-   if(before&&before.length>5*1024*1024)manifest.files[file]={existed:true,blob:null};
-   else if(before){const blob=digest(before);await writeFile(path.join(dir,blob),before);manifest.files[file]={existed:true,blob};}
-   else manifest.files[file]={existed:false,blob:null};
-  }
-  await writeFile(manifestFile,JSON.stringify(manifest));
- }
- private async recordAfter(session:HostSession,file:string,after:Buffer|undefined){
-  const base=this.hooks.checkpointDir?.(),root=this.rootOf(session);if(!base||!root.runId)return;
-  const manifestFile=path.join(base,root.id,root.runId,'manifest.json');const manifest:CheckpointManifest|undefined=await readFile(manifestFile,'utf8').then(JSON.parse,()=>undefined);
-  if(!manifest?.files[file])return;manifest.files[file].after=after?digest(after):null;await writeFile(manifestFile,JSON.stringify(manifest));
- }
- /** The most recent run with file changes that has not been undone. */
- async lastRun():Promise<CheckpointManifest|undefined>{
-  const base=this.hooks.checkpointDir?.();if(!base)return undefined;let latest:CheckpointManifest|undefined;
-  for(const sid of await readdir(base).catch(()=>[] as string[]))for(const rid of await readdir(path.join(base,sid)).catch(()=>[] as string[])){const m:CheckpointManifest|undefined=await readFile(path.join(base,sid,rid,'manifest.json'),'utf8').then(JSON.parse,()=>undefined);if(m&&!m.undoneAt&&Object.keys(m.files).length&&(!latest||m.createdAt>latest.createdAt))latest=m;}
-  return latest;
- }
- /** Restores every file the run changed, unless it changed again afterwards (then it is left alone and reported). */
- async undoRun(runId?:string):Promise<{label:string;restored:string[];conflicts:string[];skipped:string[]}>{
-  const base=this.hooks.checkpointDir?.();if(!base)throw new Error('Checkpoints are unavailable');
-  const manifest=runId?await this.findRun(runId):await this.lastRun();if(!manifest)throw new Error('没有可撤销的文件改动');
-  if(manifest.undoneAt)throw new Error('这个任务的改动已经撤销过了');
-  const dir=path.join(base,manifest.sessionId,manifest.runId),restored:string[]=[],conflicts:string[]=[],skipped:string[]=[];
-  for(const [file,entry] of Object.entries(manifest.files)){
-   try{
-    if(isForbiddenPath(file,this.forbiddenList(),manifest.cwd)||isForbiddenPath(file,this.hooks.protectedWritePaths?.()||[],manifest.cwd,false)||galagentSecret(file)||(sensitivePath(file)&&!this.credentialsOpen())){skipped.push(file);continue;}
-    const current=await readFile(file).catch(()=>undefined);
-    if(entry.after!==undefined&&(current?digest(current):null)!==entry.after){conflicts.push(file);continue;}
-    if(!entry.existed){if(current)await unlink(file);restored.push(file);continue;}
-    if(!entry.blob){skipped.push(file);continue;}
-    const original=await readFile(path.join(dir,entry.blob));await mkdir(path.dirname(file),{recursive:true});const temporary=file+'.galagent-'+randomUUID();await writeFile(temporary,original);await rename(temporary,file);restored.push(file);
-   }catch{skipped.push(file);}
-  }
-  manifest.undoneAt=this.clock();await writeFile(path.join(dir,'manifest.json'),JSON.stringify(manifest));
-  for(const s of this.sessions.values())for(const f of restored)delete s.reads[f];
-  return{label:manifest.label,restored,conflicts,skipped};
- }
- private async findRun(runId:string){const base=this.hooks.checkpointDir?.();if(!base)return undefined;for(const sid of await readdir(base).catch(()=>[] as string[])){const m=await readFile(path.join(base,sid,runId,'manifest.json'),'utf8').then(JSON.parse,()=>undefined);if(m)return m as CheckpointManifest;}return undefined;}
- /** Files changed so far in a run (for the task summary). */
- async runChanges(session:HostSession):Promise<string[]>{const base=this.hooks.checkpointDir?.(),root=this.rootOf(session);if(!base||!root.runId)return[];const m:CheckpointManifest|undefined=await readFile(path.join(base,root.id,root.runId,'manifest.json'),'utf8').then(JSON.parse,()=>undefined);return m?Object.keys(m.files):[];}
+ async lastRun() { return this.checkpoints.lastRun(); }
+ async undoRun(runId?: string) { return this.checkpoints.exclusive(() => this.checkpoints.undoRun(runId)); }
+ runChanges(session: HostSession) { return this.checkpoints.runChanges(this.rootOf(session)); }
  /** Codex-style multi-file patch: everything is resolved, checked and computed first; then written. */
  private async applyPatch(session:HostSession,a:any){
   const ops=parsePatch(String(a.patch));
@@ -227,8 +131,8 @@ export class ToolHost {
   }
   const touched=[...new Set(plans.map(p=>p.file))].sort();
   const run=async(i:number):Promise<void>=>{if(i>=touched.length){
-    for(const plan of plans){const before=plan.before??await readFile(plan.file).catch(()=>undefined);await this.checkpoint(session,plan.file,before);}
-    for(const plan of plans){if(plan.remove){await unlink(plan.file);delete session.reads[plan.file];await this.recordAfter(session,plan.file,undefined);continue;}await mkdir(path.dirname(plan.file),{recursive:true});const temporary=plan.file+'.galagent-'+randomUUID(),data=Buffer.from(plan.after!);await writeFile(temporary,data);await rename(temporary,plan.file);session.reads[plan.file]=digest(data);await this.recordAfter(session,plan.file,data);}
+    for(const plan of plans){const before=plan.before??await readFile(plan.file).catch(()=>undefined);await this.checkpoints.checkpoint(this.rootOf(session),plan.file,before);}
+    for(const plan of plans){if(plan.remove){await unlink(plan.file);delete session.reads[plan.file];await this.checkpoints.recordAfter(this.rootOf(session),plan.file,undefined);continue;}await mkdir(path.dirname(plan.file),{recursive:true});const temporary=plan.file+'.galagent-'+randomUUID(),data=Buffer.from(plan.after!);await writeFile(temporary,data);await rename(temporary,plan.file);session.reads[plan.file]=digest(data);await this.checkpoints.recordAfter(this.rootOf(session),plan.file,data);}
     return;}
    return this.locked(touched[i],()=>run(i+1));};
   await run(0);
@@ -262,10 +166,7 @@ export class ToolHost {
   const images=result.images.map(img=>({type:'image_url',image_url:{url:`data:${img.mimeType};base64,${img.data}`}}));
   return{content:bounded(text),attachments:images,parts:[{type:'text',text:bounded(text)},...images]};
  }
- invalidatePolicy(){
-  for(const task of this.tasks.values())if(active(task)){task.status='cancelled';task.output=bounded(task.output+'\n[Cancelled: directory permission policy updated]');this.update(task);}
-  for(const id of [...this.controllers.keys()])this.kill(id);
- }
+ invalidatePolicy(){this.supervisor.invalidatePolicy();}
  private file(session:HostSession,input:string){
   if(!input||input.includes('\0'))throw new Error('路径无效');
   if(process.platform==='win32'&&/^\/[a-z]\//i.test(input))input=input[1]+':'+input.slice(2);
@@ -303,23 +204,8 @@ export class ToolHost {
   try{return await fn();}
   finally{unlock();if(this.locks.get(file)===next)this.locks.delete(file);}
  }
- private newTask(session:HostSession,kind:HostTask['kind'],description:string){
-  const task:HostTask={id:randomUUID(),owner:session.id,kind,description,status:'queued',output:'',createdAt:this.clock()};
-  this.tasks.set(task.id,task);this.hooks.saveTask?.(task);return task;
- }
- private update(task:HostTask){if(!this.stopped)this.hooks.saveTask?.(structuredClone(task));}
- private ownTask(session:HostSession,id:string){const task=this.tasks.get(id);if(!task||task.owner!==session.id)throw new Error('Unknown task in this session');return task;}
- private kill(id:string){const controller=this.controllers.get(id);if(controller){controller.abort();return;}const child=this.processes.get(id);if(child&&child.exitCode===null)child.kill();}
- close(){
-  if(this.stopped)return;
-  for(const task of this.tasks.values())if(active(task)){task.status='cancelled';task.output=bounded(task.output+'\n[Application closed; not resumed automatically]');this.update(task);}
-  for(const id of this.controllers.keys())this.kill(id);
-  this.stopped=true;
- }
- cancelSession(id:string){
-  for(const task of this.tasks.values())if(task.owner===id&&active(task))this.kill(task.id);
-  for(const session of this.sessions.values())if(session.parentId===id)this.cancelSession(session.id);
- }
+ close(){this.supervisor.close();}
+ cancelSession(id:string){this.supervisor.cancelSession(id);}
  private shellPath(){
   if(process.platform!=='win32')return '/bin/bash';
   const candidates=[process.env.GALAGENT_BASH,'C:\\Program Files\\Git\\bin\\bash.exe','C:\\Program Files\\Git\\usr\\bin\\bash.exe'];
@@ -328,62 +214,6 @@ export class ToolHost {
   return found;
  }
  private rgPath(){const own=path.join(homedir(),'.kimi-code','bin',process.platform==='win32'?'rg.exe':'rg');return existsSync(own)?own:'rg';}
- private spawnTask(session:HostSession,description:string,exe:string,args:string[],cwd:string,signal:AbortSignal,timeout:number):{task:HostTask;finished:Promise<HostTask>} {
-  const startPolicy=this.policyVersion(),task=this.newTask(session,'shell',description),controller=new AbortController();
-  this.controllers.set(task.id,controller);
-  const onAbort=()=>{task.status='cancelled';this.kill(task.id);};
-  signal.addEventListener('abort',onAbort,{once:true});
-  const child=spawn(exe,args,{cwd,env:safeChildEnv(),windowsHide:true,shell:false,stdio:['ignore','pipe','pipe']});
-  this.processes.set(task.id,child);task.pid=child.pid;task.status='running';this.update(task);
-  const ownAbort=()=>{
-   task.status='cancelled';
-   if(child.exitCode===null){
-    if(process.platform==='win32'&&child.pid){
-     const killer=spawn('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
-     killer.on('error',()=>child.kill());
-    }else child.kill('SIGTERM');
-   }
-  };
-  controller.signal.addEventListener('abort',ownAbort,{once:true});
-  let timer:ReturnType<typeof setTimeout>|undefined;
-  // setTimeout overflows past 2^31-1 ms (fires at once); anything that long simply means no timer.
-  if(timeout>0&&timeout<=2147483647)timer=setTimeout(()=>{task.output=bounded(task.output+'\n[Task timeout]');this.kill(task.id);},timeout);
-  const finished=new Promise<HostTask>(resolve=>{
-   let ended=false,exitTimer:ReturnType<typeof setTimeout>|undefined;
-   const end=(code:number|null,error?:Error)=>{
-    if(ended)return;ended=true;
-    if(timer)clearTimeout(timer);
-    if(exitTimer)clearTimeout(exitTimer);
-    signal.removeEventListener('abort',onAbort);
-    this.controllers.delete(task.id);this.processes.delete(task.id);
-    task.exitCode=code??undefined;
-    if(this.policyVersion()!==startPolicy)task.status='cancelled';
-    else if(task.status!=='cancelled')task.status=error||code!==0?'failed':'done';
-    if(error)task.output=bounded(task.output+'\n'+error.message);
-    this.update(task);resolve(task);
-   };
-   let lastData=Date.now();
-   const add=(chunk:Buffer)=>{lastData=Date.now();task.output=bounded(task.output+chunk.toString('utf8'));};
-   child.stdout?.on('data',add);child.stderr?.on('data',add);
-   child.once('error',error=>end(null,error));child.once('close',code=>end(code));
-   // A backgrounded grandchild (`cmd &`) can keep our pipes open forever after the shell exits. Once the shell is gone,
-   // wait for the pipes to go quiet, then settle; keep draining (never destroy) so the grandchild never hits EPIPE.
-   child.once('exit',code=>{
-    const exitedAt=Date.now();
-    const settle=()=>{
-     if(ended)return;
-     // A grandchild that keeps logging would keep the pipes busy forever: give up waiting 10 s after the shell exited.
-     if(Date.now()-lastData<1500&&Date.now()-exitedAt<10_000){exitTimer=setTimeout(settle,500);return;}
-     for(const stream of [child.stdout,child.stderr]){if(!stream)continue;stream.removeListener('data',add);stream.resume();(stream as unknown as {unref?:()=>void}).unref?.();}
-     end(code);
-    };
-    // Not unref'd: someone is awaiting this task, and the wait is bounded (10 s at most).
-    exitTimer=setTimeout(settle,500);
-   });
-  });
-  if(signal.aborted||this.policyVersion()!==startPolicy)onAbort();
-  return{task,finished};
- }
  private text(buffer:Buffer){
   if(buffer[0]===0xff&&buffer[1]===0xfe)return buffer.subarray(2).toString('utf16le');
   if(buffer[0]===0xfe&&buffer[1]===0xff){const swapped=Buffer.from(buffer.subarray(2));swapped.swap16();return swapped.toString('utf16le');}
@@ -428,13 +258,13 @@ export class ToolHost {
     output=a.replace_all?view.split(a.old_string).join(a.new_string):view.replace(a.old_string,a.new_string);
     if(crlf)output=output.replace(/\r?\n/g,'\r\n');
    }
-   await this.checkpoint(session,file,old);
+   await this.checkpoints.checkpoint(this.rootOf(session),file,old);
    await mkdir(path.dirname(file),{recursive:true});
    const temporary=file+'.galagent-'+randomUUID();
    await writeFile(temporary,output);
    await rename(temporary,file);
    session.reads[file]=digest(Buffer.from(output));
-   await this.recordAfter(session,file,Buffer.from(output));
+   await this.checkpoints.recordAfter(this.rootOf(session),file,Buffer.from(output));
    return{content:`${name} succeeded: ${file}`};
   });
  }
@@ -489,7 +319,7 @@ export class ToolHost {
   for(const chunk of chunks){
    if(policy!==this.policyVersion())throw new Error('Directory permission policy changed during search');
    for(const file of chunk)this.assertAllowed(file,session.cwd);
-   const {finished}=this.spawnTask(session,`${name}: ${a.pattern}`,this.rgPath(),[...args,...chunk],session.cwd,signal,0),task=await finished;
+   const {finished}=this.supervisor.spawnTask(session,`${name}: ${a.pattern}`,this.rgPath(),[...args,...chunk],session.cwd,signal,0),task=await finished;
    if(task.status==='cancelled')throw new Error('Search cancelled');
    if(task.exitCode!==0&&task.exitCode!==1)throw new Error(task.output||'ripgrep failed');
    output+=task.output+'\n';
@@ -513,23 +343,6 @@ export class ToolHost {
   const offset=a.offset||0,cap=name==='Glob'?100:a.head_limit===0?lines.length:a.head_limit||250;
   return{content:bounded(lines.slice(offset,offset+cap).join('\n')+(lines.length>offset+cap?'\n[More matches remain]':''))};
  }
- private async media(session:HostSession,a:any,signal:AbortSignal){
-  const file=this.safeFile(session,a.path),info=await stat(file);
-  if(!info.isFile()||info.size>100*1024*1024)throw new Error('Media must be a file at most 100 MB');
-  if(/\.(mp4|mpeg|mpg|mov|mkv|avi|webm|flv|3gp)$/i.test(file))return this.video(session,file,a,signal);
-  const head=await readFile(file).then(b=>b.subarray(0,64),()=>Buffer.alloc(0));
-  if(hasVideoMagic(head))return this.video(session,file,a,signal);
-  let image=sharp(file,{animated:false}),metadata=await image.metadata();
-  if(!['png','jpeg','webp','gif'].includes(metadata.format||''))throw new Error('Unsupported media format; convert to PNG/JPEG/WebP/GIF first');
-  if(a.region){
-   if(a.region.x+a.region.width>(metadata.width||0)||a.region.y+a.region.height>(metadata.height||0))throw new Error('Crop exceeds image boundaries');
-   image=image.extract({left:a.region.x,top:a.region.y,width:a.region.width,height:a.region.height});
-  }else if(!a.full_resolution)image=image.resize({width:1536,height:1536,fit:'inside',withoutEnlargement:true});
-  const bytes=await image.png().toBuffer();
-  if(bytes.length>8*1024*1024)throw new Error('Image exceeds delivery limit; use region');
-  const part={type:'image_url',image_url:{url:'data:image/png;base64,'+bytes.toString('base64')}},note=`<system>Read image file. Mime type: image/png. Size: ${bytes.length} bytes. Original dimensions: ${metadata.width}x${metadata.height}. If you generate or edit images or videos via commands or scripts, read the result back immediately before continuing.</system>`;
-  return{content:`Image from ${file}; original ${metadata.width}x${metadata.height}.\n${note}`,attachments:[part],parts:[{type:'text',text:`<image path="${file}">`},part,{type:'text',text:'</image>'},{type:'text',text:note}]};
- }
  private async skill(session:HostSession,a:any){
   if(!/^[\p{L}\p{N}_.:-]+(?:\/[\p{L}\p{N}_.-]+)*$/u.test(a.skill)||a.skill.includes('..'))throw new Error('Skill name invalid');
   const roots=[path.join(session.cwd,'.agents','skills'),path.join(session.cwd,'.kimi','skills'),path.join(homedir(),'.agents','skills'),path.join(homedir(),'.kimi','skills'),path.join(homedir(),'.codex','skills'),path.join(homedir(),'.mirasim','skills'),...(this.hooks.skillRoots?.()||[])];
@@ -543,113 +356,228 @@ export class ToolHost {
  }
  private async agent(session:HostSession,a:any,signal:AbortSignal){
   this.assertAllowed(session.cwd,session.cwd);
-  let child:HostSession;
+  let prior: HostSession | undefined;
   if(a.resume){
-   const prior=this.sessions.get(a.resume);
-   if(!prior||prior.parentId!==session.id)throw new Error('Unknown subagent');
-   child=prior;
-  }else child=this.session(session.cwd,session.id,a.subagent_type||'coder');
-  let depth=0,parent=child;
-  while(parent.parentId){depth++;const next=this.sessions.get(parent.parentId);if(!next)break;parent=next;}
-  if(depth>3)throw new Error('Subagent depth limit reached');
-  const task=this.newTask(session,'agent',a.description||'Resume subagent');
+    prior=this.sessions.get(a.resume);
+    if(!prior || prior.parentId!==session.id)throw new Error('Unknown subagent');
+  }
+  let depth=1,parent=session;
+  while(parent.parentId){
+    if (++depth>3)throw new Error('Subagent depth limit reached');
+    const next=this.sessions.get(parent.parentId); if(!next)break; parent=next;
+  }
+  const child = prior || this.session(session.cwd,session.id,a.subagent_type||'coder');
+  const task=this.supervisor.newTask(session,'agent',a.description||'Resume subagent');
   task.agentId=child.id;task.status='running';
-  const controller=new AbortController();this.controllers.set(task.id,controller);
+  const controller=new AbortController();this.supervisor.attach(task, controller);
   const abort=()=>controller.abort();
   signal.addEventListener('abort',abort,{once:true});
   if(signal.aborted)abort();
-  this.update(task);
+  this.supervisor.update(task);
   const finished=this.hooks.child(child,a.prompt,controller.signal).then(
    output=>{task.output=bounded(output);task.status=controller.signal.aborted?'cancelled':'done';},
    error=>{task.output=String(error instanceof Error?error.message:error);task.status=controller.signal.aborted?'cancelled':'failed';}
   ).finally(()=>{
-   signal.removeEventListener('abort',abort);this.controllers.delete(task.id);this.update(task);
+   signal.removeEventListener('abort',abort);this.supervisor.release(task);this.supervisor.update(task);
    if(a.run_in_background)this.hooks.onBackground?.(task);
   });
   if(a.run_in_background)return{content:JSON.stringify({task_id:task.id,agent_id:child.id,status:task.status})};
   await finished;
   return{content:JSON.stringify({task_id:task.id,agent_id:child.id,status:task.status,result:task.output})};
  }
- private async video(session:HostSession,file:string,a:any,signal:AbortSignal):Promise<ToolOutput>{
-  if(a.region)throw new Error('region is for images only');
-  const raw=await readFile(file);if(!raw.length)throw new Error('Video file is empty');
-  let mimeType=detectVideoMime(file,raw.subarray(0,64))||'video/mp4',delivery=raw;
-  const uploaded=await this.hooks.uploadVideo?.({data:raw,mimeType,filename:path.basename(file),session},signal).catch(()=>undefined);
-  if(!uploaded?.id&&(!hasVideoMagic(raw.subarray(0,64))||raw.length>16*1024*1024)){
-   if(!ffmpeg)throw new Error('Video decoder unavailable');
-   const directory=await mkdtemp(path.join(tmpdir(),'galagent-video-')),target=path.join(directory,'normalized.mp4'),executable=ffmpeg.replace('app.asar'+path.sep,'app.asar.unpacked'+path.sep);
-   try{
-    const {finished}=this.spawnTask(session,'ReadMediaFile video encoder',executable,['-hide_banner','-loglevel','error','-i',file,'-vf','scale=1280:720:force_original_aspect_ratio=decrease','-c:v','libx264','-preset','veryfast','-crf','28','-pix_fmt','yuv420p','-movflags','+faststart',target],session.cwd,signal,0);
-    const task=await finished;
-    if(task.status!=='done')throw new Error(task.output||'Video decoding failed');
-    delivery=await readFile(target);mimeType='video/mp4';
-    if(delivery.length>16*1024*1024)throw new Error('Video exceeds 16 MiB limit even after encoding');
-   }finally{await unlink(target).catch(()=>{});await rmdir(directory).catch(()=>{});}
-  }
-  const part=uploaded?.id?{type:'video_url',video_url:{url:'ms://'+uploaded.id,id:uploaded.id}}:{type:'video_url',video_url:{url:`data:${mimeType};base64,${delivery.toString('base64')}`}};
-  const note=`<system>Read video file. Mime type: ${mimeType}. Size: ${delivery.length} bytes. If you generate or edit images or videos via commands or scripts, read the result back immediately before continuing.</system>`;
-  return{content:`<video path="${file}"></video>\n${note}`,attachments:[part],parts:[{type:'text',text:`<video path="${file}">`},part,{type:'text',text:'</video>'},{type:'text',text:note}]};
- }
- async execute(session:HostSession,name:string,args:unknown,signal:AbortSignal):Promise<ToolOutput>{
-  try{
-   const startPolicy=this.policyVersion();
-   if(this.stopped||signal.aborted)throw new Error('Task cancelled');
-   const a=this.validate(name,args);
-   if(session.profile==='explore'&&!['Bash','Read','Glob','Grep','FetchURL','WebSearch','ReadMediaFile','GetGoal','TaskList','CronList'].includes(name))throw new Error('Explore subagent is read-only');
-   if(session.plan&&(['Bash','Agent','AgentSwarm','CronCreate','CronDelete','TaskStop'].includes(name)||name.startsWith('mcp__')))throw new Error('Side effects are unavailable in plan mode');
-   let output:ToolOutput;
-   switch(name){
-    case 'Read':output=await this.read(session,a);break;
-    case 'Write':case 'Edit':output=await this.mutate(session,name,a);break;
-    case 'ApplyPatch':output=await this.applyPatch(session,a);break;
-    case 'Glob':case 'Grep':output=await this.search(session,name,a,signal);break;
-    case 'ReadMediaFile':output=await this.media(session,a,signal);break;
-    case 'Bash':{
-     const rawCwd=this.file(session,a.cwd||'.');
-     this.assertAllowed(rawCwd,session.cwd);
-     const cwd=await realpath(rawCwd);
-     this.assertCommandAllowed(a.command,cwd);
-     if(a.run_in_background&&!a.description)throw new Error('Background Bash requires description');
-     const seconds=a.timeout??0;
-     await this.confirmShell(session,a.command,cwd,signal);
-     if(this.policyVersion()!==startPolicy)throw new Error('Directory permission policy changed during execution; task cancelled');
-     this.assertCommandAllowed(a.command,cwd);
-     const {task,finished}=this.spawnTask(session,a.description||a.command,this.shellPath(),['-lc',a.command],cwd,signal,a.run_in_background&&a.disable_timeout?0:seconds*1000);
-     if(a.run_in_background){
-      void finished.then(t=>this.hooks.onBackground?.(t));
-      output={content:JSON.stringify({task_id:task.id,status:task.status,pid:task.pid})};
-     }else{
-      await finished;
-      if(this.policyVersion()!==startPolicy)throw new Error('Directory permission policy changed during execution; task cancelled');
-      output={content:bounded(task.output)+`\n<system>Task ${task.status}; exit code ${task.exitCode??'unknown'}.</system>`};
-     }
-     break;
+  async execute(session: HostSession, name: string, args: unknown, signal: AbortSignal): Promise<ToolOutput> {
+    try {
+      const startPolicy = this.policyVersion();
+      if (this.supervisor.stopped || signal.aborted) throw new Error('Task cancelled');
+      const a = this.validate(name, args);
+      if (
+        session.profile === 'explore' &&
+        ![
+          'Bash',
+          'Read',
+          'Glob',
+          'Grep',
+          'FetchURL',
+          'WebSearch',
+          'ReadMediaFile',
+          'GetGoal',
+          'TaskList',
+          'CronList',
+        ].includes(name)
+      )
+        throw new Error('Explore subagent is read-only');
+      if (
+        session.plan &&
+        (['Bash', 'Agent', 'AgentSwarm', 'CronCreate', 'CronDelete', 'TaskStop'].includes(name) ||
+          name.startsWith('mcp__'))
+      )
+        throw new Error('Side effects are unavailable in plan mode');
+      const handler = this.sessionTools.lookup(name);
+      const output = handler
+        ? await handler(session, a, signal)
+        : await this.dispatch(session, name, a, signal, startPolicy);
+      this.save(session);
+      return output;
+    } catch (error) {
+      return failure(error instanceof Error ? error.message : String(error));
     }
-    case 'FetchURL':case 'WebSearch':{if(!this.hooks.sandbox?.().network&&this.hooks.sandbox)throw new Error('Network tools are disabled by the GalAgent sandbox');const guards={signal,checkUrl:this.hooks.checkUrl,assertPublic:this.hooks.allowPrivateFetch||this.hooks.sandbox?.().lanAccess?undefined:assertPublicUrl};
-     if(name==='WebSearch'){const found=await webSearch(String(a.query),guards,a.limit??6);output={content:bounded(formatResults(found.engine,String(a.query),found.results))};break;}
-     const page=await fetchText(String(a.url),guards);const html=/html|xml/i.test(page.contentType)||/^\s*<(!doctype|html)/i.test(page.text);const readable=html?htmlToText(page.text):{title:'',text:page.text};
-     output={content:bounded(`${html?'[Main text extracted from the page]':'[Full response body]'}${readable.title?`\nTitle: ${readable.title}`:''}\nURL: ${page.url}\n\n${readable.text}`)};break;}
-    case 'Skill':output=await this.skill(session,a);break;
-    case 'TodoList':if(a.todos!==undefined){if(a.todos.filter((t:any)=>t.status==='in_progress').length>1)throw new Error('Only one todo may be in_progress');session.todos=a.todos;}output={content:JSON.stringify({todos:session.todos})};break;
-    case 'CreateGoal':if(session.goal&&session.goal.status!=='complete'&&!a.replace)throw new Error('An unfinished goal already exists');session.goal={objective:a.objective,completionCriterion:a.completionCriterion,status:'active',startedAt:this.clock(),turns:session.turns,tokens:session.usage};output={content:JSON.stringify(session.goal)};break;
-    case 'GetGoal':output={content:JSON.stringify({goal:session.goal||null})};break;
-    case 'UpdateGoal':if(!session.goal)throw new Error('No goal exists');session.goal.status=a.status;output={content:JSON.stringify(session.goal)};break;
-    case 'SetGoalBudget':{if(!session.goal)throw new Error('No goal exists');const factors:any={milliseconds:1,seconds:1000,minutes:60000,hours:3600000};const value=factors[a.unit]?a.value*factors[a.unit]:Math.max(1,Math.round(a.value));if(factors[a.unit]&&(value<1000||value>86400000))throw new Error('Time budget must be 1 second to 24 hours');session.goal.budget={unit:factors[a.unit]?'milliseconds':a.unit,value};output={content:JSON.stringify(session.goal)};break;}
-    case 'EnterPlanMode':session.plan=true;output={content:JSON.stringify({plan_mode:true,plan_file:session.planFile,write_scope:'plan_file_only'})};break;
-    case 'ExitPlanMode':{if(!session.plan)throw new Error('Not in plan mode');const plan=await readFile(session.planFile,'utf8').catch(()=> '');if(!plan.trim())throw new Error('Write a concrete plan before requesting approval');const choices=[...(a.options||[]).map((o:any)=>({label:o.label,description:o.description})),{label:'Approve',description:'批准当前计划'},{label:'Reject',description:'保持计划模式'}];const answers=await this.hooks.ask([{question:'批准当前计划并开始执行？',options:choices}],signal);const choice=Object.values(answers)[0];if(choice==='Approve'||(a.options||[]).some((o:any)=>o.label===choice))session.plan=false;output={content:JSON.stringify({plan_mode:session.plan,approved:!session.plan,answers})};break;}
-    case 'AskUserQuestion':{if(new Set(a.questions.map((q:any)=>q.question)).size!==a.questions.length||a.questions.some((q:any)=>new Set(q.options.map((o:any)=>o.label)).size!==q.options.length))throw new Error('Question texts and labels must be unique');if(a.background){const task=this.newTask(session,'question','User question'),controller=new AbortController();this.controllers.set(task.id,controller);task.status='running';this.update(task);void this.hooks.ask(a.questions,controller.signal).then(answers=>{task.status='done';task.output=JSON.stringify({answers});},()=>{task.status='cancelled';task.output='Question dismissed';}).finally(()=>{this.controllers.delete(task.id);this.update(task);this.hooks.onBackground?.(task);});output={content:JSON.stringify({task_id:task.id,status:'running'})};}else{const answers=await this.hooks.ask(a.questions,signal);output={content:JSON.stringify({answers,...(!Object.keys(answers).length?{note:'User dismissed; no choice selected'}:{})})};}break;}
-    case 'Agent':if(a.resume&&a.subagent_type)throw new Error('resume and subagent_type are exclusive');output=await this.agent(session,a,signal);break;
-    case 'AgentSwarm':{const resumes=Object.entries(a.resume_agent_ids||{});if((a.items||[]).length<2&&!resumes.length)throw new Error('Swarm requires 2 items or existing agents');if(a.items?.length&&(!a.prompt_template||!a.prompt_template.includes('{{item}}')))throw new Error('prompt_template must include {{item}}');const prompts=(a.items||[]).map((item:string)=>a.prompt_template.split('{{item}}').join(item));if(new Set(prompts).size!==prompts.length)throw new Error('Filled prompts must be distinct');for(const [id] of resumes)if(this.sessions.get(id)?.parentId!==session.id)throw new Error('Unknown resumed agent');const jobs=[...resumes.map(([resume,prompt])=>({resume,prompt,description:a.description})),...prompts.map((prompt:string)=>({prompt,description:a.description,subagent_type:a.subagent_type}))];output={content:bounded(JSON.stringify(await Promise.all(jobs.map(job=>this.agent(session,job,signal)))))};break;}
-    case 'TaskList':output={content:JSON.stringify([...this.tasks.values()].filter(t=>t.owner===session.id&&(!a.active_only||active(t))).slice(-a.limit).map(({output,...meta})=>meta))};break;
-    case 'TaskOutput':{const task=this.ownTask(session,a.task_id);if(a.block&&active(task)){const until=performance.now()+Math.min(a.timeout,3600)*1000;while(active(task)&&performance.now()<until){if(signal.aborted)throw new Error('Cancelled');await new Promise(resolve=>setTimeout(resolve,50));}}output={content:JSON.stringify(task)};break;}
-    case 'TaskStop':{const task=this.ownTask(session,a.task_id);if(active(task)){this.kill(task.id);task.status='cancelled';task.output=bounded(task.output+'\n'+a.reason);this.update(task);}output={content:JSON.stringify(task)};break;}
-    case 'CronCreate':{if(this.hooks.mainCron){const job=this.hooks.mainCron.create({cron:a.cron,prompt:a.prompt,recurring:a.recurring??true});output={content:JSON.stringify({id:job.id,cron:a.cron,recurring:a.recurring??true,nextFireAt:new Date(job.nextAt).toISOString(),wakes:'main-character',note:'到点时唤醒的是主角色（陪伴主代理），由它决定如何提醒用户或再委派任务；不会重新进入本执行会话。'})};break;}if(session.crons.length>=50)throw new Error('50 cron jobs per session maximum');const now=this.clock(),nextAt=cronNext(a.cron,now),job:CronJob={id:randomUUID(),cron:a.cron,prompt:a.prompt,recurring:a.recurring??true,nextAt,createdAt:now,expiresAt:now+7*86400000};session.crons.push(job);output={content:JSON.stringify(job)};break;}
-    case 'CronList':output={content:JSON.stringify({jobs:this.hooks.mainCron?this.hooks.mainCron.list():session.crons})};break;
-    case 'CronDelete':{if(this.hooks.mainCron){if(!this.hooks.mainCron.delete(a.id))throw new Error('Unknown cron job');output={content:'Cron job deleted'};break;}const index=session.crons.findIndex(j=>j.id===a.id);if(index<0)throw new Error('Unknown cron job');session.crons.splice(index,1);output={content:'Cron job deleted'};break;}
-    default:if(name.startsWith('mcp__')){output=await this.callMcp(session,name,a,signal);break;}throw new Error('No execution backend for '+name);
-   }
-   this.save(session);return output;
-  }catch(error){return failure(error instanceof Error?error.message:String(error));}
- }
- due(session:HostSession,now=this.clock()):string[]{if(!session.crons.length)return[];const prompts:string[]=[];for(const job of [...session.crons]){if(now>=job.expiresAt){session.crons=session.crons.filter(j=>j!==job);continue;}if(now<job.nextAt)continue;let count=0;while(job.nextAt<=now&&count<10000){count++;job.nextAt=cronNext(job.cron,job.nextAt);if(!job.recurring)break;}prompts.push(`<cron-fire jobId="${job.id}" cron="${job.cron}" recurring="${job.recurring}" coalescedCount="${count}"><prompt>${job.prompt.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</prompt></cron-fire>`);if(!job.recurring)session.crons=session.crons.filter(j=>j!==job);}this.save(session);return prompts;}
+  }
+  private async dispatch(
+    session: HostSession,
+    name: string,
+    a: Record<string, any>,
+    signal: AbortSignal,
+    startPolicy: number,
+  ): Promise<ToolOutput> {
+    let output: ToolOutput;
+    switch (name) {
+      case 'Read':
+        output = await this.read(session, a);
+        break;
+      case 'Write':
+      case 'Edit':
+      case 'ApplyPatch': {
+        output = await this.checkpoints.exclusive(() => {
+          if (this.supervisor.stopped || signal.aborted || this.policyVersion() !== startPolicy)
+            throw new Error('Task cancelled or policy changed');
+          return name === 'ApplyPatch' ? this.applyPatch(session, a) : this.mutate(session, name, a);
+        });
+        break;
+      }
+      case 'Glob':
+      case 'Grep':
+        output = await this.search(session, name, a, signal);
+        break;
+      case 'ReadMediaFile': {
+        const file = this.safeFile(session, a.path);
+        const upload = this.hooks.uploadVideo;
+        output = await readMedia(file, a, {
+          upload:
+            upload && ((data, mimeType, filename) => upload({ data, mimeType, filename, session }, signal)),
+          encode: (exe, args) =>
+            this.supervisor.spawnTask(
+              session,
+              'ReadMediaFile video encoder',
+              exe,
+              args,
+              session.cwd,
+              signal,
+              0,
+            ).finished,
+        });
+        break;
+      }
+      case 'Bash':
+        return this.runShell(session, a, signal, startPolicy);
+      case 'WebSearch':
+      case 'FetchURL':
+        return this.webTool(name, a, signal);
+      case 'Skill':
+        output = await this.skill(session, a);
+        break;
+      case 'Agent':
+        if (a.resume && a.subagent_type) throw new Error('resume and subagent_type are exclusive');
+        output = await this.agent(session, a, signal);
+        break;
+      case 'AgentSwarm':
+        return this.agentGroup(session, a, signal);
+      default:
+        if (name.startsWith('mcp__')) {
+          output = await this.callMcp(session, name, a, signal);
+          break;
+        }
+        throw new Error('No execution backend for ' + name);
+    }
+    return output;
+  }
+  private async agentGroup(
+    session: HostSession,
+    a: Record<string, any>,
+    signal: AbortSignal,
+  ): Promise<ToolOutput> {
+    const resumes = Object.entries(a.resume_agent_ids || {});
+    if ((a.items || []).length < 2 && !resumes.length)
+      throw new Error('Swarm requires 2 items or existing agents');
+    if (a.items?.length && (!a.prompt_template || !a.prompt_template.includes('{{item}}')))
+      throw new Error('prompt_template must include {{item}}');
+    const prompts = (a.items || []).map((item: string) => a.prompt_template.split('{{item}}').join(item));
+    if (new Set(prompts).size !== prompts.length) throw new Error('Filled prompts must be distinct');
+    for (const [id] of resumes)
+      if (this.sessions.get(id)?.parentId !== session.id) throw new Error('Unknown resumed agent');
+    const jobs = [
+      ...resumes.map(([resume, prompt]) => ({ resume, prompt, description: a.description })),
+      ...prompts.map((prompt: string) => ({
+        prompt,
+        description: a.description,
+        subagent_type: a.subagent_type,
+      })),
+    ];
+    return {
+      content: bounded(
+        JSON.stringify(await Promise.all(jobs.map((job) => this.agent(session, job, signal)))),
+      ),
+    };
+  }
+  private async runShell(
+    session: HostSession,
+    a: Record<string, any>,
+    signal: AbortSignal,
+    startPolicy: number,
+  ): Promise<ToolOutput> {
+    const rawCwd = this.file(session, a.cwd || '.');
+    this.assertAllowed(rawCwd, session.cwd);
+    const cwd = await realpath(rawCwd);
+    this.assertCommandAllowed(a.command, cwd);
+    if (a.run_in_background && !a.description) throw new Error('Background Bash requires description');
+    const seconds = a.timeout ?? 0;
+    await this.confirmShell(session, a.command, cwd, signal);
+    if (signal.aborted || this.supervisor.stopped || this.policyVersion() !== startPolicy)
+      throw new Error('Cancelled or directory permission policy changed during execution');
+    this.assertCommandAllowed(a.command, cwd);
+    const { task, finished } = this.supervisor.spawnTask(
+      session,
+      a.description || a.command,
+      this.shellPath(),
+      ['-lc', a.command],
+      cwd,
+      signal,
+      a.run_in_background && a.disable_timeout ? 0 : seconds * 1000,
+    );
+    if (a.run_in_background) {
+      void finished.then((t) => this.hooks.onBackground?.(t));
+      return { content: JSON.stringify({ task_id: task.id, status: task.status, pid: task.pid }) };
+    } else {
+      await finished;
+      if (this.policyVersion() !== startPolicy)
+        throw new Error('Directory permission policy changed during execution; task cancelled');
+      return {
+        content:
+          bounded(task.output) +
+          `\n<system>Task ${task.status}; exit code ${task.exitCode ?? 'unknown'}.</system>`,
+      };
+    }
+  }
+  private async webTool(name: string, a: Record<string, any>, signal: AbortSignal): Promise<ToolOutput> {
+    if (!this.hooks.sandbox?.().network && this.hooks.sandbox)
+      throw new Error('Network tools are disabled by the GalAgent sandbox');
+    const guards = {
+      signal,
+      checkUrl: this.hooks.checkUrl,
+      assertPublic:
+        this.hooks.allowPrivateFetch || this.hooks.sandbox?.().lanAccess ? undefined : assertPublicUrl,
+    };
+    if (name === 'WebSearch') {
+      const found = await webSearch(String(a.query), guards, a.limit ?? 6);
+      return { content: bounded(formatResults(found.engine, String(a.query), found.results)) };
+    }
+    const page = await fetchText(String(a.url), guards);
+    const html = /html|xml/i.test(page.contentType) || /^\s*<(!doctype|html)/i.test(page.text);
+    const readable = html ? htmlToText(page.text) : { title: '', text: page.text };
+    return {
+      content: bounded(
+        `${html ? '[Main text extracted from the page]' : '[Full response body]'}${readable.title ? `\nTitle: ${readable.title}` : ''}\nURL: ${page.url}\n\n${readable.text}`,
+      ),
+    };
+  }
+ due(session: HostSession, now=this.clock()) { return this.sessionTools.due(session,now); }
 }

@@ -1,3 +1,4 @@
+import { lookup } from 'node:dns/promises';
 // Which addresses count as local / private network. Shared by the executor's FetchURL, the web tools and the WeChat client.
 import { isIP } from 'node:net';
 /** Eight 16-bit groups of an IPv6 address (handles '::' and a dotted IPv4 tail); undefined if malformed. */
@@ -30,4 +31,12 @@ export function isPrivateAddress(address:string):boolean{
  if(g[0]===0x2001&&g[1]===0xdb8)return true;                // documentation
  if(g[0]===0x100&&zero(1,4))return true;                     // discard-only 100::/64
  return (g[0]&0xfe00)===0xfc00||(g[0]&0xffc0)===0xfe80||(g[0]&0xff00)===0xff00;   // ULA, link-local, multicast
+}
+
+// FetchURL must not let a prompt-injected model reach loopback, LAN or link-local services (local proxies, router pages, metadata endpoints).
+export async function assertPublicUrl(url:URL){
+ const host=url.hostname.replace(/^\[|\]$/g,'');
+ if(!host||/^localhost$/i.test(host)||/\.localhost$/i.test(host))throw new Error('FetchURL blocks local and private network addresses');
+ const addresses=isIP(host)?[{address:host}]:await lookup(host,{all:true});
+ if(!addresses.length||addresses.some(a=>isPrivateAddress(a.address)))throw new Error('FetchURL blocks local and private network addresses');
 }
