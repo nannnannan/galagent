@@ -80,3 +80,21 @@ test('main chat accepts SSE and adapts a native model requiring max_completion_t
   assert.deepEqual(await gateway.request([],new AbortController().signal,'chat'),{text:'直连成功'});
   assert.equal(requests,2);
 });
+
+test('empty or invalid-schema HTTP 400 does not poison tool support for later research',async()=>{
+  let failure='empty';const offered:boolean[]=[];
+  const gateway=new ModelGateway({
+    provider:()=>({baseUrl:'https://fixture.example/v1',model:'fixture',configured:true}),
+    getKey:async()=>'fixture',outputLimit:()=>4096,pool:new RequestPool(),guard:{messages:m=>m},recordUsage(){},
+    mainToolset:()=>({defs:[],rounds:2,run:async()=> '{}'}),
+    fetch:async(_url,init)=>{
+      offered.push(!!JSON.parse(String(init?.body)).tools);
+      if(failure)return new Response(failure==='empty'?'{}':JSON.stringify({error:{message:'Invalid tools schema'}}),{status:400});
+      return new Response(JSON.stringify({choices:[{message:{content:'{"ok":true}'}}]}));
+    },
+  });
+  await assert.rejects(()=>gateway.request([],new AbortController().signal,'background',undefined,undefined,true),/400/);
+  failure='schema';await assert.rejects(()=>gateway.request([],new AbortController().signal,'background',undefined,undefined,true),/400/);
+  failure='';assert.deepEqual(await gateway.request([],new AbortController().signal,'background',undefined,undefined,true),{ok:true});
+  assert.deepEqual(offered,[true,true,true]);
+});

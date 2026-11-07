@@ -10,14 +10,15 @@ import { safeChildEnv } from './safe-env';
 
 export type McpServerConfig = {
   name: string; enabled: boolean;
+  /** User-selected read-only tools available to proactive research. */ researchTools?: string[];
   /** stdio */ command?: string; args?: string[];
   /** Streamable HTTP */ url?: string;
   /** Names (not values) of the encrypted env vars / headers the user has set. */ envKeys?: string[]; headerKeys?: string[];
 };
 export type McpSecrets = { env?: Record<string, string>; headers?: Record<string, string> };
 export type McpTransportKind = 'stdio' | 'http';
-export type McpTool = { server: string; transport: McpTransportKind; name: string; qualified: string; description: string; inputSchema: Record<string, unknown> };
-export type McpStatus = { name: string; state: 'stopped' | 'starting' | 'ready' | 'failed'; tools: number; transport: McpTransportKind; error?: string };
+export type McpTool = { server: string; transport: McpTransportKind; name: string; qualified: string; description: string; inputSchema: Record<string, unknown>; readOnly?: boolean; destructive?: boolean };
+export type McpStatus = { name: string; state: 'stopped' | 'starting' | 'ready' | 'failed'; tools: number; transport: McpTransportKind; error?: string; researchTools?: { name: string; description: string }[] };
 export const MCP_LIMITS = { servers: 20, name: 32, command: 500, args: 60, arg: 2000, url: 1000, toolsPerServer: 120, secretKey: 100, secretValue: 8000, secrets: 30 } as const;
 const PROTOCOL = '2025-06-18';
 
@@ -34,7 +35,9 @@ export function validServers(raw: unknown): McpServerConfig[] {
     if (names.has(name)) throw new Error(`MCP 服务名重复：${name}`); names.add(name);
     const url = typeof r.url === 'string' ? r.url.trim() : '';
     const envKeys = keyList(r.envKeys), headerKeys = keyList(r.headerKeys);
-    const common = { name, enabled: r.enabled !== false, ...(envKeys?.length ? { envKeys } : {}), ...(headerKeys?.length ? { headerKeys } : {}) };
+    if (r.researchTools !== undefined && (!Array.isArray(r.researchTools) || r.researchTools.length > 120 || r.researchTools.some(t => typeof t !== 'string' || !t.trim() || t.length > 200))) throw new Error('研究工具列表无效');
+    const researchTools = [...new Set((r.researchTools || []) as string[])];
+    const common = { name, enabled: r.enabled !== false, ...(researchTools.length ? { researchTools } : {}), ...(envKeys?.length ? { envKeys } : {}), ...(headerKeys?.length ? { headerKeys } : {}) };
     if (url) {
       let parsed: URL; try { parsed = new URL(url); } catch { throw new Error(`MCP 服务 ${name} 的网址无效`); }
       if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || url.length > MCP_LIMITS.url) throw new Error(`MCP 服务 ${name} 需要 http(s) 网址，且不能把密码写进网址（请用“密钥”）`);
@@ -89,7 +92,7 @@ abstract class McpConnection {
           for (const t of Array.isArray(r?.tools) ? r.tools : []) {
             if (!t || typeof t.name !== 'string' || tools.length >= MCP_LIMITS.toolsPerServer) continue;
             const schema = t.inputSchema && typeof t.inputSchema === 'object' ? t.inputSchema : { type: 'object', properties: {} };
-            tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: schema });
+            tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: schema, readOnly: t.annotations?.readOnlyHint === true, destructive: t.annotations?.destructiveHint === true });
           }
           cursor = typeof r?.nextCursor === 'string' && r.nextCursor ? r.nextCursor : undefined;
           if (!cursor) break;
@@ -117,7 +120,10 @@ abstract class McpConnection {
     return message.method === 'ping' ? { result: {} } : message.method === 'roots/list' ? { result: { roots: [{ uri, name: 'workspace' }] } } : { error: { code: -32601, message: 'Not supported by GalAgent' } };
   }
   stop(error?: string) { this.starting = undefined; this.close(); this.tools = []; this.state = error ? 'failed' : 'stopped'; this.error = error; }
-  view(): McpStatus { return { name: this.config.name, state: this.state, tools: this.tools.length, transport: this.transport, ...(this.error ? { error: this.error.slice(0, 300) } : {}) }; }
+  view(): McpStatus {
+    const researchTools = this.tools.filter(t => t.readOnly && !t.destructive).map(t => ({ name: t.name, description: t.description }));
+    return { name: this.config.name, state: this.state, tools: this.tools.length, transport: this.transport, ...(researchTools.length ? { researchTools } : {}), ...(this.error ? { error: this.error.slice(0, 300) } : {}) };
+  }
 }
 
 class StdioConnection extends McpConnection {
@@ -180,7 +186,7 @@ class HttpConnection extends McpConnection {
     const controller = new AbortController(); this.controllers.add(controller);
     const all = AbortSignal.any([controller.signal, ...(timeoutMs > 0 ? [AbortSignal.timeout(timeoutMs)] : []), ...(signal ? [signal] : [])]);
     try {
-      const response = await this.doFetch(this.config.url!, { method: 'POST', signal: all, headers: { ...this.headers, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': PROTOCOL, ...(this.session ? { 'mcp-session-id': this.session } : {}) }, body: JSON.stringify(body) });
+      const response = await this.doFetch(this.config.url!, { method: 'POST', signal: all, redirect: 'error', headers: { ...this.headers, 'content-type': 'application/json', accept: 'application/json, text/event-stream', 'mcp-protocol-version': PROTOCOL, ...(this.session ? { 'mcp-session-id': this.session } : {}) }, body: JSON.stringify(body) });
       const sid = response.headers.get('mcp-session-id'); if (sid) this.session = sid;
       return response;
     } finally { this.controllers.delete(controller); }
@@ -227,7 +233,7 @@ export class McpHub {
   private connections = new Map<string, McpConnection>(); private signature = '';
   constructor(private servers: () => McpServerConfig[], private cwd: () => string, private options: McpHubOptions = {}) {}
   private sync() {
-    const wanted = this.servers().filter(s => s.enabled), signature = JSON.stringify([wanted, this.cwd()]);
+    const wanted = this.servers().filter(s => s.enabled), signature = JSON.stringify([wanted.map(({researchTools: _selection, ...connection})=>connection), this.cwd()]);
     if (signature === this.signature) return;
     this.signature = signature;
     for (const c of this.connections.values()) c.stop();
@@ -235,9 +241,9 @@ export class McpHub {
     this.connections = new Map(wanted.map(s => [s.name, s.url ? new HttpConnection(s, this.cwd(), secrets(s.name), this.options.fetch || fetch) : new StdioConnection(s, this.cwd(), secrets(s.name))]));
   }
   /** Starts the enabled servers of the allowed transports that are not running yet; failures go to status, never thrown. */
-  async ensure(allow: Record<McpTransportKind, boolean> = { stdio: true, http: true }): Promise<void> {
+  async ensure(allow: Record<McpTransportKind, boolean> = { stdio: true, http: true }, servers?: string[]): Promise<void> {
     this.sync();
-    await Promise.all([...this.connections.values()].filter(c => (c.state === 'stopped' || c.state === 'starting') && allow[c.transport]).map(c => c.start().catch(() => {})));
+    await Promise.all([...this.connections.values()].filter(c => (c.state === 'stopped' || c.state === 'starting') && allow[c.transport] && (!servers || servers.includes(c.config.name))).map(c => c.start().catch(() => {})));
     this.options.onStatus?.();
   }
   tools(): McpTool[] { this.sync(); return [...this.connections.values()].flatMap(c => c.state === 'ready' ? c.tools : []); }

@@ -410,7 +410,7 @@ const pages: Page[] = [
   { id: 'companion', icon: '🌙', title: '陪伴', intro: '主动陪伴的节奏完全由你决定：选项点选，数字随意填。', key: s => [s.settings, s.companionship?.topics, s.watches, s.pacing], render: renderCompanion },
   { id: 'schedule', icon: '⏰', title: '定时', intro: '你和 TA 设下的提醒。到点后 TA 会主动来找你。', key: s => [s.schedules, s.settings.petId], render: renderSchedules },
   { id: 'privacy', icon: '🛡️', title: '隐私与沙箱', intro: '控制执行器能碰什么，以及哪些内容绝不离开这台电脑。', key: s => [s.settings.sandbox, s.settings.forbiddenPaths, s.settings.captureBlocklist, s.privacy, s.settings.observationEnabled, s.settings.screenCaptureEnabled, s.settings.clipboardEnabled, s.settings.windowTitlesEnabled], render: renderPrivacy },
-  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 眼中的你，和 TA 记住的每一件事。每条都能看来源、纠正或删除。', key: s => [s.memories, s.settings.petId, s.portrait, s.archives?.map(a => a.day + a.createdAt), s.research, s.settings.researchEnabled], render: renderMemories },
+  { id: 'memory', icon: '📌', title: '记忆', intro: 'TA 眼中的你，和 TA 记住的每一件事。每条都能看来源、纠正或删除。', key: s => [s.memories, s.settings.petId, s.portrait, s.archives?.map(a => a.day + a.createdAt), s.research, s.settings.researchEnabled, s.settings.mcpServers, s.agent?.mcp], render: renderMemories },
   { id: 'diary', icon: '📔', title: '札记', intro: '每天 0 点，TA 会把前一天整理成一份档案；日记是 TA 的感受，不会变成事实。', key: s => [s.diary, s.archives, s.status.journal, s.settings.petId], render: renderDiary },
   { id: 'achievements', icon: '🏆', title: '成就', intro: '相处留下的小徽章。互动成就在桌面小人身上触发，其余只依据真实记录颁发。', key: s => [s.bond, s.identity.name, s.settings.petId, s.pets?.revision], render: renderAchievements },
   { id: 'config', icon: '🔌', title: '连接', intro: '模型、语音与本机执行器。密钥只由桌面进程加密保存。', key: s => [s.provider, s.agent?.cwd, s.agent?.mode, s.settings.ttsEnabled, s.settings.mcpServers, s.agent?.mcp, s.agent?.running, s.settings.executor, s.settings.voiceInputEnabled, s.settings.sttKeySet, s.settings.sttBaseUrl, s.settings.ttsBaseUrl, s.settings.ttsFormat, s.settings.wechatEnabled, s.wechat, s.settings.contextWindow, s.settings.maxOutputTokens, s.settings.modelLimits], render: renderConfig },
@@ -901,6 +901,8 @@ function researchSection(s: AppSnapshot) {
     if (v && !confirm('打开深度访问？\n\nTA 和助手能看到：\n· 这台电脑上各浏览器的历史、书签和搜索词\n· 文件名，以及你的文本文件内容\n· 已安装的软件和 Steam 游戏\n这些内容会发给你配置的模型接口（密钥类文字会先打码）。\n\n始终碰不到：已存密码和登录状态、密钥文件、聊天软件的数据、你设的禁止目录。\n\n只有你能改这个开关，隐私锁定会把它关掉。')) { void command({ type: 'research.deepAccess', enabled: false }); return; }
     void command({ type: 'research.deepAccess', enabled: v });
   }), '让 TA 直接读这台电脑上的浏览记录、文件和软件，不用装浏览器扩展；默认关闭'));
+  const researchServers = (s.settings.mcpServers || []).filter(server => server.enabled && server.researchTools?.length);
+  box.append(el('p', 'hint', researchServers.length ? `MCP 研究来源：${researchServers.map(server => `${server.name}（${({ready:'已连接',failed:'连接失败',starting:'连接中',stopped:'待连接'} as Record<string,string>)[(s.agent?.mcp || []).find(m => m.name === server.name)?.state || 'stopped']}）`).join('、')}。每轮最多使用两个服务，来源标在笔记中。` : '可在「连接 → MCP」中连接服务并选择用于主动研究的只读工具。'));
   if (!r) return box;
   if (r.blocked) box.append(notice(r.blocked, 'warn'));
   if (r.progress) {
@@ -1227,6 +1229,16 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
       const r = await command({ type: 'mcp.secret', server: server.name, ...(remote ? { headers: map } : { env: map }) }); area.value = ''; if (r.ok) toast(Object.keys(map).length ? '密钥已加密保存。' : '密钥已清除。');
     }, 'btn primary small');
     body.append(area, saveKey); secretFold.append(sum, body); main.append(secretFold);
+    const researchFold = el('details'), researchTitle = el('summary', '', `主动研究工具（已选 ${server.researchTools?.length || 0} 个）`);
+    researchFold.append(researchTitle);
+    const available = states.get(server.name)?.researchTools || [];
+    if (!available.length) researchFold.append(el('p', 'hint', '连接后显示服务声明为只读、且未标记破坏性的工具。没有这样的声明时，不交给自动研究使用。'));
+    for (const tool of available) researchFold.append(field(tool.name, toggle(server.researchTools?.includes(tool.name) === true, enabled => {
+      const picked = new Set(server.researchTools || []); if (enabled) picked.add(tool.name); else picked.delete(tool.name);
+      saveServers(servers.map((item,j) => j === i ? {...item,researchTools:[...picked]} : item));
+    }), tool.description.slice(0,120)));
+    researchFold.append(el('p', 'hint', '选择可信的检索、查询工具。标准权限下每轮首次使用会在任务页询问；现有的免确认权限设置继续生效。'));
+    main.append(researchFold);
     row.append(iconBadge(remote ? '🌐' : '🧩', 'accent'), main, toggle(server.enabled, v => saveServers(servers.map((x, j) => j === i ? { ...x, enabled: v } : x)), `启用 ${server.name}`), button('删除', () => { if (keys.length) void command({ type: 'mcp.secret', server: server.name }, true); saveServers(servers.filter((_, j) => j !== i)); }, 'btn ghost small'));
     mcp.append(row);
   }

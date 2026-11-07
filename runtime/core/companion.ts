@@ -1,3 +1,4 @@
+import { prepareResearchMcp } from './research-mcp';
 import { CareEvents, carePrompt } from './care-events';
 import { researchPreference, changeResearchPreference } from './research-preference';
 import { ResearchRunner } from './research-runner';
@@ -246,6 +247,18 @@ export class CompanionService extends EventEmitter {
             busy: () => this.state.status.busy || this.lifeRunning || this.deliveringSchedule,
             changed: () => this.emitSnapshot(),
             helper: (goal, signal, priority, options) => this.runHelper(goal, signal, priority, options),
+            mcp: (signal, report) => prepareResearchMcp({
+                hub: this.mcp, servers: () => this.state.settings.mcpServers || [],
+                cwd: () => this.state.agent?.cwd || this.options.workingDir || process.cwd(), dataDir: this.options.dataDir,
+                sandbox: () => this.state.settings.sandbox || DEFAULT_SANDBOX,
+                forbidden: () => this.state.settings.forbiddenPaths || [], policyVersion: () => this.policyVersion,
+                guard: this.guard, assertPublic: this.options.mcpFetch ? undefined : assertPublicUrl,
+                approve: async (server, requestSignal) => {
+                    const question = `允许主动研究在本轮使用 MCP 服务「${server}」的已选只读工具吗？`;
+                    const answer = await this.askAgent([{header:'研究 MCP',question,options:[{label:'本轮允许'},{label:'拒绝'}]}],requestSignal);
+                    return answer[question] === '本轮允许';
+                },
+            }, signal, report, this.research.runs.length),
         });
         this.mcp=new McpHub(()=>this.state?.settings?.mcpServers||[],()=>this.state?.agent?.cwd||options.workingDir||process.cwd(),{secrets:options.mcpSecrets?name=>options.mcpSecrets!.get(name):undefined,fetch:options.mcpFetch,onStatus:()=>this.emitSnapshot()});
         this.agent = options.agentRunner || new OpenAIToolAgent({
@@ -487,7 +500,7 @@ export class CompanionService extends EventEmitter {
                     const message:Message={id:randomUUID(),role:'assistant',source:'scene',text,createdAt:new Date(Date.now()).toISOString()};this.store.put('message',message.id,message);this.refresh();
                     this.emitSnapshot();return{ok:true,data:r};
                 }
-                case 'mcp.restart':{this.mcp.restart();const box=this.state.settings.sandbox||DEFAULT_SANDBOX;void this.mcp.ensure({stdio:box.shell&&!(this.state.settings.forbiddenPaths||[]).length,http:box.network});break;}
+                case 'mcp.restart':{this.researchRunner.cancel();this.mcp.restart();const box=this.state.settings.sandbox||DEFAULT_SANDBOX;void this.mcp.ensure({stdio:box.shell&&!(this.state.settings.forbiddenPaths||[]).length,http:box.network});break;}
                 case 'mcp.addPreset':{
                     // User-initiated from the 连接 page: one click adds the server and hands any key to the encrypted store.
                     const preset=mcpPreset(command.id);if(!preset)throw new Error('没有这个模板');
@@ -515,7 +528,7 @@ export class CompanionService extends EventEmitter {
                     const secrets=validSecrets({env:command.env,headers:command.headers});
                     await this.options.mcpSecrets.set(command.server,secrets);
                     const next=servers.map((s,i)=>i===index?{...s,envKeys:Object.keys(secrets.env||{}),headerKeys:Object.keys(secrets.headers||{})}:s);
-                    this.state.settings={...this.state.settings,mcpServers:next};this.persist();this.mcp.restart();
+                    this.state.settings={...this.state.settings,mcpServers:next};this.persist();this.researchRunner.cancel();this.mcp.restart();
                     break;
                 }
                 case 'agent.run':this.startAgent(command.task);break;
@@ -782,7 +795,7 @@ export class CompanionService extends EventEmitter {
         if (effect.clearClipboard) this.clipboardRing.clear();
         if (effect.clearBrowser) this.browser.clear();
         if (effect.resetSampler) this.sampler?.reset();
-        if (effect.invalidateLocal || (before.researchEnabled !== false && settings.researchEnabled === false)) {
+        if (effect.invalidateLocal || JSON.stringify(before.mcpServers) !== JSON.stringify(settings.mcpServers) || (before.researchEnabled !== false && settings.researchEnabled === false)) {
             this.researchRunner.cancel();
         }
         if (effect.invalidateLocal) {

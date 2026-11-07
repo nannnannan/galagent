@@ -134,7 +134,7 @@ export type Settings = {
   /** After this local time the character says goodnight once and goes to sleep. */
   goodnightAt?: string;
   /** MCP servers the executor may use (stdio); local programs, so they need Shell in the sandbox. */
-  mcpServers?: { name: string; enabled: boolean; command?: string; args?: string[]; url?: string; /** Names only; values stay encrypted in the desktop shell. */ envKeys?: string[]; headerKeys?: string[] }[];
+  mcpServers?: { name: string; enabled: boolean; researchTools?: string[]; command?: string; args?: string[]; url?: string; /** Names only; values stay encrypted in the desktop shell. */ envKeys?: string[]; headerKeys?: string[] }[];
   /** Executor model and budget (empty model = same as the chat model). */
   executor?: { model?: string; maxOutputTokens?: number; maxTurns?: number; /** Executor runs allowed at once (1–6). */ maxParallel?: number };
   /** What the main character may change in GalAgent: 'confirm' (default) asks the user before anything that widens privacy or permissions; 'full' applies everything directly. Only the user can change this. */
@@ -205,7 +205,7 @@ export type AppSnapshot = {
   bond?: BondView;
   privacy?: PrivacyView;
   companionship?: CompanionPreferences;
-  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];running?:{id:string;task:string;startedAt:string}[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;/** Short brief of the summary for the main agent's context. */gist?:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string}[]};
+  agent?: {backend:'openai-kimi-tools';mode:'full-access'|'directory-guarded';cwd:string;busy:boolean;forbiddenPaths?:string[];policyVersion?:number;questions?:AgentQuestion[];running?:{id:string;task:string;startedAt:string}[];lastResult?:{status:'done'|'failed'|'cancelled';summary:string;/** Short brief of the summary for the main agent's context. */gist?:string;toolCount:number;completedAt:string;/** Files changed through checked writes; undoable until undone. */changedFiles?:number;runId?:string;undone?:boolean};mcp?:{name:string;state:'stopped'|'starting'|'ready'|'failed';tools:number;transport:'stdio'|'http';error?:string;researchTools?:{name:string;description:string}[]}[]};
   variables?: PersonaVariables;
   story?: StorySnapshot;
   watches?: WatchView[];

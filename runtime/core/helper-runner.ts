@@ -20,7 +20,13 @@ import {
   type Taint,
 } from './helpers';
 
+export type ResearchMcpTools = {
+  defs: Toolset['defs'];
+  run(call: Parameters<Toolset['run']>[0]): Promise<{ content: string; sources: string[] }>;
+};
 export type HelperOptions = {
+  /** A research-only helper: MCP data never shares a tool context with web/private lookups. */
+  mcp?: ResearchMcpTools;
   web?: MainToolDeps['web'];
   tools?: string[];
   rounds?: number;
@@ -161,13 +167,21 @@ export class HelperRunner {
     const openedPages = new Set<string>();
     const deps = this.tools(signal);
     if (options.web) deps.web = options.web;
+    const researchMcp = options.by === 'research' ? options.mcp : undefined;
     const toolset: Toolset = {
-      defs: helperTools(mainToolDefinitions, this.networkAllowed(), options.tools, !!deps.local),
+      defs: researchMcp?.defs || helperTools(mainToolDefinitions, this.networkAllowed(), options.tools, !!deps.local),
       rounds: options.rounds ?? HELPER_LIMITS.rounds,
       done: (messages) => {
         transcript = messages as HelperSession['messages'];
       },
       run: async (call) => {
+        if (researchMcp) {
+          if (!researchMcp.defs.some(t => t.function.name === call.function.name)) throw new Error('这个工具没有授权给主动研究');
+          taint = 'private';
+          const result = await researchMcp.run(call);
+          for (const source of result.sources) { openedPages.add(source); seen.add(source); }
+          return result.content;
+        }
         const want = taintFor(call.function.name);
         if (want && taint && want !== taint) return JSON.stringify({ error: TAINT_ERROR[taint] });
         taint = want || taint;

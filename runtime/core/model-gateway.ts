@@ -139,7 +139,8 @@ export class ModelGateway {
             }
             if (
               offerTools &&
-              (/tools|tool_choice|function.?call/i.test(failure.unsupported) || !failure.unsupported.trim())
+              /tools|tool_choice|function.?call/i.test(failure.unsupported) &&
+              /not support|unsupported|not allowed|not available|unavailable|unknown (field|parameter)|unrecognized|not implemented|不支持/i.test(failure.unsupported)
             ) {
               this.toolless.add(endpoint);
               round--;
