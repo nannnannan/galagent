@@ -1,7 +1,7 @@
 import { ExecutorSessionTools } from './executor-session-tools';
 import { FileCheckpoints } from './file-checkpoints';
 import { TaskSupervisor } from './task-supervisor';
-import {readFile,writeFile,mkdir,stat,readdir,realpath,rename,unlink} from 'node:fs/promises';
+import {readFile,writeFile,mkdir,stat,lstat,open,readdir,realpath,rename,rmdir,unlink} from 'node:fs/promises';
 import {existsSync} from 'node:fs';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
@@ -16,7 +16,8 @@ export { detectVideoMime } from './media-reader';
 import kimiDefinitions from '../assets/protocol/kimi-code-tools-0.29.2.json';
 import {fetchText,htmlToText,webSearch,formatResults} from './web';
 import {APPLY_PATCH_TOOL,applyChunks,boundedMiddle,parsePatch} from './agent-kit';
-import type {McpHub} from './mcp';
+import type {McpHub, McpTransportKind} from './mcp';
+import { abortable } from './pool';
 /** GalAgent's own additions to the Kimi Code tool protocol. */
 export const GALAGENT_TOOLS=[{type:'function',function:{name:'WebSearch',description:'Search the public web (Bing, falling back to DuckDuckGo) and get back titles, URLs and short snippets. Use it to find current information, documentation or pages worth reading, then open the promising results with FetchURL before relying on details. The query leaves this machine: never put secrets, file contents or private data in it. Prefer specific queries; search again with different wording if results are poor.',parameters:{type:'object',properties:{query:{type:'string',minLength:1,maxLength:300,description:'What to search for, in the language the answer is most likely written in.'},limit:{type:'integer',minimum:1,maximum:10,default:6,description:'How many results to return.'}},required:['query'],additionalProperties:false}}}] as const;
 const definitions=[...kimiDefinitions,...GALAGENT_TOOLS,APPLY_PATCH_TOOL] as unknown as typeof kimiDefinitions;
@@ -24,18 +25,18 @@ const definitions=[...kimiDefinitions,...GALAGENT_TOOLS,APPLY_PATCH_TOOL] as unk
 export const FILE_WRITE_TOOLS=new Set(['Write','Edit','ApplyPatch']);
 import type {ModelMessage} from './tool-protocol';
 import type {SandboxSettings} from '../shared/contracts';
-import {galagentSecret,sensitivePath} from './privacy';
+import {galagentSecret,inWeChatInbox,sensitivePath} from './privacy';
 import {cronNext} from './scheduler';
 export {cronNext};
 
 export type Question={question:string;options:{label:string;description?:string}[];header?:string;multi_select?:boolean};
-export type HostSession={id:string;cwd:string;parentId?:string;provider?:{baseUrl:string;model:string};profile:string;messages:ModelMessage[];/** Current top-level task run: file changes are checkpointed under it and can be undone together. */runId?:string;runLabel?:string;/** MCP servers the user allowed for this task. */mcpApproved?:string[];/** The user answered "allow for this task" to a Shell confirmation. */shellApproved?:boolean;notifications?:string[];reads:Record<string,string>;todos:any[];plan:boolean;planFile:string;goal?:any;crons:CronJob[];usage:number;turns:number;createdAt:number;};
+export type HostSession={id:string;cwd:string;parentId?:string;provider?:{baseUrl:string;model:string};profile:string;messages:ModelMessage[];/** Current top-level task run: file changes are checkpointed under it and can be undone together. */runId?:string;runLabel?:string;/** MCP approvals and denials are scoped to the current task. */mcpApproved?:string[];mcpDenied?:string[];/** The user answered "allow for this task" to a Shell confirmation. */shellApproved?:boolean;notifications?:string[];reads:Record<string,string>;todos:any[];plan:boolean;planFile:string;goal?:any;crons:CronJob[];usage:number;turns:number;createdAt:number;};
 type CronJob={id:string;cron:string;prompt:string;recurring:boolean;nextAt:number;createdAt:number;expiresAt:number};
 export type HostTask={id:string;owner:string;kind:'shell'|'agent'|'question';description:string;status:'queued'|'running'|'done'|'failed'|'cancelled'|'lost';output:string;createdAt:number;exitCode?:number;pid?:number;agentId?:string};
 export type VideoUpload={data:Buffer;mimeType:string;filename:string;session:HostSession};
 type ToolOutput={content:string;attachments?:unknown[];parts?:unknown[]};
 export type { CheckpointManifest } from './file-checkpoints';
-export type HostHooks={save:(session:HostSession)=>void;saveTask?:(task:HostTask)=>void;ask:(questions:Question[],signal:AbortSignal)=>Promise<Record<string,string>>;child:(session:HostSession,prompt:string,signal:AbortSignal)=>Promise<string>;onBackground?:(task:HostTask)=>void;uploadVideo?:(upload:VideoUpload,signal:AbortSignal)=>Promise<{id:string}|undefined>;forbiddenPaths?:()=>string[];/** Paths no tool may write: GalAgent executes or trusts files there. */protectedWritePaths?:()=>string[];/** Tests only: permit FetchURL to loopback/private addresses. */allowPrivateFetch?:boolean;/** GalAgent sandbox: file scope, shell and network switches. */sandbox?:()=>Pick<SandboxSettings,'fileScope'|'shell'|'network'>&{shellConfirm?:boolean;lanAccess?:boolean;credentialFiles?:boolean;level?:string};/** Outbound URL guard (allow-list, secrets in URL); throws to block. */checkUrl?:(url:URL)=>void;/** Extra read-only skill folders shipped with GalAgent. */skillRoots?:()=>string[];/** When set, Cron tools schedule wake-ups of the MAIN character instead of re-entering this executor session. */mainCron?:{create(job:{cron:string;prompt:string;recurring:boolean}):{id:string;nextAt:number};list():{id:string;cron?:string;prompt:string;nextAt:number;recurring:boolean}[];delete(id:string):boolean};policyVersion?:()=>number;/** Connected MCP servers (tools appear as mcp__server__tool). */mcp?:Pick<McpHub,'tools'|'find'|'call'>;/** Folder for per-task file checkpoints (undo). */checkpointDir?:()=>string|undefined;/** Applied to MCP call arguments before they leave GalAgent (secret redaction). */outboundText?:(text:string)=>string};
+export type HostHooks={save:(session:HostSession)=>void;saveTask?:(task:HostTask)=>void;ask:(questions:Question[],signal:AbortSignal)=>Promise<Record<string,string>>;child:(session:HostSession,prompt:string,signal:AbortSignal)=>Promise<string>;onBackground?:(task:HostTask)=>void;uploadVideo?:(upload:VideoUpload,signal:AbortSignal)=>Promise<{id:string}|undefined>;forbiddenPaths?:()=>string[];appDataDir?:string;/** Paths no tool may write: GalAgent executes or trusts files there. */protectedWritePaths?:()=>string[];/** Tests only: permit FetchURL to loopback/private addresses. */allowPrivateFetch?:boolean;/** GalAgent sandbox: file scope, shell and network switches. */sandbox?:()=>Pick<SandboxSettings,'fileScope'|'shell'|'network'>&{shellConfirm?:boolean;lanAccess?:boolean;credentialFiles?:boolean;level?:string};/** Outbound URL guard (allow-list, secrets in URL); throws to block. */checkUrl?:(url:URL)=>void;/** Extra read-only skill folders shipped with GalAgent. */skillRoots?:()=>string[];/** When set, Cron tools schedule wake-ups of the MAIN character instead of re-entering this executor session. */mainCron?:{create(job:{cron:string;prompt:string;recurring:boolean}):{id:string;nextAt:number};list():{id:string;cron?:string;prompt:string;nextAt:number;recurring:boolean}[];delete(id:string):boolean};policyVersion?:()=>number;/** Connected MCP servers (tools appear as mcp__server__tool). */mcp?:Pick<McpHub,'tools'|'find'|'call'>;/** Folder for per-task file checkpoints (undo). */checkpointDir?:()=>string|undefined;/** Applied to MCP call arguments before they leave GalAgent (secret redaction). */outboundText?:(text:string)=>string};
 const digest=(text:string|Buffer)=>createHash('sha256').update(text).digest('hex');
 const bounded=boundedMiddle;
 const secret=(file:string)=>/^(\.env(?:\..*)?|id_rsa|id_ed25519|id_ecdsa|credentials\.json)$/i.test(path.basename(file));
@@ -43,7 +44,29 @@ const failure=(message:string)=>({content:'ToolError: '+message});
 export class ToolHost {
  /** Local (stdio) MCP servers are programs: Shell must be allowed and no folder forbidden. Remote (HTTP) ones need network. */
  mcpTransports(){const box=this.hooks.sandbox?.();return{stdio:(!box||box.shell)&&!this.forbiddenList().length,http:!box||box.network};}
- get definitions(){const allow=this.mcpTransports(),mcp=(this.hooks.mcp?.tools()||[]).filter(t=>allow[t.transport]);return mcp.length?[...definitions,...mcp.map(t=>({type:'function',function:{name:t.qualified,description:`[MCP · ${t.server}] ${t.description}`.slice(0,2000),parameters:t.inputSchema}}))] as unknown as typeof definitions:definitions;}
+ get definitions(){ return this.definitionsFor(); }
+ definitionsFor(session?: HostSession) {
+  const allow = this.mcpTransports();
+  const denied = session ? this.rootOf(session).mcpDenied : undefined;
+  const mcp = session?.profile === 'explore' ? [] : (this.hooks.mcp?.tools() || [])
+   .filter(t => allow[t.transport] && !denied?.includes(t.server)).slice(0, 128 - definitions.length);
+  return mcp.length ? [...definitions, ...mcp.map(t => ({
+   type: 'function', function: { name: t.qualified, description: `[MCP · ${t.server}] ${t.description}`.slice(0,2000), parameters: t.inputSchema },
+  }))] as unknown as typeof definitions : definitions;
+ }
+ async discoverMcp(session: HostSession, hub: McpHub, signal: AbortSignal) {
+  if (session.profile === 'explore') return;
+  const allow = this.mcpTransports();
+  const policy = this.policyVersion();
+  const servers = hub.status().filter(s => allow[s.transport] && (s.state === 'stopped' || s.state === 'starting'));
+  const approved: string[] = [];
+  for (const server of servers) {
+   if (await this.confirmMcp(session, server.name, server.transport, '首次连接并读取工具列表', signal)) approved.push(server.name);
+  }
+  signal.throwIfAborted();
+  if (this.policyVersion() !== policy) throw new Error('MCP 设置已变化，连接已取消');
+  if (approved.length) await abortable(hub.ensure(this.mcpTransports(), approved, signal), signal);
+ }
  private mcpSchemas=new Map<string,{key:string;validate?:Ajv.ValidateFunction}>();
  readonly sessions=new Map<string,HostSession>();
  private sessionTools: ExecutorSessionTools;
@@ -58,9 +81,12 @@ export class ToolHost {
   for(const session of sessions)this.sessions.set(session.id,session);
   this.checkpoints = new FileCheckpoints(
    () => this.hooks.checkpointDir?.(), this.clock,
-   (file, cwd) => !isForbiddenPath(file, this.forbiddenList(), cwd) &&
-     !isForbiddenPath(file, this.hooks.protectedWritePaths?.() || [], cwd, false) &&
-     !galagentSecret(file) && (!sensitivePath(file) || this.credentialsOpen()),
+   (file, cwd) => {
+     try { this.assertScope(file, { cwd, planFile: "" }, true); } catch { return false; }
+     return !isForbiddenPath(file, this.forbiddenList(), cwd) &&
+       !isForbiddenPath(file, this.hooks.protectedWritePaths?.() || [], cwd, false) &&
+       !this.privateFile(file) && (!sensitivePath(file) || this.credentialsOpen());
+   },
    restored => { for (const session of this.sessions.values()) for (const file of restored) delete session.reads[file]; }
   );
   this.supervisor = new TaskSupervisor(this.sessions, this.clock, task => this.hooks.saveTask?.(task), () => this.policyVersion(), tasks);
@@ -109,7 +135,7 @@ export class ToolHost {
  async undoRun(runId?: string) { return this.checkpoints.exclusive(() => this.checkpoints.undoRun(runId)); }
  runChanges(session: HostSession) { return this.checkpoints.runChanges(this.rootOf(session)); }
  /** Codex-style multi-file patch: everything is resolved, checked and computed first; then written. */
- private async applyPatch(session:HostSession,a:any){
+ private async applyPatch(session:HostSession,a:any,checkRun:()=>void){
   const ops=parsePatch(String(a.patch));
   if(String(a.patch).includes('〔已隐藏·'))throw new Error('Patch contains a privacy mask (〔已隐藏·…〕) that stands for a hidden secret; keep those lines out of the patch');
   const writable=(input:string)=>{
@@ -119,22 +145,107 @@ export class ToolHost {
    if(session.plan&&file!==session.planFile)throw new Error('Plan mode allows writes only to the plan file');
    return file;
   };
-  type Plan={file:string;before?:Buffer;after?:string;remove?:boolean};const plans:Plan[]=[];
+  const read = async (file: string) => {
+   const info = await lstat(file).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return undefined;
+    throw error;
+   });
+   if (!info) return undefined;
+   if (!info.isFile()) throw new Error(`ApplyPatch needs a regular file: ${file}`);
+   return readFile(file);
+  };
+  const same = (left?: Buffer, right?: Buffer) => left === right || (!!left && !!right && left.equals(right));
+  type Plan={file:string;before?:Buffer;after?:Buffer};const plans:Plan[]=[];
   for(const op of ops){
-   const file=writable(op.path),before=await readFile(file).catch((e:NodeJS.ErrnoException)=>{if(e.code==='ENOENT')return undefined;throw e;});
+   checkRun();
+   const file=writable(op.path),before=await read(file);
    if(before&&session.reads[file]&&session.reads[file]!==digest(before))throw new Error(`${op.path} changed since you read it; read it again before patching`);
-   if(op.type==='add'){if(before)throw new Error(`${op.path} already exists; use *** Update File`);plans.push({file,after:op.content});}
-   else if(op.type==='delete'){if(!before)throw new Error(`${op.path} does not exist`);plans.push({file,before,remove:true});}
+   if(op.type==='add'){if(before)throw new Error(`${op.path} already exists; use *** Update File`);plans.push({file,after:Buffer.from(op.content)});}
+   else if(op.type==='delete'){if(!before)throw new Error(`${op.path} does not exist`);plans.push({file,before});}
    else{if(!before)throw new Error(`${op.path} does not exist; use *** Add File`);const next=op.chunks.length?applyChunks(this.text(before),op.chunks,op.path):this.text(before);
-    if(op.moveTo){const target=writable(op.moveTo);if(target!==file&&existsSync(target))throw new Error(`${op.moveTo} already exists`);plans.push({file:target,after:next});plans.push({file,before,remove:true});}
-    else plans.push({file,before,after:next});}
+    if(op.moveTo){const target=writable(op.moveTo);if(canonicalizePath(target)===canonicalizePath(file))throw new Error("Move destination is the same file");if(existsSync(target))throw new Error(`${op.moveTo} already exists`);plans.push({file:target,after:Buffer.from(next)});plans.push({file,before});}
+    else plans.push({file,before,after:Buffer.from(next)});}
   }
-  const touched=[...new Set(plans.map(p=>p.file))].sort();
-  const run=async(i:number):Promise<void>=>{if(i>=touched.length){
-    for(const plan of plans){const before=plan.before??await readFile(plan.file).catch(()=>undefined);await this.checkpoints.checkpoint(this.rootOf(session),plan.file,before);}
-    for(const plan of plans){if(plan.remove){await unlink(plan.file);delete session.reads[plan.file];await this.checkpoints.recordAfter(this.rootOf(session),plan.file,undefined);continue;}await mkdir(path.dirname(plan.file),{recursive:true});const temporary=plan.file+'.galagent-'+randomUUID(),data=Buffer.from(plan.after!);await writeFile(temporary,data);await rename(temporary,plan.file);session.reads[plan.file]=digest(data);await this.checkpoints.recordAfter(this.rootOf(session),plan.file,data);}
-    return;}
-   return this.locked(touched[i],()=>run(i+1));};
+  const touched = plans.map(({file}) => this.lockKey(file)).sort();
+  if (new Set(touched).size !== touched.length || touched.some(file => touched.some(other => file.startsWith(other + path.sep)))) {
+   throw new Error('ApplyPatch cannot target the same file twice or use a target file as a directory');
+  }
+  const root = this.rootOf(session);
+  const commit = async () => {
+   const staged = new Map<string, string>(), backups = new Map<string, string>();
+   const temporary = new Set<string>(), madeDirectories = new Set<string>();
+   const applied: Plan[] = [];
+   let previous: Map<string, string | null | undefined> | undefined;
+   const stage = async (file: string, bytes: Buffer) => {
+    const temp = file + '.galagent-' + randomUUID(), handle = await open(temp, 'wx');
+    temporary.add(temp);
+    try { await handle.writeFile(bytes); } finally { await handle.close(); }
+    return temp;
+   };
+   const checked = async (plan: Plan) => {
+    checkRun();
+    writable(plan.file);
+    if (!same(await read(plan.file), plan.before)) throw new Error(`File changed while preparing patch: ${plan.file}`);
+    checkRun();
+    writable(plan.file);
+   };
+   try {
+    // Stage both directions and checkpoint every original before changing any target.
+    for (const plan of plans) {
+     await checked(plan);
+     await this.checkpoints.checkpoint(root, plan.file, plan.before);
+     if (plan.before) backups.set(plan.file, await stage(plan.file, plan.before));
+     if (plan.after) {
+      const parent = path.dirname(plan.file), first = await mkdir(parent, { recursive: true });
+      if (first) for (let dir = parent; ; dir = path.dirname(dir)) {
+       madeDirectories.add(dir);
+       if (dir === first || dir === path.dirname(dir)) break;
+      }
+      staged.set(plan.file, await stage(plan.file, plan.after));
+     }
+    }
+    previous = await this.checkpoints.recordDigests(root, new Map(plans.map(plan => [
+     plan.file, plan.after ? digest(plan.after) : null,
+    ])));
+    for (const plan of plans) {
+     await checked(plan);
+     if (plan.after) await rename(staged.get(plan.file)!, plan.file);
+     else await unlink(plan.file);
+     applied.push(plan);
+    }
+    checkRun();
+    for (const plan of plans) {
+     if (plan.after) session.reads[plan.file] = digest(plan.after);
+     else delete session.reads[plan.file];
+    }
+   } catch (error) {
+    const remaining: string[] = [];
+    for (const plan of applied.reverse()) {
+     try {
+      writable(plan.file);
+      if (!same(await read(plan.file), plan.after)) throw new Error('File changed after patch write');
+      writable(plan.file);
+      if (plan.before) await rename(backups.get(plan.file)!, plan.file);
+      else await unlink(plan.file);
+     } catch {
+      // Keep the expected final digest so ordinary undo can recover a remaining write.
+      remaining.push(plan.file);
+      previous?.delete(plan.file);
+      delete session.reads[plan.file];
+     }
+    }
+    let manifestError = '';
+    if (previous?.size) await this.checkpoints.recordDigests(root, previous).catch(() => {
+     manifestError = ' The undo manifest could not be refreshed.';
+    });
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(message + (remaining.length ? ` Could not roll back: ${remaining.join(', ')}.` : '') + manifestError);
+   } finally {
+    for (const file of temporary) await unlink(file).catch(() => {});
+    for (const dir of [...madeDirectories].sort((a,b) => b.length-a.length)) await rmdir(dir).catch(() => {});
+   }
+  };
+  const run = (i:number):Promise<void> => i === touched.length ? commit() : this.locked(touched[i], () => run(i+1));
   await run(0);
   const summary=ops.map(op=>op.type==='add'?`A ${op.path}`:op.type==='delete'?`D ${op.path}`:op.moveTo?`R ${op.path} → ${op.moveTo}`:`M ${op.path} (${op.chunks.length} hunk${op.chunks.length===1?'':'s'})`);
   return{content:`ApplyPatch succeeded:\n${summary.join('\n')}`};
@@ -143,14 +254,13 @@ export class ToolHost {
   const startPolicy=this.policyVersion();
   const hub=this.hooks.mcp,tool=hub?.find(name);if(!hub||!tool)throw new Error('Unknown tool: '+name);
   if(!this.mcpTransports()[tool.transport])throw new Error(tool.transport==='stdio'?(this.forbiddenList().length?'Local MCP servers are disabled under forbidden directory protection':'Local MCP servers run programs and are disabled while Shell is off in the GalAgent sandbox'):'Remote MCP servers are disabled while network tools are off in the GalAgent sandbox');
-  const root=this.rootOf(session);
-  if(this.hooks.sandbox?.().shellConfirm&&!root.mcpApproved?.includes(tool.server)){
-   const question=`允许执行器在这个任务里使用 MCP 服务「${tool.server}」吗？\n第一次调用：${tool.name}`;
-   const answers=await this.hooks.ask([{header:'MCP 服务',question,options:[{label:'本任务允许',description:'这个任务后面不再询问'},{label:'拒绝'}]}],signal);
-   if(signal.aborted)throw new Error('Cancelled');
-   if(this.policyVersion()!==startPolicy||!this.mcpTransports()[tool.transport])throw new Error('Sandbox policy changed during confirmation; MCP call cancelled');
-   if(String(answers[question]??'').trim()!=='本任务允许')throw new Error(`The user declined MCP server ${tool.server} for this task. Do not retry it; continue another way.`);
-   root.mcpApproved=[...(root.mcpApproved||[]),tool.server];this.save(root);
+  if (!await this.confirmMcp(session, tool.server, tool.transport, '第一次调用 ' + tool.name, signal))
+   throw new Error(`The user declined MCP server ${tool.server} for this task. Do not retry it; continue another way.`);
+  signal.throwIfAborted();
+  const current = hub.find(name);
+  if (this.policyVersion() !== startPolicy || current?.server !== tool.server || current.name !== tool.name ||
+      current.transport !== tool.transport || JSON.stringify(current.inputSchema) !== JSON.stringify(tool.inputSchema)) {
+   throw new Error('MCP 服务已变化，请重新确认');
   }
   const redactValue=(v:unknown):unknown=>{
    if(!this.hooks.outboundText)return v;
@@ -166,18 +276,42 @@ export class ToolHost {
   const images=result.images.map(img=>({type:'image_url',image_url:{url:`data:${img.mimeType};base64,${img.data}`}}));
   return{content:bounded(text),attachments:images,parts:[{type:'text',text:bounded(text)},...images]};
  }
+ private async confirmMcp(session: HostSession, server: string, transport: McpTransportKind, purpose: string, signal: AbortSignal) {
+  signal.throwIfAborted();
+  if (!this.mcpTransports()[transport]) return false;
+  const root = this.rootOf(session);
+  if (root.mcpDenied?.includes(server)) return false;
+  if (!this.hooks.sandbox?.().shellConfirm || root.mcpApproved?.includes(server)) return true;
+  const policy = this.policyVersion(), runId = root.runId;
+  const question = `允许执行器在这个任务里使用 MCP 服务「${server}」吗？\n${purpose}`;
+  const answers = await this.hooks.ask([{ header: 'MCP 服务', question, options: [
+   { label: '本任务允许', description: '授权本次任务连接和使用这个服务' }, { label: '拒绝' },
+  ] }], signal);
+  signal.throwIfAborted();
+  if (this.policyVersion() !== policy || root.runId !== runId || !this.mcpTransports()[transport])
+   throw new Error('MCP 设置已变化，本次操作已取消');
+  const approved = String(answers[question] ?? '').trim() === '本任务允许';
+  if (approved) root.mcpApproved = [...(root.mcpApproved || []), server];
+  else root.mcpDenied = [...(root.mcpDenied || []), server];
+  this.save(root);
+  return approved;
+ }
  invalidatePolicy(){this.supervisor.invalidatePolicy();}
  private file(session:HostSession,input:string){
   if(!input||input.includes('\0'))throw new Error('路径无效');
   if(process.platform==='win32'&&/^\/[a-z]\//i.test(input))input=input[1]+':'+input.slice(2);
   return path.resolve(session.cwd,input);
  }
+ private privateFile(file: string) {
+  const dir = this.hooks.appDataDir;
+  return galagentSecret(file, dir) || (!!dir && !inWeChatInbox(file, dir) && isForbiddenPath(file, [dir], undefined, false));
+ }
  private safeFile(session:HostSession,input:string){
   this.assertAllowed(session.cwd,session.cwd);
   const file=this.file(session,input);
   if(process.platform==='win32'&&file.slice(2).includes(':'))throw new Error('Alternate data stream paths are blocked');
   const real=canonicalizePath(file,session.cwd);
-  if(galagentSecret(file)||galagentSecret(real))throw new Error('GalAgent key files and app data are never accessible to tools');
+  if(this.privateFile(file)||this.privateFile(real))throw new Error('GalAgent key files and app data are never accessible to tools');
   if(!this.credentialsOpen()){
    if(secret(file)||secret(real))throw new Error('Sensitive file is blocked by the tool policy');
    if(sensitivePath(file)||sensitivePath(real))throw new Error('Credential and key stores are not readable in this sandbox level (完全放开 allows them)');
@@ -187,7 +321,7 @@ export class ToolHost {
   return file;
  }
  /** Sandbox file scope: confines tools to the task workspace (read-only or read-write). */
- private assertScope(file:string,session:HostSession,write:boolean){
+ private assertScope(file:string,session:Pick<HostSession,"cwd"|"planFile">,write:boolean){
   const scope=this.hooks.sandbox?.().fileScope||'anywhere';
   // The plan file stays writable in every scope (including read-only): plan mode needs it and it lives in the workspace.
   if(scope==='anywhere'||(write&&file===session.planFile)||(!write&&scope==='read-anywhere'))return;
@@ -195,7 +329,12 @@ export class ToolHost {
   const root=canonicalizePath(session.cwd,session.cwd),real=canonicalizePath(file,session.cwd),rel=path.relative(root,real);
   if(rel.startsWith('..')||path.isAbsolute(rel))throw new Error('The GalAgent sandbox confines file tools to the task workspace');
  }
+ private lockKey(file: string) {
+  const resolved = canonicalizePath(file);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+ }
  private async locked<T>(file:string,fn:()=>Promise<T>){
+  file = this.lockKey(file);
   const prior=this.locks.get(file)||Promise.resolve();
   let unlock!:()=>void;
   const next=new Promise<void>(resolve=>{unlock=resolve;});
@@ -273,7 +412,7 @@ export class ToolHost {
   const walk=async(target:string)=>{
    if(signal.aborted)throw new Error('Search cancelled');
    if(++visited>10000)throw new Error('Guarded search is limited to 10000 entries; choose a narrower folder.');
-   if(galagentSecret(target)||(!this.credentialsOpen()&&(secret(target)||sensitivePath(target)))||path.basename(target)==='.git'||isForbiddenPath(target,this.forbiddenList()))return;
+   if(this.privateFile(target)||(!this.credentialsOpen()&&(secret(target)||sensitivePath(target)))||path.basename(target)==='.git'||isForbiddenPath(target,this.forbiddenList()))return;
    const info=await stat(target);
    if(info.isFile()){files.push(target);return;}
    if(!info.isDirectory())return;
@@ -337,7 +476,7 @@ export class ToolHost {
   };
   let lines=output.split(/\r?\n/).filter(Boolean).filter(line=>{
    const f=extractFile(line);
-   return !galagentSecret(f)&&(this.credentialsOpen()||(!secret(f)&&!sensitivePath(f)))&&!isForbiddenPath(f,this.forbiddenList(),root);
+   return !this.privateFile(f)&&(this.credentialsOpen()||(!secret(f)&&!sensitivePath(f)))&&!isForbiddenPath(f,this.forbiddenList(),root);
   }).map(line=>line.replace('\0',':'));
   if(name==='Glob'){const dated=await Promise.all(lines.map(async file=>({file,time:await stat(file).then(s=>s.mtimeMs,()=>0)})));lines=dated.sort((a,b)=>b.time-a.time).map(x=>x.file);}
   const offset=a.offset||0,cap=name==='Glob'?100:a.head_limit===0?lines.length:a.head_limit||250;
@@ -393,7 +532,6 @@ export class ToolHost {
       if (
         session.profile === 'explore' &&
         ![
-          'Bash',
           'Read',
           'Glob',
           'Grep',
@@ -438,9 +576,12 @@ export class ToolHost {
       case 'Edit':
       case 'ApplyPatch': {
         output = await this.checkpoints.exclusive(() => {
-          if (this.supervisor.stopped || signal.aborted || this.policyVersion() !== startPolicy)
-            throw new Error('Task cancelled or policy changed');
-          return name === 'ApplyPatch' ? this.applyPatch(session, a) : this.mutate(session, name, a);
+          const checkRun = () => {
+            if (this.supervisor.stopped || signal.aborted || this.policyVersion() !== startPolicy)
+              throw new Error('Task cancelled or policy changed');
+          };
+          checkRun();
+          return name === 'ApplyPatch' ? this.applyPatch(session, a, checkRun) : this.mutate(session, name, a);
         });
         break;
       }

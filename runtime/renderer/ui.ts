@@ -1,4 +1,4 @@
-import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
+import { DEFAULT_CHAT_MODEL, OPENAI_BASE_URL } from '../shared/provider';
 import type { AppCommand, AppSnapshot, CommandResult, GalAgentBridge } from '../shared/contracts';
 import { builtinPersonas } from '../shared/personas';
 import { svgIcon } from './icons';
@@ -13,7 +13,7 @@ export const previewSnapshot: AppSnapshot = {
   activity: { kind: 'offline', label: '预览模式' },
   visual: { expression: 'neutral', action: 'idle', bubble: previewPersona.greeting, revision: 0 }, messages: [], memories: [], diary: [],
   settings: { observationEnabled: false, windowTitlesEnabled: false, initiativeEnabled: true, mischiefEnabled: true, roamingEnabled: true, ttsEnabled: false, ttsBaseUrl: '', ttsModel: 'tts-1', ttsVoice: '', ttsSpeed: 1, quietUntil: 0, proactiveIntervalMinutes: 5, proactiveHourlyLimit: 2, proactiveDailyLimit: 8, petScale: 1, reducedMotion: false, screenCaptureEnabled: true, clipboardEnabled: true, captureBlocklist: [], forbiddenPaths: [], petId: '', heartbeatSeconds: 60, unansweredMinutes: 20, reunionHours: 6, screenIntervalSeconds: 60, idleSleepMinutes: 10, bubbleSeconds: 12, roamSpeed: 1, quietHours: { enabled: false, start: '23:00', end: '08:00' }, funCaptions: true, sandbox: { level: 'standard', fileScope: 'read-anywhere', shell: true, shellConfirm: true, network: true, allowedDomains: [], redactSecrets: true, redactPersonal: false, sensitiveWords: [] } },
-  provider: { configured: false, baseUrl: MIRA_DEFAULT_BASE_URL, model: MIRA_DEFAULT_MODEL }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: 1_000_000, tasks: [] }, observation: { available: false, observedAt: '' }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 },
+  provider: { configured: false, baseUrl: OPENAI_BASE_URL, model: DEFAULT_CHAT_MODEL }, status: { busy: false, online: false, embedding: 'idle', contextTokens: 0, contextBudget: 1_000_000, tasks: [] }, observation: { available: false, observedAt: '' }, stats: { conversations: 0, memories: 0, proactiveToday: 0, tokensToday: 0 },
 };
 const offline: GalAgentBridge = { getSnapshot: async () => previewSnapshot, onSnapshot: () => () => {}, dispatch: async () => ({ ok: false, error: '浏览器预览未连接桌面程序，不能调用模型或保存数据。' }) };
 /** Resolved on every access so a bridge installed after this module loads (tests, previews) is still used. */

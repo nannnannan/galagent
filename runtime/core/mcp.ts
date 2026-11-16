@@ -5,6 +5,7 @@
 // when a connection starts. Local programs need Shell in the sandbox, remote servers need network; tool
 // output is data, never instructions; server-side sampling (borrowing our model) is refused.
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { safeChildEnv } from './safe-env';
 
@@ -23,6 +24,10 @@ export const MCP_LIMITS = { servers: 20, name: 32, command: 500, args: 60, arg: 
 const PROTOCOL = '2025-06-18';
 
 export const qualify = (server: string, tool: string) => `mcp__${server}__${tool.replace(/[^A-Za-z0-9_-]/g, '_')}`.slice(0, 64);
+export function mcpSecretScope(server: McpServerConfig) {
+  const destination = server.url ? ['http', new URL(server.url).origin] : ['stdio', server.command, server.args || []];
+  return createHash('sha256').update(JSON.stringify(destination)).digest('hex');
+}
 const keyList = (v: unknown) => Array.isArray(v) ? v.filter((k): k is string => typeof k === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(k)).slice(0, MCP_LIMITS.secrets) : undefined;
 export function validServers(raw: unknown): McpServerConfig[] {
   if (raw === undefined) return [];
@@ -70,42 +75,59 @@ type Pending = { resolve: (value: any) => void; reject: (error: Error) => void; 
 abstract class McpConnection {
   tools: McpTool[] = []; state: McpStatus['state'] = 'stopped'; error?: string;
   private starting?: Promise<void>;
+  private startingController?: AbortController;
   abstract readonly transport: McpTransportKind;
   constructor(readonly config: McpServerConfig, protected cwd: string, protected secrets: () => Promise<McpSecrets>) {}
-  protected abstract open(): Promise<void>;
+  protected abstract open(signal: AbortSignal): Promise<void>;
   protected abstract rpc(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<any>;
-  protected abstract notify(method: string, params?: unknown): Promise<void>;
+  protected abstract notify(method: string, params?: unknown, signal?: AbortSignal): Promise<void>;
   protected abstract close(): void;
-  async start(): Promise<void> {
+  async start(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     if (this.state === 'ready') return;
     if (this.starting) return this.starting;
+    const controller = new AbortController();
+    this.startingController = controller;
+    const live = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
     this.state = 'starting'; this.error = undefined;
     let run: Promise<void> | undefined;
     run = (async () => {
       try {
-        await this.open();
-        await this.rpc('initialize', { protocolVersion: PROTOCOL, capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'GalAgent', version: '0.4' } }, 30_000);
-        await this.notify('notifications/initialized');
+        await this.open(live);
+        live.throwIfAborted();
+        await this.rpc('initialize', { protocolVersion: PROTOCOL, capabilities: { roots: { listChanged: false } }, clientInfo: { name: 'GalAgent', version: '0.4' } }, 30_000, live);
+        live.throwIfAborted();
+        await this.notify('notifications/initialized', undefined, live);
         const tools: McpTool[] = []; let cursor: string | undefined;
+        const names = new Set<string>();
         for (let page = 0; page < 10; page++) {
-          const r = await this.rpc('tools/list', cursor ? { cursor } : {}, 30_000);
+          live.throwIfAborted();
+          const r = await this.rpc('tools/list', cursor ? { cursor } : {}, 30_000, live);
           for (const t of Array.isArray(r?.tools) ? r.tools : []) {
-            if (!t || typeof t.name !== 'string' || tools.length >= MCP_LIMITS.toolsPerServer) continue;
-            const schema = t.inputSchema && typeof t.inputSchema === 'object' ? t.inputSchema : { type: 'object', properties: {} };
-            tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: schema, readOnly: t.annotations?.readOnlyHint === true, destructive: t.annotations?.destructiveHint === true });
+            if (!t || typeof t.name !== 'string' || !t.name.trim() || names.has(t.name) || tools.length >= MCP_LIMITS.toolsPerServer) continue;
+            const schema = t.inputSchema ?? { type: 'object', properties: {} };
+            if (typeof schema !== 'object' || Array.isArray(schema) || (schema.type !== undefined && schema.type !== 'object')) continue;
+            names.add(t.name);
+            tools.push({ server: this.config.name, transport: this.transport, name: t.name, qualified: qualify(this.config.name, t.name), description: String(t.description || '').slice(0, 2000), inputSchema: { ...schema, type: 'object' }, readOnly: t.annotations?.readOnlyHint === true, destructive: t.annotations?.destructiveHint === true });
           }
           cursor = typeof r?.nextCursor === 'string' && r.nextCursor ? r.nextCursor : undefined;
           if (!cursor) break;
         }
+        live.throwIfAborted();
         this.tools = tools; this.state = 'ready';
-      } catch (error) { this.stop(error instanceof Error ? error.message : String(error)); throw error; }
-      finally { if (this.starting === run) this.starting = undefined; }
+      } catch (error) {
+        if (this.starting === run) this.stop(live.aborted ? undefined : error instanceof Error ? error.message : String(error));
+        throw error;
+      } finally {
+        if (this.starting === run) { this.starting = undefined; this.startingController = undefined; }
+      }
     })();
     this.starting = run;
     return run;
   }
   async call(tool: string, args: unknown, signal: AbortSignal): Promise<{ text: string; isError: boolean; images: { data: string; mimeType: string }[] }> {
-    if (this.state !== 'ready') await this.start();
+    if (this.state !== 'ready') await this.start(signal);
+    signal.throwIfAborted();
     const r = await this.rpc('tools/call', { name: tool, arguments: args ?? {} }, 0, signal);
     const parts = Array.isArray(r?.content) ? r.content : [];
     const text = parts.map((p: any) => p?.type === 'text' ? String(p.text ?? '') : p?.type === 'resource' ? String(p.resource?.text ?? `[resource ${p.resource?.uri ?? ''}]`) : p?.type === 'resource_link' ? `[resource ${p.uri ?? ''}]` : p?.type === 'image' ? '[image]' : '').filter(Boolean).join('\n')
@@ -119,7 +141,12 @@ abstract class McpConnection {
     try { uri = pathToFileURL(this.cwd).href; } catch { /* fallback */ }
     return message.method === 'ping' ? { result: {} } : message.method === 'roots/list' ? { result: { roots: [{ uri, name: 'workspace' }] } } : { error: { code: -32601, message: 'Not supported by GalAgent' } };
   }
-  stop(error?: string) { this.starting = undefined; this.close(); this.tools = []; this.state = error ? 'failed' : 'stopped'; this.error = error; }
+  stop(error?: string) {
+    this.starting = undefined;
+    this.startingController?.abort();
+    this.startingController = undefined;
+    this.close(); this.tools = []; this.state = error ? 'failed' : 'stopped'; this.error = error;
+  }
   view(): McpStatus {
     const researchTools = this.tools.filter(t => t.readOnly && !t.destructive).map(t => ({ name: t.name, description: t.description }));
     return { name: this.config.name, state: this.state, tools: this.tools.length, transport: this.transport, ...(researchTools.length ? { researchTools } : {}), ...(this.error ? { error: this.error.slice(0, 300) } : {}) };
@@ -131,7 +158,7 @@ class StdioConnection extends McpConnection {
   private child?: ChildProcessWithoutNullStreams; private buffer = ''; private seq = 0; private pending = new Map<number, Pending>();
   private fail(message: string) { for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error(message)); } this.pending.clear(); }
   private send(message: unknown) { if (!this.child || this.child.stdin.destroyed) throw new Error(`MCP 服务 ${this.config.name} 未运行`); this.child.stdin.write(JSON.stringify(message) + '\n'); }
-  protected async notify(method: string, params?: unknown) { this.send({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }); }
+  protected async notify(method: string, params?: unknown, signal?: AbortSignal) { signal?.throwIfAborted(); this.send({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }); }
   protected rpc(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<any> {
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
@@ -158,17 +185,18 @@ class StdioConnection extends McpConnection {
       }
     }
   }
-  protected async open() {
+  protected async open(signal: AbortSignal) {
     const { env } = await this.secrets();
+    signal.throwIfAborted();
     const isWin = process.platform === 'win32', command = this.config.command!, args = this.config.args || [];
     // npx / uvx are .cmd shims on Windows; run them through cmd.exe without building a shell string.
     const [exe, argv] = isWin && !/\.(exe|com)$/i.test(command) ? ['cmd.exe', ['/d', '/s', '/c', command, ...args]] : [command, args];
     const child = spawn(exe, argv, { cwd: this.cwd, env: { ...safeChildEnv(), ...(env || {}) }, windowsHide: true, shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
     this.child = child;
     child.stdout.setEncoding('utf8'); child.stdout.on('data', d => this.receive(d));
-    let stderr = ''; child.stderr.setEncoding('utf8'); child.stderr.on('data', d => { stderr = (stderr + d).slice(-2000); });
-    child.once('error', error => this.stop(error.message));
-    child.once('exit', code => { if (this.child === child) this.stop(`MCP 服务退出（${code}）${stderr ? '：' + stderr.trim().slice(-300) : ''}`); });
+    child.stderr.resume();
+    child.once('error', error => { if (this.child === child) this.stop(error.message); });
+    child.once('exit', code => { if (this.child === child) this.stop(`MCP 服务退出（${code}）`); });
   }
   protected close() {
     const child = this.child; this.child = undefined; this.buffer = ''; this.fail('MCP 服务已停止');
@@ -181,7 +209,7 @@ class HttpConnection extends McpConnection {
   readonly transport = 'http' as const;
   private seq = 0; private session?: string; private headers: Record<string, string> = {}; private controllers = new Set<AbortController>();
   constructor(config: McpServerConfig, cwd: string, secrets: () => Promise<McpSecrets>, private doFetch: typeof fetch) { super(config, cwd, secrets); }
-  protected async open() { this.headers = (await this.secrets()).headers || {}; this.session = undefined; }
+  protected async open(signal: AbortSignal) { const secrets = await this.secrets(); signal.throwIfAborted(); this.headers = secrets.headers || {}; this.session = undefined; }
   private async post(body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<Response> {
     const controller = new AbortController(); this.controllers.add(controller);
     const all = AbortSignal.any([controller.signal, ...(timeoutMs > 0 ? [AbortSignal.timeout(timeoutMs)] : []), ...(signal ? [signal] : [])]);
@@ -191,7 +219,7 @@ class HttpConnection extends McpConnection {
       return response;
     } finally { this.controllers.delete(controller); }
   }
-  protected async notify(method: string, params?: unknown) { const r = await this.post({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }, 30_000); await r.body?.cancel().catch(() => {}); }
+  protected async notify(method: string, params?: unknown, signal?: AbortSignal) { const r = await this.post({ jsonrpc: '2.0', method, ...(params ? { params } : {}) }, 30_000, signal); await r.body?.cancel().catch(() => {}); }
   protected async rpc(method: string, params: unknown, timeoutMs: number, signal?: AbortSignal): Promise<any> {
     const id = ++this.seq;
     const response = await this.post({ jsonrpc: '2.0', id, method, params }, timeoutMs, signal);
@@ -227,7 +255,7 @@ class HttpConnection extends McpConnection {
   }
 }
 
-export type McpHubOptions = { secrets?: (name: string) => Promise<McpSecrets>; fetch?: typeof fetch; onStatus?: () => void };
+export type McpHubOptions = { secrets?: (name: string, config: McpServerConfig) => Promise<McpSecrets>; fetch?: typeof fetch; checkHttp?: (url: URL) => Promise<void>; onStatus?: () => void };
 /** All configured servers; started lazily on the first executor task, restarted when the configuration changes. */
 export class McpHub {
   private connections = new Map<string, McpConnection>(); private signature = '';
@@ -237,16 +265,38 @@ export class McpHub {
     if (signature === this.signature) return;
     this.signature = signature;
     for (const c of this.connections.values()) c.stop();
-    const secrets = (name: string) => () => this.options.secrets?.(name) ?? Promise.resolve({});
-    this.connections = new Map(wanted.map(s => [s.name, s.url ? new HttpConnection(s, this.cwd(), secrets(s.name), this.options.fetch || fetch) : new StdioConnection(s, this.cwd(), secrets(s.name))]));
+    const secrets = (config: McpServerConfig) => () => this.options.secrets?.(config.name, config) ?? Promise.resolve({});
+    const guardedFetch: typeof fetch = async (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+      await this.options.checkHttp?.(url);
+      init?.signal?.throwIfAborted();
+      return (this.options.fetch || fetch)(input, { ...init, redirect: 'error' });
+    };
+    this.connections = new Map(wanted.map(s => [s.name, s.url ? new HttpConnection(s, this.cwd(), secrets(s), guardedFetch) : new StdioConnection(s, this.cwd(), secrets(s))]));
   }
   /** Starts the enabled servers of the allowed transports that are not running yet; failures go to status, never thrown. */
-  async ensure(allow: Record<McpTransportKind, boolean> = { stdio: true, http: true }, servers?: string[]): Promise<void> {
+  async ensure(allow: Record<McpTransportKind, boolean> = { stdio: true, http: true }, servers?: string[], signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
     this.sync();
-    await Promise.all([...this.connections.values()].filter(c => (c.state === 'stopped' || c.state === 'starting') && allow[c.transport] && (!servers || servers.includes(c.config.name))).map(c => c.start().catch(() => {})));
+    await Promise.all([...this.connections.values()].filter(c => (c.state === 'stopped' || c.state === 'starting') && allow[c.transport] && (!servers || servers.includes(c.config.name))).map(c => c.start(signal).catch(() => {})));
     this.options.onStatus?.();
   }
-  tools(): McpTool[] { this.sync(); return [...this.connections.values()].flatMap(c => c.state === 'ready' ? c.tools : []); }
+  tools(): McpTool[] {
+    this.sync();
+    const tools = [...this.connections.values()].flatMap(c => c.state === 'ready' ? c.tools : []);
+    const counts = new Map<string, number>();
+    for (const tool of tools) counts.set(tool.qualified, (counts.get(tool.qualified) || 0) + 1);
+    const reserved = new Set(counts.keys());
+    return tools.map(tool => {
+      if (counts.get(tool.qualified) === 1) return tool;
+      const hash = createHash('sha256').update(JSON.stringify([tool.server, tool.name])).digest('hex').slice(0, 12);
+      const stem = tool.qualified.slice(0, 45) + '_' + hash;
+      let alias = stem;
+      for (let n = 1; reserved.has(alias); n++) alias = stem + '_' + n;
+      reserved.add(alias);
+      return { ...tool, qualified: alias };
+    });
+  }
   find(qualified: string) { return this.tools().find(t => t.qualified === qualified); }
   async call(qualified: string, args: unknown, signal: AbortSignal) {
     const tool = this.find(qualified); if (!tool) throw new Error('Unknown MCP tool: ' + qualified);

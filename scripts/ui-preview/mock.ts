@@ -34,7 +34,7 @@ const kiri: PersonaProfile = {
 const snapshot: AppSnapshot = structuredClone(previewSnapshot);
 snapshot.persona = { active: builtinPersonas[0], list: [...builtinPersonas, kiri], greeted: true };
 Object.assign(snapshot, {
-  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', mode: 'native-api', toolCount: 27 },
+  provider: { configured: true, baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat', toolCount: 27 },
   status: { ...snapshot.status, online: true, busy, embedding: 'ready', contextTokens: 3120, journal: { lastDay: day(-1), pendingDays: [], failedDays: [day(-4)], nextRunAt: new Date(new Date(now).setHours(24, 0, 30, 0)).toISOString() } },
   activity: busy ? { kind: 'thinking', label: '思考中…' } : params.get('sleep') === '1' ? { kind: 'sleeping', label: '你不在，先眯一会儿' } : { kind: 'idle', label: '星野 · 星空时间', routine: '星空时间' },
   vitality: { energy: 46, mood: 81, tone: 'tired', label: '有点困' },

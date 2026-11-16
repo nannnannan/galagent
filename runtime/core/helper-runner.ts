@@ -233,6 +233,7 @@ export class HelperRunner {
           ]
     ) as TransportMessage[];
     try {
+      if (options.by === 'research' && !toolset.defs.length) throw new Error('当前没有可用的研究工具');
       const raw = await this.gateway.request(
         messages,
         signal,

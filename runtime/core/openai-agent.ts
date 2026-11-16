@@ -1,8 +1,9 @@
-import { apiFailure } from './api-response';
+import { apiFailure, rejectedOption } from './api-response';
 import { validateBatch, executeBatch, appendBatchResults } from './executor-tool-batch';
-import { isKimiK3Model } from '../shared/provider';
+import { OPENAI_BASE_URL, type ChatEndpoint } from '../shared/provider';
+import { apiRoot, endpointUrl, sameOrigin } from '../shared/endpoints';
 import { realpath, stat } from 'node:fs/promises';
-import { parseModelReply, type ModelMessage, type ToolCall } from './tool-protocol';
+import { parseModelReply, toChatRequestMessages, type ModelMessage, type ToolCall } from './tool-protocol';
 import { ToolHost, type HostSession, type HostTask, type Question, type VideoUpload } from './tool-host';
 import type { AgentRunner, AgentResult } from './kimi-agent';
 import { type RequestPool } from './pool';
@@ -15,9 +16,10 @@ import type { McpHub } from './mcp';
 import type { SandboxSettings } from '../shared/contracts';
 
 export type OpenAIAgentOptions = {
+  appDataDir?: string;
   protectedWritePaths?: () => string[];
-  provider: () => { baseUrl: string; model: string; mode?: 'mira-proxy' | 'native-api' };
-  credentials: { get(): Promise<string | undefined> };
+  provider: () => ChatEndpoint;
+  credentials: { get(baseUrl: string): Promise<string | undefined> };
   fetch?: typeof fetch;
   storage?: {
     sessions(): HostSession[];
@@ -75,6 +77,8 @@ const estimate = (value: unknown) => {
   });
   return Math.ceil(text.length * 0.6) + images * 1800 + videos * 3600;
 };
+const moonshotMedia = (baseUrl: string) =>
+  sameOrigin(baseUrl, 'https://api.moonshot.cn') || sameOrigin(baseUrl, 'https://api.moonshot.ai');
 export class OpenAIToolAgent implements AgentRunner {
   readonly host: ToolHost;
   private closed = false;
@@ -86,6 +90,7 @@ export class OpenAIToolAgent implements AgentRunner {
   private clock: () => number;
   private tokenField = new Map<string, 'max_tokens' | 'max_completion_tokens'>();
   private noStreamUsage = new Set<string>();
+  private noStreaming = new Set<string>();
   private noFilesEndpoints = new Set<string>();
   constructor(private options: OpenAIAgentOptions) {
     this.clock = options.clock || (() => Date.now());
@@ -102,6 +107,7 @@ export class OpenAIToolAgent implements AgentRunner {
         onBackground: (task) => this.background(task),
         uploadVideo: (upload, signal) => this.uploadVideo(upload, signal),
         forbiddenPaths: options.forbiddenPaths,
+        appDataDir: options.appDataDir,
         protectedWritePaths: options.protectedWritePaths,
         policyVersion: options.policyVersion,
         sandbox: options.sandbox,
@@ -119,12 +125,11 @@ export class OpenAIToolAgent implements AgentRunner {
   }
   private async uploadVideo(upload: VideoUpload, signal: AbortSignal): Promise<{ id: string } | undefined> {
     if (this.options.uploadVideo) return this.options.uploadVideo(upload, signal);
-    const provider = this.options.provider(),
-      baseUrl = provider.baseUrl.replace(/\/$/, '');
+    const provider = { ...this.options.provider() }, baseUrl = apiRoot(provider.baseUrl);
     if (this.noFilesEndpoints.has(baseUrl)) return undefined;
-    const shouldUpload = this.options.enableFilesUpload ?? /moonshot\.(cn|ai)|kimi\.com/i.test(baseUrl);
+    const shouldUpload = this.options.enableFilesUpload ?? moonshotMedia(baseUrl);
     if (!shouldUpload) return undefined;
-    const key = await this.options.credentials.get();
+    const key = await this.options.credentials.get(provider.baseUrl);
     if (!key) return undefined;
     const form = new FormData();
     form.append('purpose', 'video');
@@ -133,6 +138,7 @@ export class OpenAIToolAgent implements AgentRunner {
     const release = await this.options.pool?.acquire('execution', signal);
     let data: { id?: unknown };
     try {
+      this.checkConnection(provider, signal);
       const response = await (this.options.fetch || fetch)(baseUrl + '/files', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + key },
@@ -145,6 +151,7 @@ export class OpenAIToolAgent implements AgentRunner {
         return undefined;
       }
       data = (await response.json()) as { id?: unknown };
+      this.checkConnection(provider, signal);
     } finally {
       release?.();
     }
@@ -176,6 +183,68 @@ export class OpenAIToolAgent implements AgentRunner {
     this.host.close();
     for (const wake of this.waiting.splice(0)) wake();
   }
+  private checkConnection(provider: ChatEndpoint, signal: AbortSignal) {
+    signal.throwIfAborted();
+    const selected = this.options.provider();
+    if (selected.baseUrl !== provider.baseUrl || selected.model !== provider.model) {
+      throw new Error('执行期间 API 配置已更换，请重新运行任务');
+    }
+  }
+  private async complete(provider: ChatEndpoint, messages: ModelMessage[], signal: AbortSignal, output: number, session?: HostSession) {
+    const url = endpointUrl('chat', provider.baseUrl);
+    const key = await this.options.credentials.get(provider.baseUrl);
+    if (!key) throw new Error('尚未配置 OpenAI 兼容 API 密钥');
+    const endpoint = url + '|' + provider.model;
+    for (;;) {
+      const tokenField = this.tokenField.get(endpoint) || (sameOrigin(url, OPENAI_BASE_URL) ? 'max_completion_tokens' : 'max_tokens');
+      const stream = !!session && !this.noStreaming.has(endpoint);
+      const streamUsage = stream && !this.noStreamUsage.has(endpoint);
+      const { response, release } = await callUpstream({
+        fetch: this.options.fetch || fetch,
+        url,
+        init: () => ({
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: provider.model,
+            messages: toChatRequestMessages(this.options.outbound?.(messages) ?? messages, sameOrigin(url, OPENAI_BASE_URL)),
+            stream,
+            ...(session ? { tools: this.host.definitionsFor(session) } : {}),
+            ...(streamUsage ? { stream_options: { include_usage: true } } : {}),
+            [tokenField]: output,
+          }),
+        }),
+        pool: this.options.pool,
+        priority: 'execution',
+        signal,
+        before: () => this.checkConnection(provider, signal),
+      });
+      try {
+        if (response.ok) {
+          const reply = await parseModelReply(response, signal, true);
+          this.checkConnection(provider, signal);
+          if (!session && reply.message.tool_calls?.length) throw new Error('压缩请求没有开放工具');
+          return reply;
+        }
+        const failure = await apiFailure(response, signal, key, value => this.options.outboundText?.(value) ?? value);
+        if (response.status === 400 || response.status === 422) {
+          if (streamUsage && rejectedOption(failure.unsupported, 'stream_options')) {
+            this.noStreamUsage.add(endpoint);
+            continue;
+          }
+          if (stream && rejectedOption(failure.unsupported, 'stream')) {
+            this.noStreaming.add(endpoint);
+            continue;
+          }
+          if (!this.tokenField.has(endpoint) && rejectedOption(failure.unsupported, tokenField)) {
+            this.tokenField.set(endpoint, tokenField === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens');
+            continue;
+          }
+        }
+        throw failure.error;
+      } finally { release(); }
+    }
+  }
   private async request(session: HostSession, signal: AbortSignal) {
     // The shared pool already bounds concurrency (with headroom reserved for chat); a local
     // limiter only exists for standalone use without a pool, e.g. tests and scripts.
@@ -200,7 +269,6 @@ export class OpenAIToolAgent implements AgentRunner {
       if (signal.aborted || this.closed) throw new Error('执行已取消');
     }
     this.inflight++;
-    let release: (() => void) | undefined;
     try {
       if (signal.aborted || this.closed) throw new Error('执行已取消');
       const provider = this.options.provider();
@@ -209,95 +277,14 @@ export class OpenAIToolAgent implements AgentRunner {
         (session.provider.baseUrl !== provider.baseUrl || session.provider.model !== provider.model)
       )
         throw new Error('执行期间API配置已更换；未向新服务发送旧私有协议');
-      const key = await this.options.credentials.get();
-      if (!key) throw new Error('尚未配置OpenAI兼容API密钥');
-      const url = new URL(provider.baseUrl);
-      if (
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !(
-          url.protocol === 'https:' ||
-          (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))
-        )
-      )
-        throw new Error('API地址无效');
       session.provider = { baseUrl: provider.baseUrl, model: provider.model };
       this.host.save(session);
-      const messages = this.options.outbound
-          ? this.options.outbound(this.context(session))
-          : this.context(session),
-        k3 =
-          provider.mode === 'mira-proxy' || (provider.mode !== 'native-api' && isKimiK3Model(provider.model));
-      const endpoint = provider.baseUrl + '|' + provider.model;
-      let response: Response;
-      for (;;) {
-        const tokenField = this.tokenField.get(endpoint) || (k3 ? 'max_completion_tokens' : 'max_tokens');
-        const body = JSON.stringify({
-          model: provider.model,
-          messages,
-          tools: this.host.definitions,
-          stream: true,
-          ...(!this.noStreamUsage.has(endpoint) ? { stream_options: { include_usage: true } } : {}),
-          [tokenField]: this.outputBudget(),
-          ...(k3 ? { thinking: { type: 'enabled', keep: 'all' } } : {}),
-        });
-        // Model output carries no side effects until tools run after parsing, so failed or throttled calls are safe to retry.
-        const call = await callUpstream({
-          fetch: this.options.fetch || fetch,
-          url: provider.baseUrl.replace(/\/$/, '') + '/chat/completions',
-          init: {
-            method: 'POST',
-            headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-            body,
-          },
-          pool: this.options.pool,
-          priority: 'execution',
-          signal,
-          before: () => {
-            const selected = this.options.provider();
-            if (selected.baseUrl !== provider.baseUrl || selected.model !== provider.model)
-              throw new Error('API配置已更换，未发送请求');
-          },
-        });
-        release = call.release;
-        response = call.response;
-        if (response.ok) break;
-        const failure = await apiFailure(
-          response,
-          signal,
-          key,
-          (text) => this.options.outboundText?.(text) ?? text,
-        );
-        release();
-        release = undefined;
-        if (response.status === 400 || response.status === 422) {
-          if (!this.noStreamUsage.has(endpoint) && /stream_options/.test(failure.unsupported)) {
-            this.noStreamUsage.add(endpoint);
-            continue;
-          }
-          if (
-            !this.tokenField.has(endpoint) &&
-            failure.unsupported.includes(tokenField) &&
-            /not support|unsupported|unknown|unrecognized|use.{0,50}instead/i.test(failure.unsupported)
-          ) {
-            this.tokenField.set(
-              endpoint,
-              tokenField === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens',
-            );
-            continue;
-          }
-        }
-        throw failure.error;
-      }
-      const reply = await parseModelReply(response, signal);
+      const reply = await this.complete(provider, this.context(session), signal, this.outputBudget(), session);
       session.usage += reply.usage;
       session.turns++;
       this.options.onUsage?.(reply.usage);
       return reply;
     } finally {
-      release?.();
       this.inflight--;
       if (local) this.waiting.shift()?.();
     }
@@ -447,8 +434,7 @@ export class OpenAIToolAgent implements AgentRunner {
             sessionId: session.id,
             tools: trace,
           };
-        const transports = this.host.mcpTransports();
-        if (transports.stdio || transports.http) await this.options.mcp?.ensure(transports);
+        if (round === 0 && this.options.mcp) await this.host.discoverMcp(session, this.options.mcp, live);
         await this.compact(session, live).catch(() => {
           /* fall back to dropping old rounds in context() */
         });
@@ -489,7 +475,7 @@ export class OpenAIToolAgent implements AgentRunner {
               loopGuard.count +
               ' rounds in a row without progress';
         const results = await executeBatch(this.host, session, parsed, live, trace, onProgress);
-        appendBatchResults(this.host, session, results, /(kimi|k3)/i.test(this.options.provider().model));
+        appendBatchResults(this.host, session, results, moonshotMedia(session.provider?.baseUrl || ''));
         if (verdict === 'warn') {
           session.messages.push({
             role: 'user',
@@ -547,6 +533,7 @@ export class OpenAIToolAgent implements AgentRunner {
     session.runLabel = task.slice(0, 80);
     session.shellApproved = undefined;
     session.mcpApproved = undefined;
+    session.mcpDenied = undefined;
     this.host.save(session);
     const result = await this.loop(session, task, signal, onProgress);
     if (this.options.mcp) this.options.mcp.tools();
@@ -598,44 +585,15 @@ export class OpenAIToolAgent implements AgentRunner {
     let payload = lines.join('\n\n');
     if (payload.length > 90000)
       payload = payload.slice(0, 30000) + '\n[… middle of the history omitted …]\n' + payload.slice(-60000);
-    const provider = this.options.provider(),
-      key = await this.options.credentials.get();
-    if (!key) return;
+    const provider = session.provider || this.options.provider();
     const messages: ModelMessage[] = [
       { role: 'system', content: COMPACT_PROMPT },
       { role: 'user', content: payload },
     ];
-    const body = JSON.stringify({
-      model: provider.model,
-      messages: this.options.outbound ? this.options.outbound(messages) : messages,
-      stream: false,
-      max_tokens: 2400,
-    });
-    const call = await callUpstream({
-      fetch: this.options.fetch || fetch,
-      url: provider.baseUrl.replace(/\/$/, '') + '/chat/completions',
-      init: {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-        body,
-      },
-      pool: this.options.pool,
-      priority: 'execution',
-      signal,
-    });
-    let summary = '';
-    try {
-      if (!call.response.ok) throw new Error('HTTP ' + call.response.status);
-      const data = (await call.response.json()) as any;
-      summary = String(data?.choices?.[0]?.message?.content || '').trim();
-      const used = Number(data?.usage?.total_tokens);
-      if (Number.isFinite(used)) {
-        session.usage += used;
-        this.options.onUsage?.(used);
-      }
-    } finally {
-      call.release();
-    }
+    const reply = await this.complete(provider, messages, signal, 2400);
+    const summary = (reply.message.content as string).trim();
+    session.usage += reply.usage;
+    this.options.onUsage?.(reply.usage);
     if (summary.length < 40 || signal.aborted) return;
     session.messages = [
       {

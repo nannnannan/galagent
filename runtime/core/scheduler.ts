@@ -6,12 +6,12 @@ import type { Store } from './store';
 import type { ScheduleView } from '../shared/contracts';
 
 export type SelfWake = { id: string; note: string; dueAt: number; repeatMinutes?: number; cron?: string; createdBy: 'character' | 'user'; createdAt: number };
-export type ScheduleRequest = { note: string; inMinutes?: number; at?: string; cron?: string; repeatMinutes?: number };
+export type ScheduleRequest = { note: string; inMinutes?: number; at?: string; cron?: string; repeatMinutes?: number; forUser?: boolean };
 export const SCHEDULE_LIMITS = { active: 30, note: 300, minMinutes: 1, maxMinutes: 60 * 24 * 30, minRepeat: 5, staleAfterMs: 12 * 3600_000 } as const;
 
 /** Taught to the character in its system prompt; kept short on purpose. */
-export const schedulePrompt = `定时自唤醒：想过一段时间再主动找用户（用户让你提醒、追问进展、约好的事），调用工具 schedule_wakeup（note + in_minutes / at / cron 三选一；用户明确要求的提醒设 for_user:true）；查看用 list_wakeups，取消用 cancel_wakeup。到点系统会叫醒你本人并把 note 交给你。若当前没有工具可用，也可以在 JSON 里加 "schedule":{"inMinutes":分钟数,"note":"到时要做的事"}（或 "at":"HH:MM"、"cron":"5段"、"repeatMinutes":N），取消用 "cancelSchedule":["id"]。确有需要才设，设好后用一句话告诉用户时间。过去日子的完整原话需要时用 recall_day 读取。
-用户提到之后的具体事（面试、考试、看病等），用 schedule_wakeup 在事后设一次回访（note 写要问什么）。`;
+export const schedulePrompt = `定时自唤醒：想过一段时间再主动找用户（用户让你提醒、追问进展、约好的事），调用工具 schedule_wakeup（note + in_minutes / at / cron 三选一；用户明确要求的提醒设 for_user:true）；查看用 list_wakeups，取消用 cancel_wakeup。到点系统会叫醒你本人并把 note 交给你。若当前没有工具可用，也可以在 JSON 里加 "schedule":{"inMinutes":分钟数,"note":"到时要做的事"}（或 "at":"HH:MM"、"cron":"5段"、"repeatMinutes":N），取消用 "cancelSchedule":["id"]。确有需要才设，设好后用一句话告诉用户时间。需要查过去日子的完整原话时，用 ask_helpers 请并行助手查找。
+用户明确要求提醒时，在 JSON 的 schedule 中附上 forUser:true。用户提到之后的具体事（面试、考试、看病等），用 schedule_wakeup 在事后设一次回访（note 写要问什么）。`;
 
 /** "HH:MM" → next local occurrence; ISO strings as given. */
 export function resolveAt(at: string, now: number): number {
@@ -39,7 +39,7 @@ export function readScheduleField(raw: unknown): ScheduleRequest | undefined {
   const cron = typeof r.cron === 'string' && r.cron.trim() ? r.cron.trim() : undefined;
   const repeat = Number(r.repeatMinutes);
   if (!at && !cron && !Number.isFinite(minutes)) return;
-  return { note, ...(cron ? { cron } : at ? { at } : { inMinutes: minutes }), ...(Number.isFinite(repeat) && repeat > 0 ? { repeatMinutes: repeat } : {}) };
+  return { note, ...(cron ? { cron } : at ? { at } : { inMinutes: minutes }), ...(Number.isFinite(repeat) && repeat > 0 ? { repeatMinutes: repeat } : {}), ...(r.forUser === true ? { forUser: true } : {}) };
 }
 
 /** Next local fire time of a 5-field cron expression (shared with the executor's CronCreate). */
@@ -98,6 +98,7 @@ export class SelfWakeScheduler {
     // Only future alarms count: a snooze issued while an alarm rings must not merge into the one being completed.
     const duplicate = items.find(item => item.dueAt > now && item.note === note && Math.abs(item.dueAt - dueAt) < 5 * 60_000);
     if (duplicate) {
+      if (duplicate.createdBy === 'user' && createdBy === 'character') return duplicate;
       if ((createdBy === 'user' && duplicate.createdBy !== 'user') || (cron && !duplicate.cron) || (repeatMinutes && !duplicate.repeatMinutes && !duplicate.cron)) {
         const upgraded: SelfWake = { ...duplicate, createdBy: createdBy === 'user' ? 'user' : duplicate.createdBy, ...(cron ? { cron } : repeatMinutes && !duplicate.cron ? { repeatMinutes } : {}) };
         if (cron) delete upgraded.repeatMinutes; // one repeat rule per alarm
@@ -111,7 +112,12 @@ export class SelfWakeScheduler {
     this.store.put('self-wake', item.id, item);
     return item;
   }
-  cancel(id: string): boolean { if (this.store.kind(id) !== 'self-wake') return false; this.store.remove(id); return true; }
+  cancel(id: string, allowUser = true): boolean {
+    if (this.store.kind(id) !== 'self-wake') return false;
+    if (!allowUser && this.store.get<SelfWake>(id)?.createdBy === 'user') return false;
+    this.store.remove(id);
+    return true;
+  }
   due(now = this.clock()): SelfWake[] { return this.list().filter(item => item.dueAt <= now); }
   /** After delivery: repeating alarms move to their next future slot, one-shots disappear. */
   complete(item: SelfWake, now = this.clock()) {

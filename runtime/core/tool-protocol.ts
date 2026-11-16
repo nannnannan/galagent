@@ -1,16 +1,56 @@
+import { abortable } from './pool';
+
 export type ToolCall={id:string;type:'function';function:{name:string;arguments:string}};
 export type ModelMessage={role:string;content?:unknown;tool_calls?:ToolCall[];tool_call_id?:string;[key:string]:unknown};
 export type ModelReply={message:ModelMessage;finishReason:string;usage:number};
-const limit=16_000_000;
-function validateReply(message:any,finishReason:unknown,usage:unknown):ModelReply {
- if(!message||message.role!=='assistant'||!['stop','tool_calls'].includes(String(finishReason)))throw new Error('模型回复未完整结束，未执行工具');
- if(message.tool_calls!==undefined){if(!Array.isArray(message.tool_calls)||message.tool_calls.length>128)throw new Error('工具调用列表无效');const ids=new Set<string>();for(const call of message.tool_calls){if(!call||call.type!=='function'||typeof call.id!=='string'||!call.id||call.id.length>200||ids.has(call.id)||typeof call.function?.name!=='string'||typeof call.function?.arguments!=='string'||call.function.arguments.length>1_000_000)throw new Error('工具调用格式无效');ids.add(call.id);}}
- if(finishReason==='tool_calls'&&!message.tool_calls?.length)throw new Error('缺少模型声明的工具调用');
- if(finishReason==='stop'&&message.tool_calls?.length)throw new Error('工具调用结束标记冲突');
- if(finishReason==='stop'&&(typeof message.content!=='string'||!message.content.trim()))throw new Error('模型没有最终可见回复');
- return{message:structuredClone(message),finishReason:String(finishReason),usage:typeof usage==='number'&&Number.isFinite(usage)?Math.max(0,usage):0};
+
+/** Stored assistant replies include fields that are absent from the request schema. */
+export function toChatRequestMessages(messages: { role: string; [key: string]: unknown }[], officialOpenAI: boolean) {
+  return messages.map(message => {
+    if (message.role !== 'assistant') return message;
+    const { annotations: _annotations, audio, ...reply } = message;
+    const audioId = (audio as { id?: unknown } | null | undefined)?.id;
+    const request = officialOpenAI
+      ? Object.fromEntries(['role', 'content', 'name', 'refusal', 'tool_calls', 'function_call']
+        .filter(key => Object.hasOwn(reply, key)).map(key => [key, reply[key]]))
+      : reply;
+    return typeof audioId === 'string' ? { ...request, audio: { id: audioId } } : request;
+  });
 }
-export async function parseModelReply(response:Response,signal?:AbortSignal):Promise<ModelReply>{
+
+const limit=16_000_000;
+function validateReply(raw: unknown, finishReason: unknown, usage: unknown, legacyJson = false): ModelReply {
+ if (finishReason === 'length') throw new Error('模型回复未完整结束，输出被截断，请调整输出预算');
+ if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('模型没有最终可见回复');
+ const message = structuredClone(raw) as ModelMessage;
+ if (legacyJson && message.role === undefined) message.role = 'assistant';
+ // Some compatible JSON gateways omit this marker. The entire JSON document and
+ // all tool arguments are checked before the model can trigger any side effects.
+ if (legacyJson && finishReason === undefined) finishReason = message.tool_calls?.length ? 'tool_calls' : 'stop';
+ if (message.tool_calls === null) delete message.tool_calls;
+ if (message.role !== 'assistant' || (finishReason !== 'stop' && finishReason !== 'tool_calls')) {
+   throw new Error('模型回复未完整结束，未执行工具');
+ }
+ if (message.tool_calls !== undefined) {
+   if (!Array.isArray(message.tool_calls) || message.tool_calls.length > 128) throw new Error('工具调用列表无效');
+   const ids = new Set<string>();
+   for (const call of message.tool_calls) {
+     if (legacyJson && call && call.type === undefined) call.type = 'function';
+     if (!call || call.type !== 'function' || typeof call.id !== 'string' || !call.id.trim()
+       || call.id.length > 200 || ids.has(call.id) || typeof call.function?.name !== 'string'
+       || !call.function.name.trim() || typeof call.function.arguments !== 'string'
+       || call.function.arguments.length > 1_000_000) throw new Error('工具调用格式无效');
+     ids.add(call.id);
+   }
+ }
+ if (finishReason === 'tool_calls' && !message.tool_calls?.length) throw new Error('缺少模型声明的工具调用');
+ if (finishReason === 'stop' && message.tool_calls?.length) throw new Error('工具调用结束标记冲突');
+ if (finishReason === 'stop' && (typeof message.content !== 'string' || !message.content.trim())) {
+   throw new Error('模型没有最终可见回复。输出预算可能被思考用完，请调整单次输出上限后重试');
+ }
+ return { message, finishReason, usage: typeof usage === 'number' && Number.isFinite(usage) ? Math.max(0, usage) : 0 };
+}
+export async function parseModelReply(response:Response,signal?:AbortSignal,legacyJson=false):Promise<ModelReply>{
  if(!response.ok)throw new Error(`模型API请求失败（HTTP ${response.status}）`);
  const reader=response.body?.getReader();if(!reader)throw new Error('模型响应为空');
  const abort=()=>{void reader.cancel().catch(()=>{});};signal?.addEventListener('abort',abort,{once:true});
@@ -37,12 +77,16 @@ export async function parseModelReply(response:Response,signal?:AbortSignal):Pro
    }
   }
  };
- try{while(true){if(signal?.aborted)throw new Error('任务已取消');const part=await reader.read();if(part.done)break;bytes+=part.value.byteLength;if(bytes>limit)throw new Error('模型响应超过大小上限');buffer+=decoder.decode(part.value,{stream:true});
+ try{while(true){if(signal?.aborted)throw new Error('任务已取消');const part=await (signal ? abortable(reader.read(),signal) : reader.read());if(part.done)break;bytes+=part.value.byteLength;if(bytes>limit)throw new Error('模型响应超过大小上限');buffer+=decoder.decode(part.value,{stream:true});
    // SSE allows CRLF, LF or bare CR line endings; hold back a trailing CR in case its LF arrives in the next chunk.
-   if(streaming){const tail=buffer.endsWith('\r')?'\r':'';buffer=buffer.slice(0,buffer.length-tail.length).replace(/\r\n?/g,'\n')+tail;let boundary;while((boundary=buffer.indexOf('\n\n'))>=0){apply(buffer.slice(0,boundary));buffer=buffer.slice(boundary+2);}}
+   if(streaming){const tail=buffer.endsWith('\r')?'\r':'';buffer=buffer.slice(0,buffer.length-tail.length).replace(/\r\n?/g,'\n')+tail;let boundary;while((boundary=buffer.indexOf('\n\n'))>=0){apply(buffer.slice(0,boundary));buffer=buffer.slice(boundary+2);}if(done)break;}
   }if(signal?.aborted)throw new Error('任务已取消');buffer+=decoder.decode();
-  if(!streaming){const body=JSON.parse(buffer);const choice=body.choices?.[0];return validateReply(choice?.message,choice?.finish_reason,body.usage?.total_tokens);}
+  if(!streaming){
+   let body;
+   try { body = JSON.parse(buffer); } catch { throw new Error('接口返回了无效 JSON，请检查 API 地址和兼容协议'); }
+   const choice=body?.choices?.[0];return validateReply(choice?.message,choice?.finish_reason,body?.usage?.total_tokens,legacyJson);
+  }
   if(buffer.trim())apply(buffer);if(!done)throw new Error('模型流中断，工具参数未执行');if(calls.size)message.tool_calls=[...calls].sort(([a],[b])=>a-b).map(([,call])=>call);
   return validateReply(message,finishReason,usage);
- }finally{signal?.removeEventListener('abort',abort);await reader.cancel().catch(()=>{});}
+ }finally{signal?.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});}
 }

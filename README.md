@@ -1,4 +1,4 @@
-# GalAgent 1.0
+# 桌边灯 · GalAgent
 
 GalAgent 是住在 Windows 桌面上的 AI 像素伙伴。你可以为 TA 选择性格和外形，接入自己的模型，一起聊天、记下生活里的小事，持续跟进面试、计划和日常进展。TA 会在合适的时候主动问候，把查到的新消息带来，也能在你授权后帮忙处理本机任务；需要安静时，随时让 TA 休息。
 
@@ -34,12 +34,12 @@ GalAgent 是住在 Windows 桌面上的 AI 像素伙伴。你可以为 TA 选择
 ## 安装与连接模型
 
 1. 在 [GitHub Releases](https://github.com/nannnannan/galagent/releases) 下载 Windows x64 安装包，运行安装向导。
-2. 从桌面快捷方式启动，右键小人打开聊天，在「连接」中选择「标准 OpenAI 兼容接口」。
+2. 从桌面快捷方式启动，右键小人打开聊天，再进入「连接」。
 3. 填写服务提供的基础地址、模型名称与 API Key，再选择角色和小人开始聊天。
 
-程序支持 OpenAI Chat Completions 兼容接口，会对部分不支持的 JSON 模式、输出 token 参数和流式选项做兼容回退。各服务支持的参数不同，接入后仍需实际发送消息验证。Mira 预设需要另行安装、登录 Mira 并运行兼容的本地反代。
+对话、后台研究和执行器共用 OpenAI 兼容格式（Chat Completions）。在「连接」填写所选服务的基础地址或完整的 `/chat/completions` 地址，再填写该服务的模型名和 API Key。部分服务对 JSON 输出、流式和输出上限字段的支持不同，程序会根据接口报错调整请求。执行器需要模型支持工具调用。
 
-仓库附带 [Mira 反代源码与使用说明](extras/mira-proxy/README.md)，当前适配表支持至 Mira 0.0.771；Release 提供单独的 ZIP。使用自己的 Mira 账号，首次启动生成自己的本地密钥。
+原先使用 Mira 反代的存档第一次打开会提示连接模型。请在「连接」填写新服务的地址、模型名和 API Key。聊天、角色和记忆继续沿用原存档。换服务后，执行器先跟随主模型，可以再从「任务」设置单独指定兼容的模型名。
 
 安装包不附带模型账号或额度，也不包含个人存档。当前 Windows 安装包未做可信发布者证书签名；升级前建议备份自己的数据目录，卸载默认保留数据。
 
@@ -48,6 +48,8 @@ GalAgent 是住在 Windows 桌面上的 AI 像素伙伴。你可以为 TA 选择
 新存档默认开启桌面观察，窗口标题默认关闭；截屏、剪贴板有独立开关，已有存档沿用自己的设置。托盘「暂停观察」立即停用观察。截图只留文字摘要，原图不落盘；截屏频率、黑名单应用和锁屏等保护见[主动陪伴设计](docs/主动陪伴与上下文管理-v1.md)。
 
 聊天与观察内容会按功能需要发送给你配置的模型或服务，本地保存不代表完全离线。出站内容经过隐私过滤，支持自定义敏感词；API Key 由 Windows DPAPI 在宿主侧保护。
+
+对话密钥只用于保存时对应的服务来源。用环境变量接入时，可以设置 `OPENAI_API_KEY` 供 OpenAI 官方接口使用，或同时设置 `GALAGENT_API_BASE_URL` 和 `GALAGENT_API_KEY` 指定服务。
 
 执行器默认使用「标准」权限：可读取允许访问的位置，只在工作目录内写入，Shell 命令需要确认，也可对本任务统一允许。需要更高权限时，可手动选择并确认「完全放开」；GalAgent 自身密钥与数据目录、用户设置的禁止目录仍受保护。这些是应用内检查，不是操作系统沙箱。
 
@@ -90,9 +92,10 @@ Windows 打包测试可复用本地 Electron，避免重新下载：
 ```powershell
 npx electron-builder --win dir --x64 --config.directories.output=release/dual-core --config.electronDist=node_modules/electron/dist
 $env:GALAGENT_TEST_EXE = (Resolve-Path 'release/dual-core/win-unpacked/GalAgent.exe').Path
-node tests/e2e/dual-core.mjs
 node tests/e2e/windows-release.mjs
+node tests/e2e/openai-tools.mjs
 node tests/e2e/research-companion.mjs
+node tests/e2e/research-progress.mjs
 node tests/e2e/care-continuity.mjs
 node tests/e2e/profile-save.mjs
 ```

@@ -14,6 +14,11 @@ import { BrowserPerception } from '../../runtime/desktop/browser';
 import type { AgentRunner } from '../../runtime/core/kimi-agent';
 
 const until = async (check: () => boolean, ms = 3000) => { const end = Date.now() + ms; while (!check()) { if (Date.now() > end) throw new Error('timeout'); await new Promise(r => setTimeout(r, 5)); } };
+function gate<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>(finish => { resolve = finish; });
+    return { promise, resolve };
+}
 
 // ---------------- DC1 · pool ----------------
 test('pool: 30 simultaneous requests never exceed the 20 ceiling, all complete, queue drains', async () => {
@@ -200,6 +205,27 @@ test('attention: user input during evaluation discards the late conclusion; even
     assert.equal(f.wakes.length, 0);
     assert.equal(f.loop.pending().length, 1);
     await f.cleanup();
+});
+test('attention can cancel during a stalled brief and reevaluate the pending event', async () => {
+    const entered = gate<void>();
+    let stuck = true;
+    const f = await attentionFixture({ brief: async () => {
+        if (!stuck) return {};
+        entered.resolve();
+        return new Promise(() => {});
+    } });
+    try {
+        f.loop.push(taskEvent('task:stalled-brief', f.now()));
+        const first = f.loop.evaluate('event');
+        await entered.promise;
+        f.loop.invalidate('user-input');
+        await first;
+        assert.equal(f.calls.length, 0);
+        assert.equal(f.loop.pending().length, 1);
+        stuck = false;
+        await f.loop.evaluate('event');
+        assert.equal(f.calls.length, 1);
+    } finally { await f.cleanup(); }
 });
 test('attention: wake waits while the main character is busy and expires after ten minutes', async () => {
     let busy = true;
@@ -388,6 +414,75 @@ test('daily archive: deleting a source record drops the archive at once and fall
         assert.equal(JSON.stringify(contexts.at(-1)).includes('阿青'), false);
     } finally { Date.now = realNow; await f.core.close(); await rm(f.dir, { recursive: true, force: true }); }
 });
+test('daily archive runs while the optional rolling summary waits on the model', { timeout: 5000 }, async () => {
+    const realNow = Date.now;
+    let now = new Date(2026, 9, 28, 18).getTime();
+    Date.now = () => now;
+    const summarizing = gate<void>(), hold = gate<object>();
+    const f = await service(body => {
+        const system = String(body.messages[0].content);
+        if (isExtract(body)) return { ops: [], diary: '' };
+        if (system.includes('压缩为短摘要')) { summarizing.resolve(); return hold.promise; }
+        if (system.includes('现在是本地午夜之后')) return { title: '昨晚', summary: '几次普通聊天', diary: '一起聊了几次。' };
+        return chatReply();
+    });
+    try {
+        for (let turn = 1; turn <= 12; turn++) await f.core.handle({ type: 'chat.send', text: `聊一会儿 ${turn}` });
+        await summarizing.promise;
+        now = new Date(2026, 9, 29, 10).getTime();
+        await f.core.tick();
+        for (let attempt = 0; attempt < 100 && !f.core.getSnapshot().archives?.length; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(f.core.getSnapshot().archives?.[0].title, '昨晚');
+    } finally {
+        hold.resolve({ summary: '补完滚动摘要' });
+        Date.now = realNow;
+        await f.cleanup();
+    }
+});
+test('daily archive: a corrected fact drops the old journal immediately and rebuilds with the correction', { timeout: 5000 }, async () => {
+    const realNow = Date.now;
+    let now = new Date(2026, 9, 28, 18).getTime();
+    Date.now = () => now;
+    const rebuilt = gate<void>(), release = gate<void>();
+    const f = await service(async body => {
+        if (isExtract(body)) return { ops: [{ op: 'ADD', text: '我喜欢野外露营', importance: 4 }], diary: '' };
+        if (String(body.messages[0].content).includes('现在是本地午夜之后')) {
+            const content = JSON.parse(body.messages.at(-1).content);
+            const correction = content.corrections?.[0]?.replacement;
+            if (correction) {
+                rebuilt.resolve();
+                await release.promise;
+            }
+            return { title: '兴趣记录', summary: correction || '我喜欢野外露营', diary: correction || '我们聊到野外露营' };
+        }
+        return chatReply();
+    });
+    try {
+        await f.core.handle({ type: 'chat.send', text: '我喜欢野外露营' });
+        await f.core.waitForBackground();
+        now = new Date(2026, 9, 29, 10).getTime();
+        await f.core.tick();
+        await f.core.waitForBackground();
+        assert.match(f.core.getSnapshot().archives![0].summary, /野外露营/);
+        const fact = f.core.getSnapshot().memories.find(item => item.text === '我喜欢野外露营')!;
+        assert.equal((await f.core.handle({ type: 'memory.correct', id: fact.id, text: '我现在喜欢拍胶片' })).ok, true);
+        await rebuilt.promise;
+        assert.deepEqual(f.core.getSnapshot().archives, []);
+        assert.ok(!f.core.getSnapshot().diary.some(entry => entry.kind === 'journal'));
+        const search = await f.core.handle({ type: 'history.search', scope: 'archive', query: '野外露营' });
+        assert.deepEqual(search.data, []);
+        release.resolve();
+        await f.core.waitForBackground();
+        assert.equal(f.core.getSnapshot().archives![0].summary, '我现在喜欢拍胶片');
+        assert.ok(f.core.getSnapshot().messages.some(message => message.text === '我喜欢野外露营'));
+    } finally {
+        Date.now = realNow;
+        release.resolve();
+        await f.cleanup();
+    }
+});
 test('memory ops: UPDATE supersedes with history, DELETE invalidates without erasing source', async () => {
     let step = 0;
     const f = await service(body => {
@@ -447,6 +542,27 @@ test('companion: screenshot sent to attention as image input only; raw pixels ab
     assert.equal(all.includes('UkFXUElYRUxT'), false);
     assert.equal(all.includes(Buffer.from('屏幕上是代码编辑器')), true, 'only the text summary is kept');
     await rm(dir, { recursive: true, force: true });
+});
+test('companion: a foreground switch during capture drops the raw screenshot', async () => {
+    const f = await service(body => isAttention(body) ? { decision: 'silent', reason: '无', evidence: [], nextCheck: null } : chatReply());
+    const started = gate<void>(), capture = gate<{ dataUrl: string; signature: number[] }>();
+    try {
+        await f.core.handle({ type: 'chat.send', text: '你好' });
+        f.core.setCapture(() => { started.resolve(); return capture.promise; });
+        await f.core.handle({ type: 'settings.update', settings: { observationEnabled: true } });
+        f.core.setObservation({ available: true, observedAt: new Date().toISOString(), appName: 'Code' });
+        const tick = f.core.tick();
+        await started.promise;
+        f.core.setObservation({ available: true, observedAt: new Date().toISOString(), appName: 'KeePassXC' });
+        f.core.setObservation({ available: true, observedAt: new Date().toISOString(), appName: 'Code' });
+        capture.resolve({ dataUrl: 'data:image/jpeg;base64,UkFXUElYRUxT', signature: [3] });
+        await tick;
+        await f.core.attentionIdle();
+        assert.equal(f.bodies.filter(isAttention).some(body => Array.isArray(body.messages[1].content)), false);
+    } finally {
+        capture.resolve({ dataUrl: '', signature: [] });
+        await f.cleanup();
+    }
 });
 test('browser perception: 4 metadata categories, active-tab pageContent navigation expiry, background/bookmark rejection, blocklist filtering', () => {
     let now = Date.parse('2026-10-17T12:00:00Z');
@@ -615,8 +731,7 @@ test('directory guard (Master Design 9.3) and Edge Native Messaging bridge/manif
     }
 });
 
-test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming commands work end-to-end', async () => {
-    const { resolveLocalProxyDir, ensureLocalProxyRunning } = await import('../../runtime/main/proxy-autostart');
+test('TTS voice synthesis and desktop roaming commands work end-to-end', async () => {
     const {
         cleanTtsText,
         isXiaomiMimoTts,
@@ -627,29 +742,7 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
     } = await import('../../runtime/main/tts');
     const { validateCommand } = await import('../../runtime/main/validation');
 
-    // 1. Proxy auto-start checks
-    assert.equal(resolveLocalProxyDir('https://api.moonshot.cn/v1', 'C:/Users/User/Desktop'), null);
-    assert.deepEqual(resolveLocalProxyDir('http://127.0.0.1:18890/v1', 'C:/Users/User/Desktop'), {
-        port: 18890,
-        dir: join('C:/Users/User/Desktop', 'mira反代', 'kimi-api'),
-    });
-    const nonLocalRes = await ensureLocalProxyRunning({
-        baseUrl: 'https://api.moonshot.cn/v1',
-        desktopDir: 'C:/Users/User/Desktop',
-    });
-    assert.equal(nonLocalRes.ok, true);
-    assert.equal(nonLocalRes.status, 'not-local-proxy');
-
-    const localHealthy = await ensureLocalProxyRunning({
-        baseUrl: 'http://127.0.0.1:18890/v1',
-        desktopDir: 'C:/Users/User/Desktop',
-        fetchImpl: async () => new Response('{"ok":true,"upstream":"https://api.kimi.com/coding/v1"}', { status: 200 }),
-    });
-    assert.equal(localHealthy.ok, true);
-    assert.equal(localHealthy.status, 'already-running');
-    assert.equal(localHealthy.port, 18890);
-
-    // 2. TTS text cleaning, endpoint resolution, and HTTP / Xiaomi MiMo synthesis
+    // TTS text cleaning, endpoint resolution, and HTTP / Xiaomi MiMo synthesis
     assert.equal(cleanTtsText('```js\nconsole.log(1)\n```\n哼，*这首曲子*只弹给你听！'), '哼，这首曲子只弹给你听！');
     assert.equal(resolveTtsEndpoint('http://127.0.0.1:9880/v1', 'tts-1'), 'http://127.0.0.1:9880/v1/audio/speech');
     assert.equal(resolveTtsEndpoint('https://api.xiaomimimo.com/v1', 'mimo-v2.5-tts'), 'https://api.xiaomimimo.com/v1/chat/completions');
@@ -745,13 +838,11 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
             type: 'config.save',
             baseUrl: 'https://api.moonshot.cn/v1',
             model: 'kimi-k2.5',
-            mode: 'native-api',
             apiKey: 'sk-native-fixture',
         });
         const nativeRes = await f.core.handle(validNativeCfg);
         assert.equal(nativeRes.ok, true);
         const nativeSnap = f.core.getSnapshot();
-        assert.equal(nativeSnap.provider.mode, 'native-api');
         assert.equal(nativeSnap.provider.baseUrl, 'https://api.moonshot.cn/v1');
         assert.equal(nativeSnap.provider.model, 'kimi-k2.5');
         assert.equal(nativeSnap.provider.toolCount, 27);
@@ -759,7 +850,7 @@ test('Mira proxy auto-start, TTS voice synthesis, and desktop Live2D roaming com
         const { OpenAIToolAgent } = await import('../../runtime/core/openai-agent');
         let capturedNativeToolBody: any = null;
         const nativeAgent = new OpenAIToolAgent({
-            provider: () => ({ baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.5', mode: 'native-api' }),
+            provider: () => ({ baseUrl: 'https://api.moonshot.cn/v1', model: 'kimi-k2.5' }),
             credentials: { get: async () => 'sk-native-fixture' },
             ask: async () => ({}),
             fetch: async (_url, init) => {

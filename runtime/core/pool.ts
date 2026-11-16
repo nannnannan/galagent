@@ -42,7 +42,7 @@ export class RequestPool {
         this.throttledUntil = this.clock() + durationMs;
     }
     /** Ceiling for one priority class: chat and attention may use every slot, bulk work leaves headroom. */
-    private ceiling(priority: PoolPriority, now = this.clock()) { const limit = this.effectiveLimit(now); return rank[priority] >= rank.execution ? Math.max(1, limit - this.reserve) : limit; }
+    private ceiling(priority: PoolPriority, now = this.clock()) { const limit = this.effectiveLimit(now); return rank[priority] >= rank.execution ? Math.max(0, limit - this.reserve) : limit; }
     stats(): PoolStats { return { limit: this.limit, effectiveLimit: this.effectiveLimit(), inflight: this.inflight, queued: this.waiters.length, peak: this.peak, byPriority: { ...this.active }, throttledUntil: this.throttledUntil }; }
     async acquire(priority: PoolPriority, signal?: AbortSignal): Promise<() => void> {
         if (this.closed) throw new Error('并发池已关闭');

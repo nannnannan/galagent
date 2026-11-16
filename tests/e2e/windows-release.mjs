@@ -4,11 +4,18 @@ import { createServer } from 'node:http';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
 const { _electron } = await import(pathToFileURL(process.env.PLAYWRIGHT_MODULE || path.join(process.env.USERPROFILE, '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs')).href);
 const root = process.cwd();
 const folder = path.join(root, '.cache', `release-smoke-${Date.now()}`);
 const profile = path.join(folder, 'profile'), workspace = path.join(folder, 'workspace');
 await mkdir(profile, { recursive: true }); await mkdir(workspace, { recursive: true });
+const database = new DatabaseSync(path.join(profile, 'companion.sqlite'));
+database.exec('CREATE TABLE records(id TEXT PRIMARY KEY, kind TEXT NOT NULL, body TEXT NOT NULL)');
+database.prepare('INSERT INTO records VALUES (?, ?, ?)').run('settings', 'state', JSON.stringify({
+  initiativeEnabled: false, observationEnabled: false, screenCaptureEnabled: false, clipboardEnabled: false, ttsEnabled: false,
+}));
+database.close();
 await writeFile(path.join(workspace, 'probe.txt'), 'WINDOWS_READ_OK');
 const seen = { chat: 0, executor: 0, read: false, k31: false };
 const server = createServer(async (req, res) => {
@@ -37,7 +44,15 @@ const server = createServer(async (req, res) => {
   res.end(JSON.stringify({ choices: [{ index: 0, finish_reason: finish, message }], usage: { total_tokens: 10 } }));
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const env = { ...process.env, GALAGENT_DATA_DIR: profile, GALAGENT_API_KEY: '', KIMI_API_KEY: '', MOONSHOT_API_KEY: '' };
+let alternateRequests = 0, alternateAuthorizationSeen = false;
+const alternate = createServer((req, res) => {
+  alternateRequests++;
+  alternateAuthorizationSeen ||= !!req.headers.authorization;
+  res.writeHead(200, { 'content-type': 'application/json' });
+  res.end(JSON.stringify({ data: [{ id: 'alternate-fixture' }] }));
+});
+await new Promise(resolve => alternate.listen(0, '127.0.0.1', resolve));
+const env = { ...process.env, OPENAI_API_KEY: '', GALAGENT_DATA_DIR: profile, GALAGENT_API_KEY: '', KIMI_API_KEY: '', MOONSHOT_API_KEY: '' };
 delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try {
@@ -45,7 +60,7 @@ try {
   const page = await app.firstWindow();
   await page.waitForFunction(() => !!window.galagent);
   const send = async command => { const r = await page.evaluate(c => window.galagent.dispatch(c), command); assert.equal(r.ok, true, r.error); };
-  await send({ type: 'config.save', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: 'kimi-k3.1-pro', mode: 'mira-proxy', apiKey: 'isolated-fixture' });
+  await send({ type: 'config.save', baseUrl: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, model: 'kimi-k3.1-pro', apiKey: 'isolated-fixture' });
   await send({ type: 'settings.update', settings: { initiativeEnabled: false, observationEnabled: false, screenCaptureEnabled: false, clipboardEnabled: false, ttsEnabled: false } });
   await send({ type: 'chat.send', text: 'Windows packaged chat smoke test' });
   await page.waitForFunction(async () => (await window.galagent.getSnapshot()).messages.some(m => m.role === 'assistant' && m.text.includes('WINDOWS_CHAT_OK')));
@@ -59,9 +74,16 @@ try {
   const snapshot = await page.evaluate(() => window.galagent.getSnapshot());
   assert.equal(snapshot.status.contextBudget, 1_000_000);
   assert.equal(seen.k31, true);
-  const report = { passed: true, version: await app.evaluate(({ app }) => app.getVersion()), ...seen, contextBudget: snapshot.status.contextBudget, isolatedProfile: true };
+  const alternateUrl = `http://127.0.0.1:${alternate.address().port}/v1`;
+  await send({ type: 'config.save', baseUrl: alternateUrl, model: 'alternate-fixture' });
+  assert.equal((await page.evaluate(() => window.galagent.getSnapshot())).provider.configured, false);
+  await send({ type: 'endpoint.models', kind: 'chat', baseUrl: alternateUrl });
+  assert.equal(alternateRequests, 1);
+  assert.equal(alternateAuthorizationSeen, false, 'the previous DPAPI credential must not leave for another origin');
+  const report = { passed: true, version: await app.evaluate(({ app }) => app.getVersion()), ...seen, contextBudget: snapshot.status.contextBudget, isolatedProfile: true, crossOriginCredentialBlocked: true };
   await writeFile(path.join(folder, 'smoke.json'), JSON.stringify(report, null, 2) + '\n');
   console.log(JSON.stringify(report));
 } finally {
   await app?.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+  alternate.closeAllConnections(); await new Promise(resolve => alternate.close(resolve));
 }

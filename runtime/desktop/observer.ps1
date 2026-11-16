@@ -32,37 +32,42 @@ public static class GalDesktop {
     [DllImport("kernel32.dll")] public static extern bool GlobalUnlock(IntPtr handle);
     [DllImport("kernel32.dll")] public static extern UIntPtr GlobalSize(IntPtr handle);
     // Password managers mark secrets with these formats; such content is never read.
-    public static bool ClipboardExcluded() {
+    private static bool ClipboardExcluded() {
         if (IsClipboardFormatAvailable(RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing"))) return true;
         if (IsClipboardFormatAvailable(RegisterClipboardFormat("Clipboard Viewer Ignore"))) return true;
         uint history = RegisterClipboardFormat("CanIncludeInClipboardHistory");
         if (IsClipboardFormatAvailable(history)) {
-            if (!OpenClipboard(IntPtr.Zero)) return true;
-            try {
-                IntPtr handle = GetClipboardData(history);
-                if (handle == IntPtr.Zero) return true;
-                IntPtr data = GlobalLock(handle);
-                if (data == IntPtr.Zero) return true;
-                try { return Marshal.ReadInt32(data) == 0; } finally { GlobalUnlock(handle); }
-            } finally { CloseClipboard(); }
+            IntPtr handle = GetClipboardData(history);
+            if (handle == IntPtr.Zero || GlobalSize(handle).ToUInt64() < 4) return true;
+            IntPtr data = GlobalLock(handle);
+            if (data == IntPtr.Zero) return true;
+            try { return Marshal.ReadInt32(data) == 0; } finally { GlobalUnlock(handle); }
         }
         return false;
     }
-    public static string ClipboardText(int maxChars) {
+    private static string ClipboardText(int maxChars) {
         if (!IsClipboardFormatAvailable(13)) return "";
-        if (!OpenClipboard(IntPtr.Zero)) return null;
+        IntPtr handle = GetClipboardData(13);
+        if (handle == IntPtr.Zero) return "";
+        IntPtr data = GlobalLock(handle);
+        if (data == IntPtr.Zero) return "";
         try {
-            IntPtr handle = GetClipboardData(13);
-            if (handle == IntPtr.Zero) return "";
-            IntPtr data = GlobalLock(handle);
-            if (data == IntPtr.Zero) return "";
-            try {
-                long chars = (long)GlobalSize(handle).ToUInt64() / 2;
-                int length = (int)Math.Min(chars, (long)maxChars);
-                string text = Marshal.PtrToStringUni(data, length);
-                int end = text.IndexOf('\0');
-                return end >= 0 ? text.Substring(0, end) : text;
-            } finally { GlobalUnlock(handle); }
+            long chars = (long)GlobalSize(handle).ToUInt64() / 2;
+            int length = (int)Math.Min(chars, (long)maxChars);
+            string text = Marshal.PtrToStringUni(data, length);
+            int end = text.IndexOf('\0');
+            return end >= 0 ? text.Substring(0, end) : text;
+        } finally { GlobalUnlock(handle); }
+    }
+    public static bool TryReadClipboard(uint sequence, int maxChars, out bool excluded, out string text) {
+        excluded = true;
+        text = "";
+        if (sequence == 0 || !OpenClipboard(IntPtr.Zero)) return false;
+        try {
+            if (GetClipboardSequenceNumber() != sequence) return false;
+            excluded = ClipboardExcluded();
+            if (!excluded) text = ClipboardText(maxChars);
+            return GetClipboardSequenceNumber() == sequence;
         } finally { CloseClipboard(); }
     }
 }
@@ -126,20 +131,17 @@ public static class GalDesktop {
         if ($IncludeClipboard -and $sample.locked -eq $false -and -not $sample.suspended) {
             $sequence = [GalDesktop]::GetClipboardSequenceNumber()
             if ($sequence -ne $lastClipboard) {
-                $previous = $lastClipboard
-                $baseline = ($null -eq $previous)
-                $lastClipboard = $sequence
+                $baseline = ($null -eq $lastClipboard)
                 try {
-                    $excluded = [GalDesktop]::ClipboardExcluded()
-                    $clip = @{excluded=$excluded; baseline=$baseline}
-                    $ready = $true
-                    if (-not $excluded) {
-                        $text = [GalDesktop]::ClipboardText(2000)
-                        # Clipboard busy: retry on the next loop.
-                        if ($null -eq $text) { $lastClipboard = $previous; $ready = $false } else { $clip.text = ($text -replace '\x00', '') }
+                    $excluded = $true
+                    $text = ''
+                    if ([GalDesktop]::TryReadClipboard($sequence, 2000, [ref]$excluded, [ref]$text)) {
+                        $lastClipboard = $sequence
+                        $clip = @{excluded=$excluded; baseline=$baseline}
+                        if (-not $excluded) { $clip.text = $text }
+                        [Console]::WriteLine((@{clipboard=$clip} | ConvertTo-Json -Compress))
                     }
-                    if ($ready) { [Console]::WriteLine((@{clipboard=$clip} | ConvertTo-Json -Compress)) }
-                } catch { $lastClipboard = $previous }
+                } catch { }
             }
         }
         Start-Sleep -Milliseconds 2000

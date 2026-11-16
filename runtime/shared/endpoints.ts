@@ -15,14 +15,16 @@ export function checkBaseUrl(raw: string, what = '接口'): string {
   try { url = new URL(String(raw || '').trim()); } catch { throw new Error(`${what}地址无效`); }
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))) throw new Error(`远程${what}需要 HTTPS，本机接口只允许 127.0.0.1 / localhost`);
   if (url.username || url.password) throw new Error(`${what}地址不能内嵌账号密码，请把密钥填在密钥栏`);
+  if (url.search || url.hash) throw new Error(`${what}地址请填写接口基础地址，去掉查询参数和片段`);
   return url.toString().replace(/\/+$/, '');
 }
 
 const strip = (base: string, tails: string[]) => { let b = base.replace(/\/+$/, ''); for (const t of tails) if (b.endsWith(t)) { b = b.slice(0, -t.length); break; } return b; };
 /** The …/v1 root of whatever the user pasted (a full endpoint URL works too). */
 export function apiRoot(base: string): string {
-  const b = strip(checkBaseUrl(base), ['/chat/completions', '/audio/speech', '/audio/transcriptions', '/models', '/tts']);
-  return /\/v\d+[a-z]*$/i.test(b) || /\/compatible-mode\/v1$/.test(b) || /\/openai(\/v1)?$/.test(b) ? b : `${b}/v1`;
+  const cleaned = checkBaseUrl(base);
+  const root = strip(cleaned, ['/chat/completions', '/audio/speech', '/audio/transcriptions', '/models', '/tts']);
+  return root === cleaned && new URL(root).pathname === '/' ? `${root}/v1` : root;
 }
 export function endpointUrl(kind: EndpointKind, base: string, format?: TtsFormat | SttFormat): string {
   const root = apiRoot(base);
@@ -52,7 +54,8 @@ export function parseModelInfo(body: unknown): ModelInfo[] {
     if (typeof m === 'string') { out.set(m, { id: m }); continue; }
     if (!m || typeof m !== 'object') continue;
     const r = m as Record<string, unknown>, top = (r.top_provider || {}) as Record<string, unknown>, meta = (r.metadata || r.model_info || r.info || {}) as Record<string, unknown>;
-    const id = String(r.id ?? r.name ?? '').replace(/^models\//, ''); if (!id || id.length > 200) continue;
+    const id = typeof r.id === 'string' ? r.id : typeof r.name === 'string' ? r.name.replace(/^models\//, '') : '';
+    if (!id || id.length > 200) continue;
     const contextWindow = num(r.context_length, r.context_window, r.max_context_length, r.max_model_len, r.max_input_tokens, r.inputTokenLimit, r.input_token_limit, top.context_length, meta.context_length, meta.max_input_tokens, meta.context_window);
     const maxOutput = num(top.max_completion_tokens, r.max_completion_tokens, r.max_output_tokens, r.outputTokenLimit, r.output_token_limit, meta.max_output_tokens, meta.max_tokens, r.max_tokens);
     out.set(id, { id, ...(contextWindow ? { contextWindow } : {}), ...(maxOutput && (!contextWindow || maxOutput <= contextWindow) ? { maxOutput } : {}) });

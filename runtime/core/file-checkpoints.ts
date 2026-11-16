@@ -13,6 +13,8 @@ export type CheckpointManifest = {
   files: Record<string, { existed: boolean; blob: string | null; after?: string | null }>;
 };
 const digest = (data: Buffer) => createHash('sha256').update(data).digest('hex');
+const changed = (entry: CheckpointManifest['files'][string]) =>
+  entry.after !== undefined && (entry.existed && !entry.blob || entry.after !== entry.blob);
 
 async function saveManifest(file: string, manifest: CheckpointManifest) {
   const tmp = file + '.' + randomUUID();
@@ -71,14 +73,24 @@ export class FileCheckpoints {
     await saveManifest(manifestFile, manifest);
   }
   async recordAfter(session: HostSession, file: string, after: Buffer | undefined) {
+    await this.recordDigests(session, new Map([[file, after ? digest(after) : null]]));
+  }
+  /** Record all expected writes in one manifest update, retaining the prior state for rollback. */
+  async recordDigests(session: HostSession, writes: ReadonlyMap<string, string | null | undefined>) {
     const base = this.base(),
       root = session;
-    if (!base || !root.runId) return;
+    const previous = new Map<string, string | null | undefined>();
+    if (!base || !root.runId || !writes.size) return previous;
     const manifestFile = path.join(base, root.id, root.runId, 'manifest.json');
     const manifest: CheckpointManifest = JSON.parse(await readFile(manifestFile, 'utf8'));
-    if (!manifest.files[file]) throw new Error('File checkpoint missing');
-    manifest.files[file].after = after ? digest(after) : null;
+    for (const [file, after] of writes) {
+      const entry = manifest.files[file];
+      if (!entry) throw new Error('File checkpoint missing');
+      previous.set(file, entry.after);
+      entry.after = after;
+    }
     await saveManifest(manifestFile, manifest);
+    return previous;
   }
   /** The most recent run with file changes that has not been undone. */
   async lastRun(): Promise<CheckpointManifest | undefined> {
@@ -91,7 +103,7 @@ export class FileCheckpoints {
           path.join(base, sid, rid, 'manifest.json'),
           'utf8',
         ).then(JSON.parse, () => undefined);
-        if (m && !m.undoneAt && Object.keys(m.files).length && (!latest || m.createdAt > latest.createdAt))
+        if (m && !m.undoneAt && Object.values(m.files).some(changed) && (!latest || m.createdAt > latest.createdAt))
           latest = m;
       }
     return latest;
@@ -110,6 +122,7 @@ export class FileCheckpoints {
       conflicts: string[] = [],
       skipped: string[] = [];
     for (const [file, entry] of Object.entries(manifest.files)) {
+      if (!changed(entry)) continue;
       try {
         if (!this.canRestore(file, manifest.cwd)) {
           skipped.push(file);
@@ -124,6 +137,7 @@ export class FileCheckpoints {
           continue;
         }
         if (!entry.existed) {
+          if (!this.canRestore(file, manifest.cwd)) { skipped.push(file); continue; }
           if (current) await unlink(file);
           restored.push(file);
           continue;
@@ -133,6 +147,7 @@ export class FileCheckpoints {
           continue;
         }
         const original = await readFile(path.join(dir, entry.blob));
+        if (!this.canRestore(file, manifest.cwd)) { skipped.push(file); continue; }
         await mkdir(path.dirname(file), { recursive: true });
         const temporary = file + '.galagent-' + randomUUID();
         await writeFile(temporary, original);
@@ -168,6 +183,6 @@ export class FileCheckpoints {
       path.join(base, root.id, root.runId, 'manifest.json'),
       'utf8',
     ).then(JSON.parse, () => undefined);
-    return m ? Object.keys(m.files) : [];
+    return m ? Object.entries(m.files).filter(([, entry]) => changed(entry)).map(([file]) => file) : [];
   }
 }

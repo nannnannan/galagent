@@ -336,10 +336,10 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
 
   // ---- quick input ----
   let composing = false;
-  const closeInput = async () => { input.hidden = true; stage.classList.remove('input-open'); await command({ type: 'shell.input', open: false }, true); refreshPointer(); };
+  const mic = attachVoice(app.querySelector<HTMLButtonElement>('#pet-mic')!, text);
+  const closeInput = async () => { mic.cancel(); input.hidden = true; stage.classList.remove('input-open'); await command({ type: 'shell.input', open: false }, true); refreshPointer(); };
   const openInput = async () => { input.hidden = false; stage.classList.add('input-open'); note.textContent = snapshot.provider.configured ? '' : '尚未连接模型，可从菜单打开「连接」。'; const result = await command({ type: 'shell.input', open: true }, true); if (result.ok) text.focus(); refreshPointer(); };
   app.querySelector('#pet-input-close')!.addEventListener('click', () => void closeInput());
-  const petMic = app.querySelector<HTMLButtonElement>('#pet-mic')!; attachVoice(petMic, text);
   text.addEventListener('compositionstart', () => composing = true); text.addEventListener('compositionend', () => composing = false);
   text.addEventListener('keydown', event => { if (event.isComposing || composing) return; if (event.key === 'Escape') { event.preventDefault(); void closeInput(); } else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); input.requestSubmit(); } });
   input.onsubmit = async event => {
@@ -396,7 +396,7 @@ export function startPetView(app: HTMLElement, initial: AppSnapshot) {
     if (lastActivity?.away && next.activity?.kind === 'idle' && funOn() && canAnimate()) { localEffect('wave', 2000); pet.impulse('jump', 0.6); say(pickOne(welcomeBackLines), 3200); }
     lastActivity = next.activity;
     watcher.update(next.bond).forEach((a, i) => setTimeout(() => celebrate(a.title), i * 5400));
-    petMic.hidden = !next.settings.voiceInputEnabled;
+    mic.setEnabled(!!next.settings.voiceInputEnabled);
     syncAmbient(); applyState(); updateChip(); refreshPointer();
   }
   render(initial);

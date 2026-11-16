@@ -15,6 +15,7 @@ export interface TtsSynthesizeOptions {
   expression?: Expression;
   persona?: TtsPersona;
   fetchImpl?: typeof fetch;
+  redactPrompt?: (text: string) => string;
   windowsSapiFallback?: boolean;
   signal?: AbortSignal;
 }
@@ -213,14 +214,16 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
       };
       if (options.ttsApiKey) {
         headers.Authorization = `Bearer ${options.ttsApiKey}`;
-        headers['api-key'] = options.ttsApiKey;
+        if (mimoMode || endpoint.endsWith('/tts')) headers['api-key'] = options.ttsApiKey;
       }
 
       if (mimoMode) {
         const isVoiceDesign = model.toLowerCase().includes('voicedesign');
-        const stylePrompt = buildMimoStyleInstruction(options.expression, speed, options.ttsVoice, options.persona);
+        const prompt = buildMimoStyleInstruction(options.expression, speed, options.ttsVoice, options.persona);
+        const stylePrompt = options.redactPrompt?.(prompt) ?? prompt;
         const res = await fetchImpl(endpoint, {
           method: 'POST',
+          redirect: 'error',
           headers,
           body: JSON.stringify({
             model,
@@ -235,8 +238,8 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
           signal,
         });
         if (!res.ok) {
-          const errText = await res.text().catch(() => '');
-          return { ok: false, error: `小米 MiMo TTS 返回状态 ${res.status}${errText ? ': ' + errText.slice(0, 120) : ''}` };
+          await res.body?.cancel().catch(() => {});
+          return { ok: false, error: `小米 MiMo TTS 返回状态 ${res.status}` };
         }
         const data = (await res.json()) as {
           choices?: { message?: { audio?: { data?: string } } }[];
@@ -258,12 +261,12 @@ export async function synthesizeTtsSpeech(options: TtsSynthesizeOptions): Promis
 
       const res = await fetchImpl(endpoint, {
         method: 'POST',
+        redirect: 'error',
         headers,
         body: JSON.stringify({
           model,
           input: text,
-          text,
-          text_lang: 'zh',
+          ...(endpoint.endsWith('/tts') ? { text, text_lang: 'zh' } : {}),
           voice,
           response_format: 'mp3',
           speed,

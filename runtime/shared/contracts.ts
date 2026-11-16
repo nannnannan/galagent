@@ -196,7 +196,6 @@ export type BrowserView = {
   historyCount: number;
   pageContent?: { url: string; title: string; excerpt: string; capturedAt: string; readable: boolean; reason?: string };
 };
-export type ProviderMode = 'mira-proxy' | 'native-api';
 export type AppSnapshot = {
   persona?: { active: PersonaProfile; list: PersonaProfile[]; greeted: boolean };
   pets?: { catalog: PetCatalogEntry[]; revision: number; folder?: string };
@@ -229,7 +228,7 @@ export type AppSnapshot = {
   memories: MemoryItem[];
   diary: DiaryEntry[];
   settings: Settings;
-  provider: { configured: boolean; baseUrl: string; model: string; mode?: ProviderMode; toolCount?: number };
+  provider: { configured: boolean; baseUrl: string; model: string; toolCount?: number };
   status: { storage?: {directory:string;savedAt?:string}; busy: boolean; error?: string; online: boolean; embedding: 'loading' | 'ready' | 'fallback' | 'idle'; contextTokens: number; contextBudget: number; tasks: BackgroundTask[]; pool?: PoolView; attention?: AttentionView; perception?: { clipboardEntries: number; lastScreenAt?: string; browserConnected?: boolean; activeUrl?: string }; journal?: ArchiveStatus };
   observation: Observation;
   stats: { conversations: number; memories: number; proactiveToday: number; tokensToday: number; lastSeenAt?: string };
@@ -275,7 +274,7 @@ export type AppCommand =
   | { type: 'voice.transcribe'; audio: Uint8Array }
   | { type: 'endpoint.models'; kind: 'chat' | 'tts' | 'stt'; baseUrl: string; apiKey?: string }
   | { type: 'settings.update'; settings: SettingsPatch }
-  | { type: 'config.save'; apiKey?: string; baseUrl: string; model: string; mode?: ProviderMode }
+  | { type: 'config.save'; apiKey?: string; baseUrl: string; model: string }
   | { type: 'memory.delete'; id: string }
   | { type: 'memory.source'; id: string }
   | { type: 'portrait.update'; text: string }

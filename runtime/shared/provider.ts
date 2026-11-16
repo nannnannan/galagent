@@ -1,8 +1,31 @@
-export const MIRA_DEFAULT_BASE_URL = 'http://127.0.0.1:18890/v1';
-export const MIRA_DEFAULT_MODEL = 'kimi-k3.1-pro';
+import { apiRoot, endpointUrl } from './endpoints';
 
-/** Old K3 IDs stay on K3; this only selects compatible request parameters. */
-export function isKimiK3Model(model: string): boolean {
-  return /^(kimi-code\/k3|kimi-k3|k3)(?:$|[-_])/i.test(model)
-    || /^(kimi-k3\.1-pro|kimi-code\/k3\.1(?:-pro)?|k3\.1(?:-pro)?)$/i.test(model);
+export type ChatEndpoint = { baseUrl: string; model: string };
+export type SavedChatEndpoint = Partial<ChatEndpoint> & { mode?: unknown; protocol?: unknown; needsConnection?: unknown };
+
+export const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+export const DEFAULT_CHAT_MODEL = 'gpt-4.1-mini';
+export const CHAT_PROTOCOL = 'chat-completions';
+
+export function chatBaseUrl(raw: string): string {
+  const root = apiRoot(raw);
+  // An explicitly pasted route at the host root must not acquire /v1 on reuse.
+  return new URL(root).pathname === '/' ? endpointUrl('chat', raw) : root;
+}
+
+/** The old launcher's loopback ports are recognized only when reading a pre-migration profile. */
+export function legacyProxyProvider(saved?: SavedChatEndpoint): boolean {
+  if (!saved || saved.protocol === CHAT_PROTOCOL) return false;
+  return /^https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):(?:18890|8787)(?:\/|$)/i.test(saved.baseUrl || '');
+}
+
+export function readChatEndpoint(saved?: SavedChatEndpoint): ChatEndpoint {
+  if (!legacyProxyProvider(saved) && typeof saved?.baseUrl === 'string' && typeof saved.model === 'string') {
+    const model = saved.model.trim();
+    if (model && model.length <= 100) {
+      try { return { baseUrl: chatBaseUrl(saved.baseUrl), model }; }
+      catch { /* Invalid addresses from old profiles need a fresh connection. */ }
+    }
+  }
+  return { baseUrl: OPENAI_BASE_URL, model: DEFAULT_CHAT_MODEL };
 }

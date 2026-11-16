@@ -40,11 +40,11 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const db=new DatabaseSync(path.join(root,'companion.sqlite'));
 db.exec('CREATE TABLE records(id TEXT PRIMARY KEY,kind TEXT NOT NULL,body TEXT NOT NULL)');
 const put=db.prepare('INSERT INTO records VALUES(?,?,?)');
-put.run('provider','state',JSON.stringify({baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'fixture',mode:'native-api'}));
+put.run('provider','state',JSON.stringify({baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'fixture'}));
 put.run('settings','state',JSON.stringify({observationEnabled:false,screenCaptureEnabled:false,clipboardEnabled:false,initiativeEnabled:false,researchEnabled:false,ttsEnabled:false}));
 put.run('research','state',JSON.stringify({version:1,interests:[{id:'film',topic:'胶片摄影',kind:'hobby',why:'手动添加',sources:['manual'],weight:4,angles:[{angle:'新动态',query:'胶片摄影'}],createdAt:Date.now(),lastResearchedAt:Date.now()}],findings:[],blocked:[],runs:[Date.now()],lastPlanAt:Date.now()}));
 db.close();
-const env={...process.env,GALAGENT_DATA_DIR:root,GALAGENT_API_KEY:'fixture',KIMI_API_KEY:'',MOONSHOT_API_KEY:''};delete env.ELECTRON_RUN_AS_NODE;
+const env={...process.env, OPENAI_API_KEY: '',GALAGENT_DATA_DIR:root,GALAGENT_API_KEY:'fixture', GALAGENT_API_BASE_URL: 'http://127.0.0.1:' + server.address().port,KIMI_API_KEY:'',MOONSHOT_API_KEY:''};delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try{
   app=await _electron.launch({executablePath:path.resolve(process.env.GALAGENT_TEST_EXE||'release/win-unpacked/GalAgent.exe'),env,timeout:60000});

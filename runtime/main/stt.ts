@@ -34,8 +34,8 @@ export async function transcribe(o: SttOptions): Promise<SttResult> {
   try {
     let res: Response;
     if (o.format === 'chat-input-audio') {
-      res = await fetchImpl(url, { method: 'POST', signal, headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify({
-        model: o.model.trim(), temperature: 0,
+      res = await fetchImpl(url, { method: 'POST', signal, redirect: 'error', headers: { 'Content-Type': 'application/json', ...auth }, body: JSON.stringify({
+        model: o.model.trim(),
         messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: { data: Buffer.from(o.audio).toString('base64'), format: 'wav' } }, { type: 'text', text: STT_PROMPT + (o.language ? `（语言：${o.language}）` : '') }] }],
       }) });
     } else {
@@ -44,9 +44,9 @@ export async function transcribe(o: SttOptions): Promise<SttResult> {
       form.append('model', o.model.trim());
       if (o.language) form.append('language', o.language);
       form.append('response_format', 'json');
-      res = await fetchImpl(url, { method: 'POST', signal, headers: auth, body: form });
+      res = await fetchImpl(url, { method: 'POST', signal, redirect: 'error', headers: auth, body: form });
     }
-    if (!res.ok) { const t = await res.text().catch(() => ''); return { ok: false, error: `语音识别接口返回 ${res.status}${t ? '：' + t.slice(0, 160) : ''}` }; }
+    if (!res.ok) { await res.body?.cancel().catch(() => {}); return { ok: false, error: `语音识别接口返回 ${res.status}` }; }
     const type = res.headers.get('content-type') || '';
     if (!type.includes('json')) return { ok: true, text: cleanTranscript(await res.text()) };
     const data = await res.json() as { text?: unknown; choices?: { message?: { content?: unknown } }[] };
@@ -63,7 +63,7 @@ export async function listModels(baseUrl: string, apiKey: string | undefined, fe
   try { url = modelsUrl(baseUrl); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : String(e) }; }
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 15000);
   try {
-    const res = await fetchImpl(url, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, signal: controller.signal });
+    const res = await fetchImpl(url, { headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {}, signal: controller.signal, redirect: 'error' });
     if (!res.ok) return { ok: false, error: res.status === 401 || res.status === 403 ? '密钥不对或没有权限' : res.status === 404 ? '这个接口不提供模型列表，请手动填写模型名' : `接口返回 ${res.status}` };
     const info = parseModelInfo(await res.json().catch(() => undefined)), models = info.map(m => m.id);
     return models.length ? { ok: true, models, info: info.filter(m => m.contextWindow || m.maxOutput) } : { ok: false, error: '没有拿到模型列表，请手动填写模型名' };

@@ -13,7 +13,7 @@ export function initiativeBlock(
     observation = state.observation;
   if (closed) return 'closed';
   if (s.companionMode === 'rest') return 'rest';
-  if (!state.provider.configured) return 'not-configured';
+  if (!state.provider.configured && !userReminder) return 'not-configured';
   if (state.identity.onboarding !== 'ready') return 'onboarding';
   if (s.quietUntil > now) return 'quiet';
   if (inQuietHours(s, now)) return 'quiet-hours';

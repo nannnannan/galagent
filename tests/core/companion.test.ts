@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CompanionService, CONTEXT_BUDGET } from '../../runtime/core/companion';
 import { Store } from '../../runtime/core/store';
+import { estimateTokens } from '../../runtime/core/token-estimate';
 import { randomUUID } from 'node:crypto';
 const local = () => ({ get: async () => 'test-secret-never-persist', set: async (_key: string) => { } });
 const embeddings = () => ({ encode: async (text: string) => text.includes('咖啡') || text.includes('提神') ? [1, 0] : [0, 1], close: async () => { } });
@@ -91,10 +92,16 @@ test('context is bounded independently of archive size', async () => {
     for (let i = 0; i < 50; i++)
         await core.handle({ type: 'memory.remember', text: `记录${i}：` + '星'.repeat(100) });
     await core.waitForBackground();
-    // With a 200k window the budgets are the original small ones: static prompt (~5.9k) + 活人感 state (~0.2k).
+    // Check the memory and history caps directly. The full prompt also depends on
+    // the chosen memories, timestamp and character state.
     await core.handle({ type: 'settings.update', settings: { contextWindow: 200000 } });
     await core.handle({ type: 'chat.send', text: '你好' });
-    assert.ok(core.getSnapshot().status.contextTokens <= 6500);
+    const system = String(JSON.parse(contexts[0])[0].content);
+    const state = JSON.parse(system.split('\n状态数据：')[1]);
+    assert.ok(state.retrievalCandidates.length <= 6);
+    assert.ok(state.retrievalCandidates.reduce((total: number, item: unknown) => total + estimateTokens(JSON.stringify(item)), 0) <= 2500);
+    assert.ok(state.visibleHistoryData.reduce((total: number, item: { text: string }) => total + estimateTokens(item.text) + 18, 0) <= 1500);
+    assert.ok(core.getSnapshot().status.contextTokens < 7500);
     assert.ok(contexts[0].length < core.exportArchive().length);
     // The default 1M window lets memory and history in more generously (×5) — but it still does not grow with the archive.
     await core.handle({ type: 'settings.update', settings: { contextWindow: 0 } });
@@ -204,17 +211,17 @@ test('12000-character ASCII chat can fit the context budget and restore; over-bu
     assert.equal((await core.handle({type:'chat.send',text:'a'.repeat(12001)})).ok,false);
     assert.equal((await core.handle({type:'chat.send',text:'短消息重试'})).ok,true);await core.waitForBackground();await cleanup();
 });
-test('K3 sends supported low-reasoning parameters and replays the complete private assistant protocol message', async () => {
+test('official OpenAI receives only accepted assistant fields when replaying private history', async () => {
     const requests:any[]=[];let turn=0;
-    const raw={role:'assistant',content:JSON.stringify({text:'只展示这句话',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'private-reasoning-sentinel',opaque_signature:{bytes:'opaque-value',nested:[1,2,3]}};
+    const raw={role:'assistant',content:JSON.stringify({text:'只展示这句话',expression:'neutral',action:'idle',name:'星棱'}),reasoning_content:'private-reasoning-sentinel',opaque_signature:{bytes:'opaque-value',nested:[1,2,3]},annotations:[{type:'url_citation'}],audio:{id:'audio_1',data:'response-only',transcript:'response-only'}};
     const {core,dir,cleanup}=await setup(async(_url,init)=>{
         const body=JSON.parse(String(init?.body));
         if(String(body.messages[0].content).includes('facts每项'))return new Response(JSON.stringify({choices:[{message:{role:'assistant',content:'{"facts":["我喜欢咖啡"],"diary":""}'}}]}));
         requests.push(body);turn++;return new Response(JSON.stringify({choices:[{finish_reason:'stop',message:turn===1?raw:{...raw,reasoning_content:'later-private-only'}}]}));
     });
     await core.handle({type:'chat.send',text:'我喜欢咖啡'});await core.waitForBackground();await core.handle({type:'chat.send',text:'你好'});await core.waitForBackground();
-    assert.equal(requests[0].reasoning_effort,'low');assert.equal(requests[0].max_completion_tokens,4096);assert.equal(requests[0].response_format.type,'json_object');assert.equal('temperature'in requests[0],false);assert.equal('top_p'in requests[0],false);assert.equal('max_tokens'in requests[0],false);assert.equal('thinking'in requests[0],false);
-    assert.deepEqual(requests[1].messages.find((m:any)=>m.role==='assistant'),raw);
+    assert.equal(requests[0].reasoning_effort,undefined);assert.equal(requests[0].max_completion_tokens,4096);assert.equal(requests[0].response_format.type,'json_object');assert.equal('temperature'in requests[0],false);assert.equal('top_p'in requests[0],false);assert.equal('max_tokens'in requests[0],false);assert.equal('thinking'in requests[0],false);
+    assert.deepEqual(requests[1].messages.find((m:any)=>m.role==='assistant'),{role:'assistant',content:raw.content,audio:{id:'audio_1'}});
     assert.equal(JSON.stringify(core.getSnapshot()).includes('private-reasoning-sentinel'),false);assert.equal(core.exportArchive().includes('private-reasoning-sentinel'),false);assert.equal(core.exportArchive().includes('opaque-value'),false);
     const store=new Store(dir);assert.equal(store.all('transport').length,2);store.close();
     await core.handle({type:'memory.delete',id:core.getSnapshot().memories[0].id});const deletedStore=new Store(dir);assert.equal(deletedStore.all('transport').length,0);deletedStore.close();

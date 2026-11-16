@@ -8,6 +8,7 @@ import type { LocalPaths } from './local-scan';
 
 export type VisitedPage = { title: string; url: string; visits: number; lastVisit: string; browser: string };
 type Profile = { browser: string; dir: string; firefox?: boolean };
+type PathAllowed = (file: string) => boolean;
 const WEBKIT_EPOCH_US = 11644473600_000_000n;
 
 /** Browser URLs can carry session tokens in the query, so only origin + path ever leaves this module. */
@@ -20,7 +21,7 @@ export function cleanUrl(raw: string): string | undefined {
   }
 }
 // ---------------------------------------------------------------- browsers
-export async function browserProfiles(p: LocalPaths): Promise<Profile[]> {
+export async function browserProfiles(p: LocalPaths, allowed: PathAllowed = () => true): Promise<Profile[]> {
   const out: Profile[] = [];
   const chromium: [string, string | undefined][] = [
     ['Chrome', p.localAppData && join(p.localAppData, 'Google/Chrome/User Data')],
@@ -28,28 +29,32 @@ export async function browserProfiles(p: LocalPaths): Promise<Profile[]> {
     ['Brave', p.localAppData && join(p.localAppData, 'BraveSoftware/Brave-Browser/User Data')],
   ];
   for (const [browser, root] of chromium) {
-    if (!root) continue;
+    if (!root || !allowed(root)) continue;
     for (const name of await readdir(root).catch(() => [] as string[]))
-      if ((name === 'Default' || /^Profile \d+$/.test(name)) && existsSync(join(root, name, 'History')))
+      if ((name === 'Default' || /^Profile \d+$/.test(name)) && allowed(join(root, name)) && existsSync(join(root, name, 'History')))
         out.push({ browser, dir: join(root, name) });
   }
   const firefox = p.appData && join(p.appData, 'Mozilla/Firefox/Profiles');
-  if (firefox)
+  if (firefox && allowed(firefox))
     for (const name of await readdir(firefox).catch(() => [] as string[]))
-      if (existsSync(join(firefox, name, 'places.sqlite')))
+      if (allowed(join(firefox, name)) && existsSync(join(firefox, name, 'places.sqlite')))
         out.push({ browser: 'Firefox', dir: join(firefox, name), firefox: true });
   return out;
 }
 /** The browser keeps its database open, so we read a temp copy (plus its WAL) and delete it right away. */
-async function withCopy<T>(file: string, read: (db: DatabaseSync) => T): Promise<T | undefined> {
+async function withCopy<T>(file: string, read: (db: DatabaseSync) => T, allowed: PathAllowed = () => true): Promise<T | undefined> {
+  if (!allowed(file) || !allowed(file + '-wal')) return undefined;
   const info = await stat(file).catch(() => undefined);
-  if (!info || info.size > 256 * 1024 * 1024) return undefined;
+  if (!info || info.size > 256 * 1024 * 1024 || !allowed(file)) return undefined;
   const dir = await mkdtemp(join(tmpdir(), 'galagent-scan-'));
   try {
     const copy = join(dir, 'copy.sqlite');
+    if (!allowed(file)) return undefined;
     await copyFile(file, copy);
+    if (!allowed(file + '-wal')) return undefined;
     const wal = await stat(file + '-wal').catch(() => undefined);
-    if (wal && wal.size <= 64 * 1024 * 1024) await copyFile(file + '-wal', copy + '-wal').catch(() => {});
+    if (wal && wal.size <= 64 * 1024 * 1024 && allowed(file + '-wal')) await copyFile(file + '-wal', copy + '-wal').catch(() => {});
+    if (!allowed(file)) return undefined;
     const db = new DatabaseSync(copy);
     try {
       return read(db);
@@ -64,7 +69,7 @@ async function withCopy<T>(file: string, read: (db: DatabaseSync) => T): Promise
 }
 export async function readProfileHistory(
   profile: Profile,
-  o: { since: number; limit: number; keyword?: string; blocklist?: string[] },
+  o: { since: number; limit: number; keyword?: string; blocklist?: string[]; allowed?: PathAllowed },
 ): Promise<{ pages: VisitedPage[]; searches: string[] }> {
   const like = o.keyword ? `%${o.keyword.replace(/[%_\\]/g, '\\$&')}%` : '%';
   const rows = await withCopy(join(profile.dir, profile.firefox ? 'places.sqlite' : 'History'), (db) => {
@@ -87,14 +92,14 @@ export async function readProfileHistory(
     try {
       searches = db
         .prepare(
-          'SELECT k.term AS term FROM keyword_search_terms k JOIN urls u ON u.id = k.url_id WHERE u.last_visit_time >= CAST(? AS INTEGER) ORDER BY u.last_visit_time DESC LIMIT 200',
+          'SELECT k.term AS term, u.url, u.title FROM keyword_search_terms k JOIN urls u ON u.id = k.url_id WHERE u.last_visit_time >= CAST(? AS INTEGER) AND u.hidden = 0 ORDER BY u.last_visit_time DESC LIMIT 200',
         )
         .all(since);
     } catch {
       /* older schema */
     }
     return { pages, searches };
-  });
+  }, o.allowed);
   if (!rows) return { pages: [], searches: [] };
   const pages: VisitedPage[] = [];
   for (const r of rows.pages) {
@@ -115,7 +120,12 @@ export async function readProfileHistory(
   }
   return {
     pages,
-    searches: [...new Set(rows.searches.map((s) => String(s.term ?? '').trim()).filter(Boolean))].slice(
+    searches: [...new Set(rows.searches.filter(row => {
+      const url = cleanUrl(String(row.url));
+      const blocklist = o.blocklist ?? DEFAULT_CAPTURE_BLOCKLIST;
+      return url && !blockedBy({ appName: url, title: String(row.title ?? ''), blocklist })
+        && !blockedBy({ title: String(row.term ?? ''), blocklist });
+    }).map((s) => String(s.term ?? '').trim()).filter(Boolean))].slice(
       0,
       80,
     ),
@@ -124,6 +134,7 @@ export async function readProfileHistory(
 export async function readProfileBookmarks(
   profile: Profile,
   blocklist?: string[],
+  allowed: PathAllowed = () => true,
 ): Promise<{ title: string; url?: string }[]> {
   const out: { title: string; url?: string }[] = [];
   const add = (title: unknown, raw: unknown) => {
@@ -135,16 +146,17 @@ export async function readProfileBookmarks(
       out.push({ title: t, url });
   };
   if (profile.firefox) {
-    const rows = await withCopy(join(profile.dir, 'places.sqlite'), (db) =>
-      db
+    const rows = await withCopy(join(profile.dir, 'places.sqlite'), (db) => db
         .prepare(
           'SELECT b.title AS title, p.url AS url FROM moz_bookmarks b JOIN moz_places p ON p.id = b.fk WHERE b.type = 1 ORDER BY b.dateAdded DESC LIMIT 400',
         )
-        .all(),
+        .all(), allowed,
     );
     for (const r of rows || []) add(r.title, r.url);
     return out;
   }
+  const file = join(profile.dir, 'Bookmarks');
+  if (!allowed(file)) return out;
   try {
     const walk = (n: any) => {
       if (!n || out.length >= 400) return;
@@ -152,7 +164,7 @@ export async function readProfileBookmarks(
       for (const c of n.children || []) walk(c);
     };
     for (const root of Object.values(
-      JSON.parse(await readFile(join(profile.dir, 'Bookmarks'), 'utf8')).roots || {},
+      JSON.parse(await readFile(file, 'utf8')).roots || {},
     ))
       walk(root);
   } catch {

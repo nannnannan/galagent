@@ -7,7 +7,7 @@ const RETRYABLE = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 export type UpstreamCall = {
   fetch: typeof fetch;
   url: string;
-  init: RequestInit;
+  init: RequestInit | (() => RequestInit);
   pool?: RequestPool;
   priority: PoolPriority;
   signal: AbortSignal;
@@ -36,10 +36,15 @@ export async function callUpstream(call: UpstreamCall): Promise<{ response: Resp
   for (let attempt = 0; ; attempt++) {
     if (call.signal.aborted) throw new Error('已取消');
     const release = call.pool ? await call.pool.acquire(call.priority, call.signal) : () => {};
+    let init: RequestInit;
     let response: Response;
-    try { call.before?.(); } catch (error) { release(); throw error; }
     try {
-      const pending = call.fetch(call.url, { ...call.init, signal: call.signal }).then(result => {
+      call.signal.throwIfAborted();
+      call.before?.();
+      init = typeof call.init === 'function' ? call.init() : call.init;
+    } catch (error) { release(); throw error; }
+    try {
+      const pending = call.fetch(call.url, { ...init, redirect: 'manual', signal: call.signal }).then(result => {
         if (call.signal.aborted) void result.body?.cancel().catch(() => {});
         return result;
       });

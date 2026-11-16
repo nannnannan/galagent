@@ -33,7 +33,7 @@ test('context and output limits are read from whatever fields the gateway uses',
   ] });
   assert.deepEqual(info.find(m => m.id === 'openrouter/x'), { id: 'openrouter/x', contextWindow: 1048576, maxOutput: 65536 });
   assert.deepEqual(info.find(m => m.id === 'vllm-model'), { id: 'vllm-model', contextWindow: 131072 });
-  assert.deepEqual(info.find(m => m.id === 'gemini-x'), { id: 'gemini-x', contextWindow: 1000000, maxOutput: 8192 });
+  assert.deepEqual(info.find(m => m.id === 'models/gemini-x'), { id: 'models/gemini-x', contextWindow: 1000000, maxOutput: 8192 });
   assert.deepEqual(info.find(m => m.id === 'groq-x'), { id: 'groq-x', contextWindow: 131072, maxOutput: 32768 });
   assert.deepEqual(info.find(m => m.id === 'weird'), { id: 'weird' }, 'nonsense values are ignored');
 });

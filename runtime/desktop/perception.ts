@@ -26,6 +26,14 @@ export function blockedBy(context: Pick<CaptureContext, 'appName' | 'title' | 'b
     const haystacks = [context.appName || '', context.title || ''].map(s => s.toLowerCase());
     return context.blocklist.find(entry => entry.trim() && haystacks.some(h => h.includes(entry.trim().toLowerCase())));
 }
+export function screenBlocked(context: CaptureContext, idleLimitSeconds = 300): ScreenDecision['skipped'] {
+    if (!context.enabled) return 'disabled';
+    if (context.paused) return 'paused';
+    if (context.locked !== false || context.suspended) return 'locked';
+    if (context.fullscreen) return 'fullscreen';
+    if ((context.idleSeconds ?? 0) >= idleLimitSeconds) return 'idle';
+    if (blockedBy(context)) return 'blocked';
+}
 export type Capturer = () => Promise<{ dataUrl: string; signature: number[] } | undefined>;
 export class ScreenSampler {
     private lastSent?: { at: number; signature: number[] };
@@ -35,12 +43,8 @@ export class ScreenSampler {
     /** Changed screen ≤ 1 per minute; idle/locked/fullscreen/blocked/paused never capture. */
     async sample(context: CaptureContext): Promise<ScreenDecision> {
         const now = (this.options.clock || Date.now)();
-        if (!context.enabled) return { skipped: 'disabled' };
-        if (context.paused) return { skipped: 'paused' };
-        if (context.locked !== false || context.suspended) return { skipped: 'locked' };
-        if (context.fullscreen) return { skipped: 'fullscreen' };
-        if ((context.idleSeconds ?? 0) >= (this.options.idleLimitSeconds ?? 300)) return { skipped: 'idle' };
-        if (blockedBy(context)) return { skipped: 'blocked' };
+        const blocked = screenBlocked(context, this.options.idleLimitSeconds);
+        if (blocked) return { skipped: blocked };
         if (this.lastSent && now - this.lastSent.at < Math.max(this.options.minIntervalMs ?? 60000, context.minIntervalMs ?? 0)) return { skipped: 'rate' };
         let raw: Awaited<ReturnType<Capturer>>;
         try { raw = await this.capture(); } catch { return { skipped: 'error' }; }

@@ -148,12 +148,14 @@ export function inWeChatInbox(file: string, dataDir?: string): boolean {
 /** GalAgent's own encrypted keys and app data: never readable by tools, at any level. */
 export function galagentSecret(file: string, dataDir?: string): boolean {
   const normalized = file.replace(/\\/g, '/').toLowerCase(), base = normalized.split('/').pop() || '';
-  if (inWeChatInbox(file, dataDir)) return /^(provider-key|tts-key|stt-key|mcp-secrets|wechat-session)\.bin$|^companion\.sqlite(-wal|-shm)?$/.test(base);
-  return /^(provider-key|tts-key|stt-key|mcp-secrets|wechat-session)\.bin$|^companion\.sqlite(-wal|-shm)?$/.test(base) || /\/appdata\/roaming\/galagent(\/|$)/.test(normalized);
+  const secret = /^(?:(?:provider|tts|stt)-key(?:-bound)?|mcp-secrets|wechat-session)\.bin$|^companion\.sqlite(-wal|-shm)?$/.test(base);
+  if (inWeChatInbox(file, dataDir)) return secret;
+  return secret || /\/appdata\/roaming\/galagent(\/|$)/.test(normalized);
 }
 export function sensitivePath(file: string): boolean {
   const normalized = file.replace(/\\/g, '/').toLowerCase();
   const base = normalized.split('/').pop() || '';
+  if (/^(provider|tts|stt)-key-bound\.bin$/.test(base)) return true;
   if (/^(\.env(\..*)?|id_rsa|id_dsa|id_ed25519|id_ecdsa|credentials(\.json)?|\.netrc|_netrc|\.npmrc|\.pypirc|\.git-credentials|wallet\.dat|login data|cookies|web data|key[34]\.db|logins\.json|provider-key\.bin|tts-key\.bin|stt-key\.bin|mcp-secrets\.bin|wechat-session\.bin)$/.test(base)) return true;
   if (/\.(pem|key|p12|pfx|kdbx|kdb|keychain|ovpn|gpg)$/.test(base)) return true;
   return /\/(\.ssh|\.aws|\.gnupg|\.kube|\.azure|\.config\/gcloud|\.docker)(\/|$)/.test(normalized) || (!inWeChatInbox(file) && /\/appdata\/roaming\/galagent(\/|$)/.test(normalized));

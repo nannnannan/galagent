@@ -69,7 +69,7 @@ export function gatherSignals(i: SignalInput): Signals {
     const topics = new Map<string, number>();
     for (const a of i.archives) for (const t of a.topics) topics.set(t, (topics.get(t) || 0) + 1);
     s.archive = { portrait: i.portrait ? clip(i.portrait, 400) : undefined, topics: [...topics].sort((a, b) => b[1] - a[1]).slice(0, 30).map(([t, n]) => `${t}×${n}`), highlights: i.archives.flatMap(a => a.highlights).slice(0, 15).map(h => clip(h, 80)), openThreads: i.archives.flatMap(a => a.openThreads).slice(0, 10).map(h => clip(h, 80)) };
-    s.counts.archive = i.archives.length;
+    s.counts.archive = i.archives.length + (i.portrait ? 1 : 0);
   }
   if (i.apps && Object.keys(i.apps).length) { const top = Object.entries(i.apps).sort((a, b) => b[1] - a[1]).slice(0, 15); s.apps = top.map(([app, min]) => `${clip(app, 40)} ${Math.round(min)}分钟`); s.counts.apps = top.length; }
   if (i.browser && (i.browser.history.length || i.browser.bookmarks.length)) {
@@ -169,7 +169,7 @@ export function parseFindings(raw: unknown, interest: Interest, angle: string, a
       return true;
     }).slice(0, 4);
     if (!sources.length) continue; // a claim with no real source is dropped
-    const domains = new Set(sources.map(s => host(s.url)).filter(Boolean));
+    const domains = new Set(sources.filter(s => /^https?:\/\//i.test(s.url)).map(s => host(s.url)).filter(Boolean));
     const title = clip(r.title, 60), summary = clip(r.summary, 160);
     if (!title || !summary) continue;
     out.push({ id: id(), interestId: interest.id, topic: interest.topic, angle, title, summary, why: clip(r.why, 80), sources, freshness: r.freshness === 'evergreen' ? 'evergreen' : 'new', confidence: Math.max(1, Math.min(domains.size >= 2 ? 5 : 3, Math.round(Number(r.confidence) || 2))), at: now });

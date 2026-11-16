@@ -1,13 +1,40 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import fs, { mkdtemp, rm } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CompanionService } from '../../runtime/core/companion';
+import { LocalAccess } from '../../runtime/desktop/local-scan';
 import { addFindings, addManual, anglesFor, appTotals, canRun, diverse, emptyResearch, gatherSignals, mergePlan, noteApp, parseFindings, parsePlan, pickInterest, rateFinding, removeInterest, shareable, RESEARCH_LIMITS, type Interest } from '../../runtime/core/research';
 
 let n = 0; const id = () => 'id' + (++n);
 const interest = (topic: string, extra: Partial<Interest> = {}): Interest => ({ id: id(), topic, kind: 'hobby', why: 'x', sources: ['chat'], weight: 3, angles: [{ angle: '新动态', query: topic + ' 最新' }, { angle: '活动与日程', query: topic + ' 活动' }, { angle: '社区讨论', query: topic + ' 讨论' }], createdAt: 0, ...extra });
+
+test('local research does not start another directory read after access is revoked', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'galagent-local-revoke-'));
+  const localAppData = join(dir, 'AppData', 'Local');
+  const chrome = join(localAppData, 'Google', 'Chrome', 'User Data');
+  const scanned: string[] = [];
+  let canRead = true;
+  const mocked = t.mock.method(fs, 'readdir', async (file: string) => {
+    scanned.push(file);
+    canRead = false;
+    return [];
+  });
+  syncBuiltinESMExports();
+  try {
+    const access = new LocalAccess({ home: dir, localAppData, appData: join(dir, 'AppData', 'Roaming'), programFiles: [join(dir, 'Programs')] });
+    const snapshot = await access.snapshot({ forbidden: [], canRead: () => canRead });
+    assert.deepEqual(scanned, [chrome]);
+    assert.deepEqual(snapshot.browser.history, []);
+    assert.deepEqual(snapshot.software, { apps: [], games: [] });
+  } finally {
+    mocked.mock.restore();
+    syncBuiltinESMExports();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 test('signals gather every channel that has data, bounded, apps as names and minutes only', () => {
   const s = gatherSignals({ memories: [{ text: '用户喜欢胶片相机', kind: 'fact', valid: true }, { text: '我很担心他', kind: 'reflection', valid: true }, { text: '旧的', kind: 'fact', valid: false }], archives: [{ day: '2026-11-01', topics: ['胶片', '面试'], highlights: ['去了展览'], openThreads: ['面试结果'] }, { day: '2026-11-02', topics: ['胶片'], highlights: [], openThreads: [] }], apps: { 'Lightroom.exe': 120, 'Code.exe': 300 }, browser: { history: [{ title: '富士 X100VI 评测', url: 'https://www.dpreview.com/x' }, { title: '胶片冲洗', url: 'https://www.dpreview.com/y' }], bookmarks: [{ title: '胶片论坛' }] }, tasks: ['整理相册'], schedules: ['周六去冲胶卷'], manual: ['城市漫步'] });

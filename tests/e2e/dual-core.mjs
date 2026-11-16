@@ -1,5 +1,5 @@
 // Isolated packaged DUAL-CORE check (release/dual-core). Formal user data is never touched.
-// A local fixture stands in for the K3 proxy: it answers the main character, the attention
+// A local OpenAI-compatible fixture: it answers the main character, the attention
 // agent, the executor and the journal writer, and records what each one received.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -20,6 +20,7 @@ yesterday.setDate(yesterday.getDate() - 1);
 yesterday.setHours(12, 0, 0, 0);
 const insert = db.prepare('INSERT INTO records VALUES(?,?,?)');
 insert.run('companion-feedback', 'state', JSON.stringify({ version: 1, topics: { share: 'mute', recall: 'mute', greeting: 'mute' }, ratings: {} }));
+insert.run('settings', 'state', JSON.stringify({ observationEnabled: true, windowTitlesEnabled: false, screenCaptureEnabled: false, clipboardEnabled: false }));
 const sourceIds = ['昨天一起整理了笔记。', '我把笔记分成了三章。'].map((text, i) => {
   const id = randomUUID();
   insert.run(id, 'message', JSON.stringify({ id, text, role: i ? 'assistant' : 'user', source: 'chat', createdAt: new Date(yesterday.getTime() + i).toISOString() }));
@@ -93,7 +94,7 @@ const server = createServer(async (req, res) => {
   finally { inflight--; }
 });
 await new Promise(r => server.listen(0, '127.0.0.1', r));
-const env = { ...process.env, GALAGENT_DATA_DIR: dataDir, KIMI_API_KEY: '', MOONSHOT_API_KEY: '' }; delete env.ELECTRON_RUN_AS_NODE;
+const env = { ...process.env, OPENAI_API_KEY: '', GALAGENT_DATA_DIR: dataDir, KIMI_API_KEY: '', MOONSHOT_API_KEY: '' }; delete env.ELECTRON_RUN_AS_NODE;
 const exe = path.resolve(process.env.GALAGENT_TEST_EXE || 'release/dual-core/win-unpacked/GalAgent.exe');
 let app, pet;
 const until = async (fn, ms) => { const end = Date.now() + ms; while (!(await fn())) { if (Date.now() > end) return false; await new Promise(r => setTimeout(r, 250)); } return true; };
@@ -107,7 +108,7 @@ try {
   const send = async command => { const result = await pet.evaluate(c => window.galagent.dispatch(c), command); assert.equal(result.ok, true, result.error); };
   const snap = () => pet.evaluate(() => window.galagent.getSnapshot());
   await send({ type: 'config.save', baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: 'kimi-code/k3', apiKey: 'isolated-fixture' });
-  await send({ type: 'settings.update', settings: { researchEnabled: false, observationEnabled: true, screenCaptureEnabled: true, clipboardEnabled: true, forbiddenPaths: [path.join(dataDir, 'forbidden-vault')] } });
+  await send({ type: 'settings.update', settings: { researchEnabled: false, forbiddenPaths: [path.join(dataDir, 'forbidden-vault')] } });
   await send({ type: 'tts.configure', ttsEnabled: true, ttsBaseUrl: `http://127.0.0.1:${server.address().port}/v1`, ttsModel: 'mimo-v2.5-tts', ttsVoice: '冰糖', ttsSpeed: 1.0, ttsApiKey: 'tts-fixture' });
   await send({ type: 'pet.roam', active: true, direction: 1 });
   const ttsRes = await pet.evaluate(() => window.galagent.synthesizeSpeech('你好，很高兴认识你。'));
@@ -121,7 +122,8 @@ try {
   assert.equal(petDiag.renderer, 'pixel-canvas');
   assert.ok(petDiag.draws > 0);
   let state = await snap();
-  assert.equal(state.settings.screenCaptureEnabled, true);
+  assert.equal(state.settings.screenCaptureEnabled, false);
+  assert.equal(state.settings.clipboardEnabled, false);
   assert.equal(state.settings.roamingEnabled, true);
   assert.equal(state.settings.ttsEnabled, true);
   assert.equal(state.settings.ttsModel, 'mimo-v2.5-tts');
@@ -141,7 +143,7 @@ try {
   await until(async () => (await snap()).status.attention.wakes >= 1, 5000);
   state = await snap();
   const report = {
-    at: new Date().toISOString(), passed: true, scope: 'actual dual-core packaged app, isolated data dir, local fixture model (no real K3: proxy unavailable)',
+    at: new Date().toISOString(), passed: true, scope: 'actual dual-core packaged app, isolated data dir, local OpenAI-compatible fixture',
     productionDataUsed: false,
     pixelPet: { pet: petDiag.pet, unit: petDiag.unit, draws: petDiag.draws },
     tts: {

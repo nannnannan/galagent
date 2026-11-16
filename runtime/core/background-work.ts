@@ -65,6 +65,11 @@ export class BackgroundWorkQueue {
     return this.scheduled.has(id);
   }
 
+  invalidate(id: string) {
+    const job = this.store.get<WorkJob>(id);
+    if (job) this.discard(job);
+  }
+
   purgeInvalid() {
     for (const job of this.store.all<WorkJob>('work-job')) {
       if (!this.options.valid(job)) this.discard(job);

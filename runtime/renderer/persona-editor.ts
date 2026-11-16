@@ -54,7 +54,7 @@ export function personaBadges(p: PersonaProfile, daysTogether: number): HTMLElem
   return out;
 }
 
-/** The method in ten lines; the full skill lives in skills/galagent-persona/SKILL.md. */
+/** The full writing guide lives in skills/galagent-persona/SKILL.md. */
 export function guidePanel() {
   const box = el('aside', 'tile guide'); box.setAttribute('aria-label', '写卡指南');
   box.append(el('strong', '', '写卡指南 · 酒馆写法'));
@@ -65,6 +65,7 @@ export function guidePanel() {
     ['衍生', '最重要的一步：每个性格 2–3 条具体场景里的具体动作，不写抽象定义。'],
     ['不通顺', '衍生之间有点矛盾、不通顺也没关系，那可能正是角色活过来的地方。'],
     ['语料', '只写台词，不混动作和心理。AI 学的是语气，不会照着复读。'],
+    ['用三句话试声', '初次打招呼、听见「我先忙」、你回来接着聊，这三个时刻各写一句。读一遍，看看哪句最像 TA。'],
     ['二次解释', '告诉 AI “我的角色是这样的，不是你以为的那样”：真正含义、不是什么、何时出现、和其他性格的关系。'],
     ['三面性', '只在压力性质截然不同、行为完全不同时才需要；写怎么运作，不写为什么。'],
     ['多阶段', '底色不随阶段变；阶段衍生是新出现的行为，不是上一阶段的升级版。按相处天数自动切换。'],

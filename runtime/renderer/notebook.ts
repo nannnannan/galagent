@@ -1,4 +1,4 @@
-import { MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL } from '../shared/provider';
+import { DEFAULT_CHAT_MODEL, OPENAI_BASE_URL } from '../shared/provider';
 import type { AppSnapshot, Expression, HistoryHit, HistoryScope, MemoryItem, Message, PetAction, SandboxSettings, SettingsPatch, TaskRunDetail, TaskRunView } from '../shared/contracts';
 import { companionModes, topicLabels, validTopic } from '../shared/companionship';
 import { achievements as achievementDefs } from '../shared/achievements';
@@ -22,7 +22,7 @@ import { DEFAULT_CONTEXT_WINDOW, ENDPOINT_LABEL, STT_FORMATS, STT_PRESETS, TTS_F
 import { PROFILE_GROUPS, groupMemories, recentFocus, type Rhythm } from '../shared/profile';
 import { bridge, button, clockText, command, el, field, iconBadge, linesArea, notice, numberInput, onCommand, readFileText, relativeTime, section, select, toast, toggle } from './ui';
 
-type Page = { id: string; icon: string; title: string; intro: string; key: (s: AppSnapshot) => unknown; render: (root: HTMLElement, s: AppSnapshot) => void };
+type Page = { id: string; icon: string; title: string; intro: string; key: (s: AppSnapshot) => unknown; render: (root: HTMLElement, s: AppSnapshot, speech: SpeechPlayback) => void };
 const settings = (patch: SettingsPatch) => command({ type: 'settings.update', settings: patch });
 // Partial patches only: the core merges them, so a stale page can never revert another switch or mask a preset.
 const sandbox = (_s: AppSnapshot, patch: Partial<SandboxSettings>) => settings({ sandbox: patch });
@@ -56,7 +56,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
   let snapshot = initial, page = 'chat', pageKey = '', lastMessages = '', enterTimer: ReturnType<typeof setTimeout> | undefined;
   app.innerHTML = `<main class="notebook">
     <aside class="sidebar">
-      <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="GalAgent">◆</button><span>GalAgent<small>桌面伙伴</small></span></div>
+      <div class="brand"><button class="brand-mark icon-badge solid" type="button" aria-label="桌边灯"><span class="lamp-mark" aria-hidden="true"></span></button><span>桌边灯<small>GalAgent</small></span></div>
       <div class="companion">
         <div class="portrait"><div class="portrait-pet"></div><div class="portrait-text"><h2 id="portrait-name"></h2><p id="portrait-tagline"></p><span id="portrait-status" class="pill"></span><small id="portrait-mood" class="portrait-mood"></small></div></div>
         <button id="bond-card" class="bond-card" type="button">
@@ -112,6 +112,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     nav.append(b);
   });
   function go(id: string) {
+    if (id !== 'chat') mic.cancel();
     page = id; pageKey = '';
     nav.querySelectorAll<HTMLElement>('[data-page]').forEach(b => { const on = b.dataset.page === id; b.classList.toggle('active', on); if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
     chatPage.hidden = id !== 'chat'; content.hidden = id === 'chat';
@@ -123,7 +124,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     render(snapshot, true);
   }
   app.querySelector('#send')!.append(svgIcon('arrowUp', 18)!);
-  attachVoice(app.querySelector<HTMLButtonElement>('#mic')!, app.querySelector<HTMLTextAreaElement>('#input')!);
+  const mic = attachVoice(app.querySelector<HTMLButtonElement>('#mic')!, app.querySelector<HTMLTextAreaElement>('#input')!);
   // The title bar gains a hairline once the page scrolls under it.
   const titlebar = app.querySelector<HTMLElement>('.titlebar')!;
   const markScroll = (event: Event) => titlebar.classList.toggle('scrolled', (event.target as HTMLElement).scrollTop > 4);
@@ -372,7 +373,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     saved.title = next.status.storage ? '当前存档：' + next.status.storage.directory : '';
     app.querySelector('#thinking')!.toggleAttribute('hidden', !next.status.busy);
     app.querySelector<HTMLButtonElement>('#send')!.disabled = next.status.busy;
-    app.querySelector<HTMLButtonElement>('#mic')!.hidden = !next.settings.voiceInputEnabled;
+    mic.setEnabled(!!next.settings.voiceInputEnabled);
     const quiet = app.querySelector<HTMLElement>('#quiet')!; quiet.textContent = next.settings.quietUntil > Date.now() ? '恢复主动' : '安静一会'; quiet.classList.toggle('on', next.settings.quietUntil > Date.now());
     const signature = JSON.stringify([next.messages.map(m => m.id + m.text.length), next.companionship?.ratings, p?.id, next.status.busy, next.identity.name]);
     if (signature !== lastMessages) { lastMessages = signature; renderMessages(); }
@@ -390,7 +391,7 @@ export function startNotebook(app: HTMLElement, initial: AppSnapshot) {
     const editingInline = !!content.querySelector('.editor:not([data-saving])');
     if (!force && (key === pageKey || typing || editingInline)) return;
     pageKey = key;
-    const scroll = content.scrollTop; disposePage(); content.replaceChildren(); current.render(content, next); content.scrollTop = scroll;
+    const scroll = content.scrollTop; disposePage(); content.replaceChildren(); current.render(content, next, speech); content.scrollTop = scroll;
   }
   document.addEventListener('focusout', () => setTimeout(() => { if (page !== 'chat' && !content.contains(document.activeElement) && !content.querySelector('.editor:not([data-saving])')) render(snapshot); }, 0));
   const requested = new URLSearchParams(location.search).get('page');
@@ -826,7 +827,7 @@ function renderPrivacy(root: HTMLElement, s: AppSnapshot) {
     field('自定义敏感词', linesArea(box.sensitiveWords, v => void sandbox(s, { sensitiveWords: v }), 3, '每行一个：项目代号、客户名、地址…'), '出现即替换为〔已隐藏〕', 'field wide'),
     el('p', 'hint', box.credentialFiles ? '已允许工具读写凭据文件（.ssh、.env、密钥等）；GalAgent 自己的密钥与数据目录始终不可访问；带敏感内容的网址仍会被拦截。' : '凭据文件（.ssh、.aws、.env、*.pem、*.kdbx、浏览器登录数据）不会被工具读取，GalAgent 自己的密钥任何档位都不可访问；带敏感内容的网址会被直接拦截。'),
   );
-  const eyes = section('桌面观察', '默认全部关闭。截图原图不落盘，只保留文字摘要；黑名单应用在前台时不截屏。');
+  const eyes = section('桌面观察', '可以分别关闭截屏、剪贴板和窗口标题。截图只保留文字摘要。黑名单应用在前台时会跳过截屏。');
   eyes.append(
     field('允许桌面观察', toggle(s.settings.observationEnabled, v => void settings({ observationEnabled: v })), '前台应用名、空闲时长'),
     field('窗口标题', toggle(s.settings.windowTitlesEnabled, v => void settings({ windowTitlesEnabled: v }))),
@@ -896,7 +897,7 @@ function researchSection(s: AppSnapshot) {
   run.disabled = r?.progress?.running === true;
   const box = section('TA 在研究你喜欢的东西', 'TA 会从下面这些渠道慢慢了解你的日常，整理出你的兴趣，再从不同角度、不同网站去查新鲜事，攒成笔记；聊天时会自然提起，你不在电脑前时会合成一份小报发到微信。', ...(r && !r.blocked ? [run] : []));
   box.classList.add('research');
-  box.append(field('主动研究', toggle(s.settings.researchEnabled !== false, v => void settings({ researchEnabled: v })), '需要沙箱允许联网；每天最多研究 4 次，用后台额度，不打扰聊天'));
+  box.append(field('主动研究', toggle(s.settings.researchEnabled !== false, v => void settings({ researchEnabled: v })), '需要允许联网。每天最多自动研究 4 次，也可以手动发起。'));
   box.append(field('深度访问', toggle(s.settings.researchDeepAccess === true, v => {
     if (v && !confirm('打开深度访问？\n\nTA 和助手能看到：\n· 这台电脑上各浏览器的历史、书签和搜索词\n· 文件名，以及你的文本文件内容\n· 已安装的软件和 Steam 游戏\n这些内容会发给你配置的模型接口（密钥类文字会先打码）。\n\n始终碰不到：已存密码和登录状态、密钥文件、聊天软件的数据、你设的禁止目录。\n\n只有你能改这个开关，隐私锁定会把它关掉。')) { void command({ type: 'research.deepAccess', enabled: false }); return; }
     void command({ type: 'research.deepAccess', enabled: v });
@@ -1131,32 +1132,31 @@ function renderAchievements(root: HTMLElement, s: AppSnapshot) {
   root.append(hero, badges, how);
 }
 
-function renderConfig(root: HTMLElement, s: AppSnapshot) {
+function renderConfig(root: HTMLElement, s: AppSnapshot, speech: SpeechPlayback) {
   if (s.status.storage) root.append(el('p','muted profile-location', '当前存档：' + s.status.storage.directory));
 
-  const model = section('对话模型', '任何 OpenAI 兼容接口都可以（/chat/completions，支持 JSON 输出）。');
+  const model = section('对话模型', '填写支持 OpenAI Chat Completions 的接口。执行任务需要模型支持工具调用。');
   const form = el('form', 'form-grid');
-  const mode = select(s.provider.mode || 'native-api', [['native-api', '标准 OpenAI 兼容接口'], ['mira-proxy', 'Mira 本地反代（自动拉起）']], () => {});
   const lim = s.settings.modelLimits && s.settings.modelLimits.model === s.provider.model && s.settings.modelLimits.baseUrl === s.provider.baseUrl ? s.settings.modelLimits : undefined;
   const windowIn = el('input'), outIn = el('input');
-  for (const i of [windowIn, outIn]) { i.type = 'number'; i.min = '0'; i.step = '1000'; }
+  for (const i of [windowIn, outIn]) { i.type = 'number'; i.min = '0'; i.step = '1'; }
   windowIn.value = s.settings.contextWindow ? String(s.settings.contextWindow) : ''; windowIn.placeholder = `自动：${(lim?.contextWindow || DEFAULT_CONTEXT_WINDOW).toLocaleString()}`;
   outIn.value = s.settings.maxOutputTokens ? String(s.settings.maxOutputTokens) : ''; outIn.placeholder = lim?.maxOutput ? `自动：${Math.min(lim.maxOutput, 32768).toLocaleString()}（接口上限 ${lim.maxOutput.toLocaleString()}）` : '自动：4,096';
-  const chatEp = endpointInputs('chat', s.provider.baseUrl, s.provider.model, s.provider.configured ? '已加密保存；留空保留原密钥' : '填入 API Key', info => {
+  const chatEp = endpointInputs('chat', s.provider.baseUrl, s.provider.model, s.provider.configured ? '换服务时填写对应的 API Key' : '填入 API Key', info => {
     windowIn.placeholder = `自动：${(info?.contextWindow || DEFAULT_CONTEXT_WINDOW).toLocaleString()}${info?.contextWindow ? '（接口报告）' : ''}`;
     outIn.placeholder = info?.maxOutput ? `自动：${Math.min(info.maxOutput, 32768).toLocaleString()}（接口上限 ${info.maxOutput.toLocaleString()}）` : '自动：4,096';
   });
   const { url, model: name, key } = chatEp; url.required = true; name.required = true;
-  form.append(field('接入方式', mode), ...chatEp.fields,
+  form.append(...chatEp.fields,
     field('上下文窗口', windowIn, `留空 = 用接口报告的值，接口不报就按 100 万（主流模型的大小）。${lim?.contextWindow ? `接口报告：${lim.contextWindow.toLocaleString()}` : ''}`),
     field('单次输出上限', outIn, `留空 = 用接口报告的上限（聊天一句话最多取 32,768），接口不报就 4,096。${lim?.maxOutput ? `接口报告：${lim.maxOutput.toLocaleString()}` : ''}`));
   const presets = el('div', 'row wrap');
   presets.append(el('small', 'hint', '快速填入：'));
-  for (const [label, m, u, n] of [['Mira K3.1 Pro', 'mira-proxy', MIRA_DEFAULT_BASE_URL, MIRA_DEFAULT_MODEL], ['DeepSeek', 'native-api', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'native-api', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'native-api', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['OpenAI', 'native-api', 'https://api.openai.com/v1', 'gpt-4.1-mini'], ['本地 Ollama', 'native-api', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
-    presets.append(button(label, () => { mode.value = m; url.value = u; name.value = n; }, 'chip small'));
+  for (const [label, u, n] of [['OpenAI', OPENAI_BASE_URL, DEFAULT_CHAT_MODEL], ['DeepSeek', 'https://api.deepseek.com/v1', 'deepseek-chat'], ['Moonshot', 'https://api.moonshot.cn/v1', 'kimi-k2.5'], ['通义千问', 'https://dashscope.aliyuncs.com/compatible-mode/v1', 'qwen-plus'], ['本地 Ollama', 'http://127.0.0.1:11434/v1', 'qwen2.5']] as const)
+    presets.append(button(label, () => { url.value = u; name.value = n; }, 'chip small'));
   const save = el('button', 'btn primary', '保存连接'); save.type = 'submit';
   form.append(presets, save);
-  form.onsubmit = async event => { event.preventDefault(); const k = key.value; key.value = ''; const r = await command({ type: 'config.save', baseUrl: url.value.trim(), model: name.value.trim(), mode: mode.value as 'mira-proxy' | 'native-api', ...(k ? { apiKey: k } : {}) }); if (!r.ok) return;
+  form.onsubmit = async event => { event.preventDefault(); const k = key.value; key.value = ''; const r = await command({ type: 'config.save', baseUrl: url.value.trim(), model: name.value.trim(), ...(k ? { apiKey: k } : {}) }); if (!r.ok) return;
     const win = Number(windowIn.value), out = Number(outIn.value);
     await settings({ contextWindow: windowIn.value.trim() && Number.isFinite(win) ? win : 0, maxOutputTokens: outIn.value.trim() && Number.isFinite(out) ? out : 0 });
     toast('连接已保存；上下文窗口和输出上限会按接口报告自动更新。'); };
@@ -1170,9 +1170,12 @@ function renderConfig(root: HTMLElement, s: AppSnapshot) {
   let speed = s.settings.ttsSpeed || 1;
   tform.append(field('启用自动朗读', toggle(!!s.settings.ttsEnabled, v => void command({ type: 'tts.configure', ttsEnabled: v }))), field('请求格式', tFormat), ...ttsEp.fields, field('音色', tVoice), field('语速', numberInput(speed, v => { speed = v; }, { step: 0.1, unit: '倍' })));
   const tsave = el('button', 'btn primary', '保存语音'); tsave.type = 'submit';
-  const row = el('div', 'row'); row.append(tsave, button('试听', async () => { const p = s.persona?.active; const r = await command({ type: 'tts.speak', text: p?.greeting || '你好，很高兴认识你。' }); if (r.ok) toast('正在试听…'); }, 'btn ghost'));
+  const row = el('div', 'row'); row.append(tsave, button('试听', async () => {
+    const error = await speech.speak(s.persona?.active.greeting || '你好，很高兴认识你。');
+    if (error) toast(error, 'error');
+  }, 'btn ghost'));
   tform.append(row);
-  tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ...(tFormat.value ? { ttsFormat: tFormat.value as 'openai-speech' | 'mimo-chat-audio' } : {}), ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
+  tform.onsubmit = async event => { event.preventDefault(); const k = tKey.value.trim(); tKey.value = ''; const r = await command({ type: 'tts.configure', ttsBaseUrl: tUrl.value.trim(), ttsModel: tModel.value.trim(), ttsVoice: tVoice.value.trim(), ttsSpeed: Math.max(0.5, Math.min(2, speed)), ttsFormat: tFormat.value as '' | 'openai-speech' | 'mimo-chat-audio', ...(k ? { ttsApiKey: k } : {}) }); if (r.ok) toast('语音配置已保存。'); };
   tts.append(tform);
   const stt = voiceInputSection(s);
   const wx = wechatSection(s);

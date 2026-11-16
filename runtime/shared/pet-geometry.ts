@@ -17,15 +17,10 @@ export const PET_FOOTPRINT: Footprint = { left: 0.25, top: 0.58, right: 0.75, bo
 /** Keeps the footprint on screen: the visible pet may touch every edge, the canvas may not leave the desk. */
 export function clampPet(bounds: Rect, footprint: Footprint = PET_FOOTPRINT, area: Rect): Rect {
   const width = Math.min(bounds.width, area.width), height = Math.min(bounds.height, area.height);
-  const left = bounds.x + footprint.left * bounds.width, right = bounds.x + footprint.right * bounds.width;
-  const top = bounds.y + footprint.top * bounds.height, bottom = bounds.y + footprint.bottom * bounds.height;
-  let x = bounds.x, y = bounds.y;
-  if (right > area.x + area.width) x -= right - (area.x + area.width);
-  if (left < area.x) x += area.x - left;
-  if (bottom > area.y + area.height) y -= bottom - (area.y + area.height);
-  if (top < area.y) y += area.y - top;
-  // A window taller than the desk cannot satisfy both edges; prefer the feet on the bottom edge.
-  if (top + height < area.y) y = area.y + area.height - height;
+  const x = Math.max(area.x - footprint.left * width,
+    Math.min(bounds.x, area.x + area.width - footprint.right * width));
+  const y = Math.max(area.y - footprint.top * height,
+    Math.min(bounds.y, area.y + area.height - footprint.bottom * height));
   return { x: Math.round(x), y: Math.round(y), width, height };
 }
 

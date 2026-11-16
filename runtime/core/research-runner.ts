@@ -26,7 +26,7 @@ type ResearchOptions = {
   web(signal: AbortSignal): MainToolDeps['web'];
   ledger(): ResearchLedger;
   save(next: ResearchLedger): void;
-  prepare(): Promise<void>;
+  prepare(signal: AbortSignal): Promise<void>;
   signals(now: number): Signals;
   blocked(): boolean;
   busy(): boolean;
@@ -96,7 +96,7 @@ export class ResearchRunner {
     this.progress = { running: true, stage: 'preparing', message: '正在整理可用的兴趣线索', startedAt: new Date().toISOString() };
     this.report('preparing', '正在整理可用的兴趣线索');
     try {
-      await abortable(this.options.prepare(), controller.signal);
+      await abortable(this.options.prepare(controller.signal), controller.signal);
       if (controller.signal.aborted || this.options.blocked() || (!force && this.options.busy())) return;
       await abortable(this.research(now, force, controller), controller.signal);
     } catch (error) {
@@ -262,16 +262,16 @@ export class ResearchRunner {
       'research',
     );
     if (controller.signal.aborted || this.options.blocked()) return;
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { findings?: unknown }).findings)) {
+      throw new Error('模型没有返回完整的研究笔记，可以重试');
+    }
     const findings = parseFindings(raw, interest, labels.join(' · '), urls, now, randomUUID);
-    this.options.save(
-      addFindings(
-        this.options.ledger(),
-        interest.id,
-        findings,
-        now,
-      ),
-    );
+    const previous = this.options.ledger();
+    const next = addFindings(previous, interest.id, findings, now);
+    const previousIds = new Set(previous.findings.map(f => f.id));
+    const added = next.findings.filter(f => !previousIds.has(f.id)).length;
+    this.options.save(next);
     this.researchBackoffUntil = 0;
-    this.report('done', findings.length ? `研究完成，整理了 ${findings.length} 条笔记` : '研究完成，这次没有值得新增的消息');
+    this.report('done', added ? `研究完成，整理了 ${added} 条笔记` : '研究完成，这次没有值得新增的消息');
   }
 }

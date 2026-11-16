@@ -27,49 +27,112 @@ async function toWav(blob: Blob): Promise<Uint8Array> {
   } finally { void ctx.close(); }
 }
 
-/** Turns `button` into a hold-to-talk mic for `target`. Returns a cleanup function. */
-export function attachVoice(button: HTMLButtonElement, target: HTMLTextAreaElement | HTMLInputElement, opts: { onState?: (state: 'idle' | 'recording' | 'working') => void } = {}) {
+/** Turns `button` into a hold-to-talk mic for `target`. */
+export function attachVoice(button: HTMLButtonElement, target: HTMLTextAreaElement | HTMLInputElement) {
   button.type = 'button'; button.classList.add('mic'); button.setAttribute('aria-label', '按住说话'); button.title = '按住说话，松开识别（最长 60 秒）';
   if (!button.querySelector('svg')) button.append(svgIcon('mic', 18)!);
-  let stream: MediaStream | undefined, recorder: MediaRecorder | undefined, chunks: Blob[] = [], startedAt = 0, limit: ReturnType<typeof setTimeout> | undefined, tick: ReturnType<typeof setInterval> | undefined, busy = false, holding = false, opening = false;
-  const set = (state: 'idle' | 'recording' | 'working') => { button.dataset.state = state; button.classList.toggle('recording', state === 'recording'); button.classList.toggle('working', state === 'working'); opts.onState?.(state); };
-  const release = () => { clearTimeout(limit); clearInterval(tick); for (const t of stream?.getTracks() || []) t.stop(); stream = undefined; button.style.removeProperty('--elapsed'); };
-  const start = async () => {
-    if (recorder || busy || opening) return;
-    holding = true; opening = true;
-    try { stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false }); }
-    catch { opening = false; holding = false; toast('打不开麦克风：请在「连接 → 语音输入」里打开按住说话，并允许系统麦克风权限。', 'error'); release(); return; }
-    opening = false;
-    if (!holding) { release(); return; }
-    chunks = []; recorder = new MediaRecorder(stream); recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-    recorder.start(); startedAt = performance.now(); set('recording');
-    tick = setInterval(() => button.style.setProperty('--elapsed', `"${Math.floor((performance.now() - startedAt) / 1000)}s"`), 250);
-    limit = setTimeout(() => void stop(), MAX_SECONDS * 1000);
+  let enabled = false, generation = 0, startedAt = 0;
+  let stream: MediaStream | undefined, recorder: MediaRecorder | undefined;
+  let limit: ReturnType<typeof setTimeout> | undefined, tick: ReturnType<typeof setInterval> | undefined;
+  let state: 'idle' | 'opening' | 'recording' | 'working' = 'idle';
+  const set = (next: typeof state) => {
+    state = next;
+    button.dataset.state = next;
+    button.classList.toggle('recording', next === 'recording');
+    button.classList.toggle('working', next === 'working');
   };
-  const stop = async () => {
-    holding = false;
-    const r = recorder; if (!r) return; recorder = undefined;
-    const held = performance.now() - startedAt;
-    const done = new Promise<void>(resolve => { r.onstop = () => resolve(); });
-    r.stop(); await done; release();
-    if (held < MIN_MS) { set('idle'); toast('按住说话，说完再松开。'); return; }
-    set('working'); busy = true;
+  const release = () => {
+    clearTimeout(limit); clearInterval(tick);
+    for (const track of stream?.getTracks() || []) track.stop();
+    stream = undefined;
+    button.style.removeProperty('--elapsed');
+  };
+  const cancel = () => {
+    if (state === 'idle') return;
+    generation++;
+    const active = recorder;
+    recorder = undefined;
     try {
-      const audio = await toWav(new Blob(chunks, { type: r.mimeType || 'audio/webm' })); chunks = [];
+      if (active) {
+        active.ondataavailable = active.onstop = null;
+        if (active.state !== 'inactive') active.stop();
+      }
+    } finally {
+      release();
+      set('idle');
+    }
+  };
+  const transcribe = async (blob: Blob, ticket: number) => {
+    try {
+      const audio = await toWav(blob);
+      if (ticket !== generation) return;
       const res = await command({ type: 'voice.transcribe', audio }, true);
+      if (ticket !== generation) return;
       const text = (res.data as { text?: string } | undefined)?.text?.trim();
       if (!res.ok) toast(res.error || '没识别出来。', 'error');
       else if (!text) toast('没听清，再说一次？');
       else { const at = target.selectionStart ?? target.value.length, end = target.selectionEnd ?? at; target.value = target.value.slice(0, at) + text + target.value.slice(end); target.focus(); target.selectionStart = target.selectionEnd = at + text.length; target.dispatchEvent(new Event('input', { bubbles: true })); }
-    } catch { toast('这段录音没能处理，再试一次？', 'error'); }
-    finally { busy = false; set('idle'); }
+    } catch {
+      if (ticket === generation) toast('这段录音没能处理，再试一次？', 'error');
+    } finally {
+      if (ticket === generation) set('idle');
+    }
   };
-  const down = (e: PointerEvent) => { if (e.button !== 0) return; e.preventDefault(); button.setPointerCapture(e.pointerId); void start(); };
-  const up = () => void stop();
-  const key = (e: KeyboardEvent) => { if (e.key !== ' ' && e.key !== 'Enter') return; e.preventDefault(); if (e.type === 'keydown' && !e.repeat) void start(); if (e.type === 'keyup') void stop(); };
-  button.addEventListener('pointerdown', down); button.addEventListener('pointerup', up); button.addEventListener('pointercancel', up); button.addEventListener('lostpointercapture', up);
+  const stop = () => {
+    if (state === 'opening') { cancel(); return; }
+    const active = recorder;
+    if (!active) return;
+    if (performance.now() - startedAt < MIN_MS) {
+      cancel();
+      toast('按住说话，说完再松开。');
+      return;
+    }
+    recorder = undefined;
+    set('working');
+    try {
+      if (active.state !== 'inactive') active.stop();
+    } finally {
+      release();
+    }
+  };
+  const start = async () => {
+    if (!enabled || state !== 'idle') return;
+    const ticket = ++generation;
+    set('opening');
+    try {
+      const input = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      if (ticket !== generation) {
+        for (const track of input.getTracks()) track.stop();
+        return;
+      }
+      stream = input;
+      const chunks: Blob[] = [];
+      const active = new MediaRecorder(input);
+      recorder = active;
+      active.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      active.onstop = () => {
+        if (ticket !== generation) return;
+        if (recorder === active) { cancel(); return; }
+        void transcribe(new Blob(chunks, { type: active.mimeType || 'audio/webm' }), ticket);
+      };
+      active.start();
+      startedAt = performance.now();
+      set('recording');
+      tick = setInterval(() => button.style.setProperty('--elapsed', `"${Math.floor((performance.now() - startedAt) / 1000)}s"`), 250);
+      limit = setTimeout(stop, MAX_SECONDS * 1000);
+    } catch {
+      if (ticket !== generation) return;
+      cancel();
+      toast('打不开麦克风：请在「连接 → 语音输入」里打开按住说话，并允许系统麦克风权限。', 'error');
+    }
+  };
+  const down = (e: PointerEvent) => { if (e.button !== 0 || !enabled) return; e.preventDefault(); button.setPointerCapture(e.pointerId); void start(); };
+  const cancelledPointer = () => { if (state === 'opening' || state === 'recording') cancel(); };
+  const key = (e: KeyboardEvent) => { if (e.key !== ' ' && e.key !== 'Enter') return; e.preventDefault(); if (e.type === 'keydown' && !e.repeat) void start(); if (e.type === 'keyup') stop(); };
+  button.addEventListener('pointerdown', down); button.addEventListener('pointerup', stop); button.addEventListener('pointercancel', cancelledPointer); button.addEventListener('lostpointercapture', cancelledPointer);
   button.addEventListener('keydown', key); button.addEventListener('keyup', key);
-  window.addEventListener('blur', up);
+  window.addEventListener('blur', cancel);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cancel(); });
   set('idle');
-  return () => { void stop(); release(); window.removeEventListener('blur', up); };
+  return { cancel, setEnabled(value: boolean) { enabled = value; button.hidden = !value; if (!value) cancel(); } };
 }

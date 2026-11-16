@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, readFile, mkdir } from 'node:fs/promises';
+import fs, { mkdtemp, rm, writeFile, readFile, mkdir, readdir } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -108,6 +109,37 @@ test('Write/Edit are checkpointed too; Bash is not undoable and says so in the p
     assert.equal(r.restored.length, 2);
     assert.equal(await readFile(path.join(dir, 'n.txt'), 'utf8'), 'v1'); assert.ok(!existsSync(path.join(dir, 'fresh.txt')));
   } finally { host.close(); await rm(dir, { recursive: true, force: true }); }
+});
+test('ApplyPatch rolls back a first replacement if the next one fails at the filesystem', async t => {
+  const dir = await tmp('patch-rollback');
+  const { host, session, run } = await hostWith(dir);
+  const a = path.join(dir, 'a.txt'), b = path.join(dir, 'b.txt');
+  await writeFile(a, 'old a\n');
+  await writeFile(b, 'old b\n');
+  const rename = fs.rename;
+  let sawFirstWrite = false;
+  const mock = t.mock.method(fs, 'rename', async (src: Parameters<typeof rename>[0], dest: Parameters<typeof rename>[1]) => {
+    if (String(dest) === b && String(src).includes('.galagent-')) {
+      sawFirstWrite = await readFile(a, 'utf8') === 'new a\n';
+      throw Object.assign(new Error('fixture rename denied'), { code: 'EACCES' });
+    }
+    return rename(src, dest);
+  });
+  syncBuiltinESMExports();
+  try {
+    const result = await run('ApplyPatch', { patch: '*** Begin Patch\n*** Update File: a.txt\n-old a\n+new a\n*** Update File: b.txt\n-old b\n+new b\n*** End Patch' });
+    assert.match(result, /fixture rename denied/);
+    assert.ok(sawFirstWrite);
+    assert.equal(await readFile(a, 'utf8'), 'old a\n');
+    assert.equal(await readFile(b, 'utf8'), 'old b\n');
+    assert.deepEqual(await host.runChanges(session), []);
+    assert.deepEqual((await readdir(dir)).sort(), ['.ckpt', 'a.txt', 'b.txt']);
+  } finally {
+    mock.mock.restore();
+    syncBuiltinESMExports();
+    host.close();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 const fakeServer = `
@@ -242,6 +274,46 @@ test('remote MCP over Streamable HTTP: JSON and SSE replies, session id, Authori
     assert.throws(() => validServers([{ name: 'x', url: 'https://user:pw@a.example' }]), /密码/);
   } finally { host.close(); hub.close(); }
 });
+test('a cold MCP connection waits for this task’s approval before discovery', async () => {
+  const methods: string[] = [];
+  const hub = new McpHub(() => [{ name: 'fixture', url: 'https://mcp.example/mcp', enabled: true }], () => tmpdir(), { fetch: async (_url, init) => {
+    const body = JSON.parse(String(init?.body)); methods.push(body.method);
+    if (body.method === 'initialize') return Response.json({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: body.params.protocolVersion, capabilities: {} } });
+    if (!body.id) return new Response(null, { status: 202 });
+    return Response.json({ jsonrpc: '2.0', id: body.id, result: body.method === 'tools/list'
+      ? { tools: [{ name: 'list', inputSchema: { type: 'object' } }] }
+      : { content: [{ type: 'text', text: 'approved result' }] } });
+  } });
+  let asks = 0;
+  let finish!: (value: string) => void;
+  const host = new ToolHost({ save: () => {}, child: async () => '', sandbox: () => normalizeSandbox({}), mcp: hub,
+    ask: async ([question]) => {
+      asks++;
+      const answer = await new Promise<string>(resolve => { finish = resolve; });
+      return { [question.question]: answer };
+    },
+  });
+  try {
+    const denied = host.session(tmpdir());
+    const blocked = host.discoverMcp(denied, hub, signal());
+    assert.equal(asks, 1);
+    assert.deepEqual(methods, []);
+    finish('拒绝');
+    await blocked;
+    assert.deepEqual(methods, []);
+    const allowed = host.session(tmpdir());
+    const accepted = host.discoverMcp(allowed, hub, signal());
+    assert.equal(asks, 2);
+    assert.deepEqual(methods, []);
+    finish('本任务允许');
+    await accepted;
+    assert.deepEqual(methods, ['initialize', 'notifications/initialized', 'tools/list']);
+    assert.match((await host.execute(allowed, 'mcp__fixture__list', {}, signal())).content, /approved result/);
+    assert.equal(asks, 2);
+    assert.equal(methods.at(-1), 'tools/call');
+    assert.ok(!host.definitionsFor(denied).some(tool => tool.function.name === 'mcp__fixture__list'));
+  } finally { host.close(); hub.close(); }
+});
 
 test('executor settings: separate model, output budget and turn limit reach the request; MCP secrets are stored encrypted and only names are kept', async () => {
   const { CompanionService } = await import('../../runtime/core/companion');
@@ -251,10 +323,11 @@ test('executor settings: separate model, output budget and turn limit reach the 
     fetch: async (_u, init) => { const body = JSON.parse(String(init?.body)); if (body.tools?.some((t: any) => t.function.name === 'ApplyPatch')) { bodies.push(body); return say({ content: '完成' }); } return json({ choices: [{ message: { role: 'assistant', content: '{"facts":[],"diary":"","text":"好","expression":"neutral","action":"idle"}' } }] }); } });
   await core.init();
   try {
-    await core.handle({ type: 'settings.update', settings: { executor: { model: 'coder-pro', maxOutputTokens: 999999, maxTurns: 2 }, mcpServers: [{ name: 'gh', url: 'https://mcp.example/mcp', enabled: true }] } });
+    await core.handle({ type: 'settings.update', settings: { executor: { model: 'coder-pro', maxOutputTokens: 999999, maxTurns: 2 } } });
     assert.deepEqual(core.getSnapshot().settings.executor, { model: 'coder-pro', maxOutputTokens: 131072, maxTurns: 4 });
     await core.handle({ type: 'agent.run', task: '看看目录' }); await core.waitForAgent();
     assert.equal(bodies[0].model, 'coder-pro'); assert.equal(bodies[0].max_completion_tokens ?? bodies[0].max_tokens, 131072);
+    await core.handle({ type: 'settings.update', settings: { mcpServers: [{ name: 'gh', url: 'https://mcp.example/mcp', enabled: true }] } });
     assert.equal((await core.handle({ type: 'mcp.secret', server: 'gh', headers: { Authorization: 'Bearer secret-token' } })).ok, true);
     assert.deepEqual(store.get('gh'), { headers: { Authorization: 'Bearer secret-token' } });
     const settings = JSON.stringify(core.getSnapshot().settings);

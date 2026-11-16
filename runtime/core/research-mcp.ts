@@ -36,21 +36,30 @@ export async function prepareResearchMcp(options: Options, signal: AbortSignal, 
     return server.url ? box.network : box.shell && !options.forbidden().length;
   };
   for (const server of selected) {
+    const isCurrent = () => version === options.policyVersion() && allowed(server) &&
+      JSON.stringify(options.servers().find(s => s.name === server.name)) === JSON.stringify(server);
     signal.throwIfAborted();
     if (!allowed(server)) continue;
     if (server.url) {
-      const url = new URL(server.url);options.guard.assertUrl(url, 'research-mcp');
-      if (!options.sandbox().lanAccess) await options.assertPublic?.(url);
+      try {
+        const url = new URL(server.url);
+        options.guard.assertUrl(url, 'research-mcp');
+        if (!options.sandbox().lanAccess) await options.assertPublic?.(url);
+      } catch {
+        signal.throwIfAborted();
+        continue;
+      }
     }
     if (options.sandbox().shellConfirm) {
       report(`等待你允许本轮使用 MCP「${server.name}」，请在任务页回答；也可以停止本次研究`);
       if (!await abortable(options.approve(server.name, signal), signal)) continue;
     }
     signal.throwIfAborted();
-    if (version !== options.policyVersion() || !allowed(server)) throw new Error('研究权限已改变');
+    if (!isCurrent()) throw new Error('研究权限已改变');
     report(`正在连接 MCP「${server.name}」`);
-    await abortable(options.hub.ensure({stdio:!server.url,http:!!server.url},[server.name]),signal);
+    await abortable(options.hub.ensure({stdio:!server.url,http:!!server.url},[server.name],signal),signal);
     signal.throwIfAborted();
+    if (!isCurrent()) throw new Error('研究权限已改变');
     const tools = options.hub.tools().filter(t => t.server === server.name && t.readOnly === true && !t.destructive && server.researchTools?.includes(t.name)).slice(0, 16);
     if (!tools.length) continue;
     const validate = new Map(tools.map(t => {

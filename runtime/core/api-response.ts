@@ -28,7 +28,7 @@ export async function apiFailure(
   redact: (text: string) => string = (text) => text,
 ) {
   let message = '',
-    param = '';
+    param = '', code = '';
   try {
     const text = await responseText(response, signal, 8192);
     try {
@@ -36,13 +36,14 @@ export async function apiFailure(
         error = body.error ?? body;
       message = typeof error === 'string' ? error : typeof error.message === 'string' ? error.message : '';
       param = typeof error.param === 'string' ? error.param : '';
+      code = typeof error.code === 'string' ? error.code : '';
     } catch {
       if (!/^\s*</.test(text)) message = text.slice(0, 500);
     }
   } catch {
     signal.throwIfAborted();
   }
-  const unsupported = message + ' ' + param;
+  const unsupported = [message, param, code].join(' ');
   const tip =
     response.status === 401
       ? '密钥未通过验证，请检查 API Key'
@@ -61,4 +62,9 @@ export async function apiFailure(
     unsupported,
     error: new Error(tip + '（HTTP ' + response.status + '）' + (safe ? '：' + safe : '')),
   };
+}
+
+export function rejectedOption(details: string, name: string): boolean {
+  return new RegExp(`\\b${name}\\b`, 'i').test(details)
+    && /unsupported|not support|doesn.t support|not allowed|not permitted|unknown|unrecognized|not implemented|extra inputs|unexpected|use .{0,50} instead|不支持/i.test(details);
 }

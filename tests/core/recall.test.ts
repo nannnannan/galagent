@@ -5,6 +5,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Store } from '../../runtime/core/store';
+import { dayDigest, localDay } from '../../runtime/core/daily';
+import type { Message } from '../../runtime/shared/contracts';
 import { readHistory, searchHistory, snippet } from '../../runtime/core/recall';
 import { CompanionService } from '../../runtime/core/companion';
 import { LocalAccess, cleanUrl, refusedPath } from '../../runtime/desktop/local-scan';
@@ -29,7 +31,10 @@ test('search reaches chat, briefs, tasks and archives; deleted records never com
   seed.put('message', 'm3', message('m3', '拉面太咸了不想吃', '2026-05-01T10:00:00.000Z'));
   seed.put('brief', 'brief:b1', { id: 'b1', by: 'helper', goal: '查拉面店营业时间', gist: '一兰周一休息', points: ['11 点开门'], sources: [], at: Date.parse('2026-03-02T00:00:00Z') });
   seed.put('task-run', 'task-run:t1', { id: 't1', task: '整理拉面照片', summary: '整理好了', completedAt: '2026-03-03T00:00:00.000Z' });
-  seed.put('daily-archive', 'daily:2026-03-01', { id: 'daily:2026-03-01', day: '2026-03-01', title: '吃拉面的一天', summary: '聊了拉面', topics: ['拉面'], highlights: [], openThreads: [] });
+  const day = localDay(Date.parse('2026-03-01T10:00:00.000Z'));
+  const archiveId = 'daily:' + day;
+  const sourceMessages = seed.all<Message>('message').filter(m => localDay(Date.parse(m.createdAt)) === day);
+  seed.put('daily-archive', archiveId, { id: archiveId, day, digest: dayDigest(sourceMessages), title: '吃拉面的一天', summary: '聊了拉面', topics: ['拉面'], highlights: [], openThreads: [] });
   // An install from before the index existed: wiping the index and its version makes the next open rebuild it.
   seed.db.exec("DELETE FROM history_fts; DELETE FROM index_metadata WHERE key='history-version'"); seed.close();
 
@@ -44,10 +49,12 @@ test('search reaches chat, briefs, tasks and archives; deleted records never com
   assert.equal((readHistory(store, 'brief:b1') as { gist: string }).gist, '一兰周一休息');
   assert.equal((readHistory(store, 'b1') as { gist: string }).gist, '一兰周一休息', 'unprefixed brief id resolves');
   assert.equal((readHistory(store, 't1') as { summary: string }).summary, '整理好了', 'unprefixed task id resolves');
-  assert.equal((readHistory(store, '2026-03-01') as { title: string }).title, '吃拉面的一天', 'unprefixed archive day resolves');
+  assert.equal((readHistory(store, day) as { title: string }).title, '吃拉面的一天', 'unprefixed archive day resolves');
   assert.ok(searchHistory(store, '店', { scope: 'chat' }).some(h => h.id === 'm1'), 'single-character Han query matches bigram');
   assert.deepEqual(searchHistory(store, '', { scope: 'brief' }).map(h => h.id), ['brief:b1'], 'no words: the newest briefs');
   store.tombstone('m1');
+  assert.equal(readHistory(store, archiveId), undefined, 'the same deletion invalidates the daily archive');
+  assert.deepEqual(searchHistory(store, '拉面', { scope: 'archive' }), []);
   assert.ok(!searchHistory(store, '拉面').some(h => h.id === 'm1')); assert.equal(readHistory(store, 'm1'), undefined);
   store.remove('brief:b1'); assert.ok(!searchHistory(store, '拉面').some(h => h.id === 'brief:b1'));
   assert.match(snippet('很长'.repeat(200) + '拉面' + '很长'.repeat(200), '拉面'), /^….*拉面.*…$/);

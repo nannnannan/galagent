@@ -65,16 +65,20 @@ export function appendBatchResults(
   results: Result[],
   keepParts: boolean,
 ) {
+  const isVideo = (part: unknown) => !!part && typeof part === 'object' && (part as {type?: string}).type === 'video_url';
   for (const { item, output } of results) {
+    const unsupportedVideo = !keepParts && output.attachments?.some(isVideo);
     session.messages.push({
       role: 'tool',
       tool_call_id: item.call.id,
-      content: keepParts && output.parts ? output.parts : output.content,
+      content: unsupportedVideo
+        ? 'ToolError: 当前连接使用标准 Chat Completions，接口没有提供视频附件能力。可以读取本地视频抽取的图片帧。'
+        : keepParts && output.parts ? output.parts : output.content,
     });
     host.save(session);
   }
   if (keepParts) return;
-  const attachments = results.flatMap((r) => r.output.attachments || []);
+  const attachments = results.flatMap((r) => r.output.attachments || []).filter(part => !isVideo(part));
   if (attachments.length) {
     session.messages.push({
       role: 'user',

@@ -34,6 +34,7 @@ test('main character understands the request and sets the alarm through the sche
     return choice({ content: null, reasoning_content: 'private', tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'schedule_wakeup', arguments: JSON.stringify({ note: '提醒用户喝水', in_minutes: 30, for_user: true }) } }] });
   });
   try {
+    await core.handle({ type: 'config.save', baseUrl: 'https://compatible.test/v1', model: 'fixture' });
     assert.equal((await core.handle({ type: 'chat.send', text: '半小时后提醒我喝水' })).ok, true);
     await core.waitForBackground();
     assert.ok(bodies[0].tools.some((t: any) => t.function.name === 'schedule_wakeup'));
@@ -63,21 +64,67 @@ test('a gateway that rejects tools is remembered and the JSON schedule field sti
     assert.equal(core.getSnapshot().schedules![0].note, '回访');
   } finally { await cleanup(); }
 });
+test('a user reminder rings once while another model reply is stalled', async () => {
+  let entered!: () => void, release!: (response: Response) => void;
+  const waiting = new Promise<void>(resolve => { entered = resolve; });
+  const hold = new Promise<Response>(resolve => { release = resolve; });
+  const { core, cleanup } = await make(async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    if (isMemory(body)) return choice({ content: '{"facts":[],"diary":""}' });
+    if (body.messages.at(-1)?.content === '等很久的回复') {
+      entered();
+      return hold;
+    }
+    return choice({ content: '{"text":"在这里","expression":"neutral","action":"idle"}' });
+  });
+  try {
+    await core.handle({ type: 'chat.send', text: '初次见面' });
+    await core.handle({ type: 'schedule.add', note: '看看炉子', inMinutes: 1 });
+    const [alarm] = core.getSnapshot().schedules!;
+    const reply = core.handle({ type: 'chat.send', text: '等很久的回复' });
+    await waiting;
+    const due = Date.parse(alarm.dueAt);
+    await core.tick(due + 1);
+    await core.tick(due + 1000);
+    assert.equal(core.getSnapshot().messages.filter(message => message.text === '⏰ 提醒：看看炉子').length, 1);
+    assert.equal(core.getSnapshot().schedules!.length, 0);
+    assert.ok(core.getSnapshot().status.busy);
+    release(choice({ content: '{"text":"回来了","expression":"neutral","action":"idle"}' }));
+    assert.equal((await reply).ok, true);
+  } finally {
+    release(choice({ content: '{}' }));
+    await cleanup();
+  }
+});
 
-test('recall_day returns the local transcript of a past day for the main character', async () => {
+test('only a parallel helper sees recall_day and the main character receives its brief', async () => {
   let recalled = '';
+  let brief = '';
+  const call = (id: string, name: string, args: unknown) => choice({
+    content: null, tool_calls: [{ id, type: 'function', function: { name, arguments: JSON.stringify(args) } }],
+  });
   const { core, cleanup } = await make(async (_url, init) => {
     const body = JSON.parse(String(init?.body));
     if (isMemory(body)) return choice({ content: '{"facts":[],"diary":""}' });
     const last = body.messages.at(-1);
-    if (last.role === 'tool') { recalled = last.content; return choice({ content: JSON.stringify({ text: '想起来了', expression: 'neutral', action: 'idle' }) }); }
-    if (last.content === '昨天我说了啥') return choice({ content: null, tool_calls: [{ id: 'r', type: 'function', function: { name: 'recall_day', arguments: JSON.stringify({ day: new Date().toLocaleDateString('en-CA') }) } }] });
+    const tools = body.tools.map((tool: { function: { name: string } }) => tool.function.name);
+    if (String(body.messages[0].content).startsWith('你是桌面陪伴角色')) {
+      assert.ok(tools.includes('recall_day'));
+      if (last.role !== 'tool') return call('recall', 'recall_day', { day: new Date().toLocaleDateString('en-CA') });
+      recalled = last.content;
+      return choice({ content: '{"gist":"用户说猫叫阿黄","points":[],"sources":[]}' });
+    }
+    assert.ok(!tools.includes('recall_day'));
+    if (last.role === 'tool') { brief = last.content; return choice({ content: JSON.stringify({ text: '想起来了', expression: 'neutral', action: 'idle' }) }); }
+    if (last.content === '帮我找一下之前的原话') return call('ask', 'ask_helpers', { tasks: [{ goal: '查用户之前说猫叫什么' }] });
     return choice({ content: JSON.stringify({ text: '收到', expression: 'neutral', action: 'idle' }) });
   });
   try {
-    await core.handle({ type: 'chat.send', text: '我养了一只叫阿黄的猫' });
-    await core.handle({ type: 'chat.send', text: '昨天我说了啥' });
+    assert.equal((await core.handle({ type: 'chat.send', text: '我养了一只叫阿黄的猫' })).ok, true);
+    assert.equal((await core.handle({ type: 'chat.send', text: '帮我找一下之前的原话' })).ok, true);
     assert.match(JSON.parse(recalled).messages.join('\n'), /阿黄/);
+    assert.match(brief, /用户说猫叫阿黄/);
+    assert.doesNotMatch(brief, /我养了一只叫阿黄的猫/);
   } finally { await cleanup(); }
 });
 

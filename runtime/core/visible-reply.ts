@@ -1,5 +1,5 @@
 import type { Expression, PetAction } from '../shared/contracts';
-import { readScheduleField } from './scheduler';
+import { readScheduleField, type ScheduleRequest } from './scheduler';
 
 type Visible = {
   careUpdates?: unknown[];
@@ -7,7 +7,7 @@ type Visible = {
   /** 活人感: a short line delivered a minute or two later. */
   afterthought?: string;
   delegate?: { task: string };
-  schedule?: { note: string; inMinutes?: number; at?: string; repeatMinutes?: number };
+  schedule?: ScheduleRequest;
   cancelSchedule?: string[];
   watch?: { title: string; condition?: string };
   text: string;
@@ -88,7 +88,7 @@ export function parseVisibleReply(
   };
   const expression: Expression = (expressions as readonly string[]).includes(expRaw)
     ? (expRaw as Expression)
-    : expMap[expRaw] || 'neutral';
+    : Object.hasOwn(expMap, expRaw) ? expMap[expRaw] : 'neutral';
   const actRaw = pick(raw.action);
   const actMap: Record<string, PetAction> = {
     smile: 'celebrate',
@@ -109,7 +109,7 @@ export function parseVisibleReply(
   };
   const action: PetAction = (actions as readonly string[]).includes(actRaw)
     ? (actRaw as PetAction)
-    : actMap[actRaw] || 'idle';
+    : Object.hasOwn(actMap, actRaw) ? actMap[actRaw] : 'idle';
   if (typeof textVal !== 'string' || textVal.length > 3000 || (kind !== 'initiative' && !textVal.trim()))
     throw new Error('模型表现未通过校验');
   const del =
@@ -165,7 +165,7 @@ export function parseVisibleReply(
       ? [...raw.afterthought.trim()].slice(0, 120).join('')
       : undefined;
   return {
-    text: textVal,
+    text: textVal.trim(),
     ...(kind === 'chat' && Array.isArray(raw.careUpdates) ? { careUpdates: raw.careUpdates.slice(0,3) } : {}),
     expression,
     action,

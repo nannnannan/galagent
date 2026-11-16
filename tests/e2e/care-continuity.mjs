@@ -37,7 +37,7 @@ const server=createServer(async(req,res)=>{
  }catch(error){unexpected=String(error);res.writeHead(500).end('{}');}
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const env={...process.env,GALAGENT_DATA_DIR:profile,GALAGENT_API_KEY:'',KIMI_API_KEY:'',MOONSHOT_API_KEY:''};delete env.ELECTRON_RUN_AS_NODE;
+const env={...process.env, OPENAI_API_KEY: '',GALAGENT_DATA_DIR:profile,GALAGENT_API_KEY:'',KIMI_API_KEY:'',MOONSHOT_API_KEY:''};delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try{
  const clock=async now=>app.evaluate((_electron,n)=>{Date.now=()=>n;},now);
@@ -48,7 +48,7 @@ try{
   return {page,send:async command=>{const r=await page.evaluate(c=>window.galagent.dispatch(c),command);assert.equal(r.ok,true,r.error);}};
  }
  let f=await launch(new Date(2026,10,6,14).getTime());
- await f.send({type:'config.save',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'native-fixture',mode:'native-api',apiKey:'fixture'});
+ await f.send({type:'config.save',baseUrl:`http://127.0.0.1:${server.address().port}/v1`,model:'native-fixture',apiKey:'fixture'});
  await f.send({type:'chat.send',text:'我明天下午面试'});
  await f.send({type:'chat.send',text:'改到下周一上午了'});
  await clock(new Date(2026,10,7,20).getTime());

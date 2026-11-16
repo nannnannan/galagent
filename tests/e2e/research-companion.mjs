@@ -125,7 +125,7 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const env = {
-  ...process.env,
+  ...process.env, OPENAI_API_KEY: '',
   GALAGENT_DATA_DIR: profile,
   GALAGENT_API_KEY: '',
   KIMI_API_KEY: '',

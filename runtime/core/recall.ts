@@ -3,6 +3,7 @@
 import type { HistoryHit, HistoryScope, Message } from '../shared/contracts';
 import type { Brief } from './helpers';
 import type { DailyArchive } from './daily';
+import { DailyHistory } from './daily-history';
 import { grams, type Store } from './store';
 
 const KINDS: Record<HistoryScope, string[]> = { all: ['message', 'brief', 'task-run', 'daily-archive'], chat: ['message'], brief: ['brief'], task: ['task-run'], archive: ['daily-archive'] };
@@ -35,7 +36,9 @@ export function searchHistory(store: Store, query: string, o: { scope?: HistoryS
   const dead = store.deadIds();
   // With no words the list is simply the newest (the 「查过的资料」 shelf); messages need a query, there are too many to browse.
   const ids = q ? store.historyIds(q, KINDS[scope]) : KINDS[scope].filter(k => k !== 'message').flatMap(k => store.all<{ id: string }>(k).map(r => k === 'brief' ? 'brief:' + r.id : k === 'task-run' ? 'task-run:' + r.id : r.id));
-  const rows = ids.filter(id => !dead.has(id)).map(id => toRow(store, id)).filter((r): r is Row => !!r).filter(r => { const t = Date.parse(r.at); return (from === undefined || t >= from) && (to === undefined || t < to); });
+  const validArchives = ids.some(id => store.kind(id) === 'daily-archive')
+    ? new Set(new DailyHistory(store).validArchives().map(archive => archive.id)) : new Set<string>();
+  const rows = ids.filter(id => !dead.has(id) && (store.kind(id) !== 'daily-archive' || validArchives.has(id))).map(id => toRow(store, id)).filter((r): r is Row => !!r).filter(r => { const t = Date.parse(r.at); return (from === undefined || t >= from) && (to === undefined || t < to); });
   const exact = (r: Row) => q && `${r.title || ''}\n${r.text}`.toLowerCase().includes(q.toLowerCase()) ? 1 : 0;
   // An exact phrase beats scattered bigrams; within each group keep the index's ranking (with no query, newest first).
   const sorted = q ? rows.map((r, i) => [r, i] as const).sort((a, b) => exact(b[0]) - exact(a[0]) || a[1] - b[1]).map(x => x[0]) : rows.sort((a, b) => b.at.localeCompare(a.at));
@@ -54,5 +57,6 @@ export function readHistory(store: Store, rawId: string, around = 8): unknown {
   }
   if (kind === 'brief') { const b = body as Brief; return { kind: 'brief', id: b.id, by: b.by, at: new Date(b.at).toISOString(), goal: b.goal, gist: b.gist, points: b.points, sources: b.sources, ...(b.gaps ? { gaps: b.gaps } : {}) }; }
   if (kind === 'task-run') { const t = body as TaskRecord; return { kind: 'task', at: t.completedAt || t.startedAt, task: t.task, summary: t.summary }; }
-  const a = body as DailyArchive; return { kind: 'archive', day: a.day, title: a.title, summary: a.summary, topics: a.topics, highlights: a.highlights, openThreads: a.openThreads };
+  const a = new DailyHistory(store).readyArchive((body as DailyArchive).day);
+  return a && { kind: 'archive', day: a.day, title: a.title, summary: a.summary, topics: a.topics, highlights: a.highlights, openThreads: a.openThreads };
 }

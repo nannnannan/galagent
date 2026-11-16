@@ -115,7 +115,7 @@ export function parseCompanionArchive(
       (d.title !== undefined && (typeof d.title !== 'string' || d.title.length > 30)) ||
       !Number.isFinite(Date.parse(d.createdAt)) ||
       !Array.isArray(d.sourceIds) ||
-      d.sourceIds.length > 100 ||
+      (d.kind !== 'journal' && d.sourceIds.length > 100) ||
       d.sourceIds.some((id: unknown) => !sourceExists(id))
     )
       throw new Error('日记来源无效');

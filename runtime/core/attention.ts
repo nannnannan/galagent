@@ -5,14 +5,15 @@
 // heartbeat with nothing new performs no model call at all.
 import type { Store } from './store';
 import type { ClipboardEntry, ScreenDecision, ScreenShot } from '../desktop/perception';
+import { abortable } from './pool';
 
-export type AttentionEventKind = 'task' | 'window' | 'browser' | 'clipboard' | 'reunion' | 'unanswered' | 'watch' | 'system' | 'schedule' | 'greeting' | 'share' | 'recall';
+export type AttentionEventKind = 'task' | 'window' | 'browser' | 'clipboard' | 'screen' | 'reunion' | 'unanswered' | 'watch' | 'system' | 'schedule' | 'greeting' | 'share' | 'recall';
 export type AttentionEvent = { id: string; kind: AttentionEventKind; at: number; important: boolean; summary: string; expiresAt: number; data?: Record<string, unknown> };
 export type WatchItem = { id: string; title: string; condition?: string; createdAt: number; nextCheckAt: number; expiresAt: number; status: 'active' | 'done' | 'cancelled' | 'expired'; dedupeKey: string; lastResult?: string };
 export type AttentionDecision = { decision: 'silent' | 'observe' | 'schedule' | 'wake'; reason: string; evidence: string[]; nextCheck: string | null; wakeHint?: string; screenSummary?: string; watch?: { title: string; condition?: string }; completeWatchIds?: string[] };
 export type AttentionInput = { now: string; events: AttentionEvent[]; watchlist: WatchItem[]; clipboard: { id: string; at: string; text: string }[]; screen?: { id: string; dataUrl: string }; brief: unknown };
 export type AttentionStatus = { enabled: boolean; running: boolean; paused?: string; lastAt?: string; lastDecision?: AttentionDecision['decision']; lastReason?: string; evaluations: number; skippedHeartbeats: number; wakes: number; pendingEvents: number; activeWatches: number; nextCheckAt?: string; lastScreenAt?: string; lastSkip?: string };
-export type WakeRequest = { id: string; decision: AttentionDecision; events: AttentionEvent[]; screenSummary?: string; createdAt: number; expiresAt: number; /** Failed deliveries so far; a wake is retried at most twice so a failing model cannot loop paid calls. */ attempts?: number };
+export type WakeRequest = { id: string; decision: AttentionDecision; events: AttentionEvent[]; screenSummary?: string; schedule?: { id: string; dueAt: number }; createdAt: number; expiresAt: number; /** Failed deliveries so far; a wake is retried at most twice so a failing model cannot loop paid calls. */ attempts?: number };
 export type AttentionDeps = {
     store: Store;
     clock?: () => number;
@@ -23,9 +24,9 @@ export type AttentionDeps = {
     eligible(): string | undefined;          // undefined = may evaluate; otherwise reason
     canWake(): boolean;                      // main character free to speak
     wake(request: WakeRequest): Promise<boolean>;
-    sampleScreen(): Promise<ScreenDecision>;
+    sampleScreen(signal: AbortSignal): Promise<ScreenDecision>;
     clipboard(): ClipboardEntry[];
-    brief(events: AttentionEvent[]): Promise<unknown>;
+    brief(events: AttentionEvent[], signal: AbortSignal): Promise<unknown>;
     onStatus?(status: AttentionStatus): void;
     accepts?(event: AttentionEvent): boolean;
 };
@@ -118,7 +119,7 @@ export class AttentionLoop {
         if (!w || w.status !== 'active') return false;
         this.deps.store.put('watch', id, { ...w, status: 'cancelled' });
         this.events = this.events.filter(e => !(e.kind === 'watch' && e.data?.watchId === id));
-        this.publish();
+        this.invalidate('watch-dismissed');
         return true;
     }
     pending(): AttentionEvent[] { return [...this.events]; }
@@ -196,7 +197,8 @@ export class AttentionLoop {
         const controller = new AbortController(); this.controller = controller;
         let screen: ScreenShot | undefined;
         try {
-            const sampled = await this.deps.sampleScreen();
+            const sampled = await this.deps.sampleScreen(controller.signal);
+            if (version !== this.version || controller.signal.aborted || this.deps.eligible()) return;
             screen = sampled.shot;
             if (sampled.skipped) this.status.lastSkip = 'screen-' + sampled.skipped;
             if (screen) this.status.lastScreenAt = new Date(screen.at).toISOString();
@@ -212,14 +214,14 @@ export class AttentionLoop {
                 watchlist,
                 clipboard: clips.map(c => ({ id: c.id, at: new Date(c.at).toISOString(), text: c.text.slice(0, 300) })),
                 screen: screen ? { id: screen.id, dataUrl: screen.dataUrl } : undefined,
-                brief: await this.deps.brief(events),
+                brief: await abortable(this.deps.brief(events, controller.signal), controller.signal),
             };
-            if (version !== this.version || controller.signal.aborted) return;
+            if (version !== this.version || controller.signal.aborted || this.deps.eligible()) return;
             const raw = await this.deps.evaluate(input, controller.signal);
-            if (version !== this.version || controller.signal.aborted || this.closed) return;
+            if (version !== this.version || controller.signal.aborted || this.closed || this.deps.eligible()) return;
             const decision = parseDecision(raw, known, this.clock());
             this.failures = 0; this.backoffUntil = 0;
-            this.apply(decision, events, screen, version);
+            this.apply(decision, events, clips, watchlist, screen, version);
         } catch (error) {
             if (!controller.signal.aborted) {
                 this.status.lastSkip = error instanceof Error ? error.message.slice(0, 120) : 'attention-failed';
@@ -234,7 +236,7 @@ export class AttentionLoop {
             if (this.rerun && !this.closed) { this.rerun = false; this.soon(500); }
         }
     }
-    private apply(decision: AttentionDecision, events: AttentionEvent[], screen: ScreenShot | undefined, version: number) {
+    private apply(decision: AttentionDecision, events: AttentionEvent[], clips: ClipboardEntry[], watches: WatchItem[], screen: ScreenShot | undefined, version: number) {
         const now = this.clock();
         this.status.evaluations++; this.status.lastAt = new Date(now).toISOString(); this.status.lastDecision = decision.decision; this.status.lastReason = decision.reason;
         this.markHandled(events.map(e => e.id));
@@ -254,9 +256,23 @@ export class AttentionLoop {
         this.nextCheckAt = decision.nextCheck && !decision.watch ? Date.parse(decision.nextCheck) : 0;
         this.deps.store.put('state', 'attention-next', this.nextCheckAt);
         if (decision.decision === 'wake' && version === this.version) {
-            const matched = events.filter(e => decision.evidence.includes(e.id));
-            this.pendingWake = { id: `wake:${now}`, decision, events: matched.length ? matched : events, screenSummary: decision.screenSummary, createdAt: now, expiresAt: now + 10 * 60_000 };
-            void this.retryWake(now);
+            const expiresAt = now + 10 * 60_000;
+            const evidence = new Set(decision.evidence);
+            const matched = events.filter(e => evidence.has(e.id));
+            for (const clip of clips) if (evidence.has(clip.id) && !matched.some(event => event.id === clip.id)) {
+                matched.push({ id: clip.id, kind: 'clipboard', at: clip.at, important: false, summary: clip.text.slice(0, 300), expiresAt });
+            }
+            for (const watch of watches) if (evidence.has(watch.id)) {
+                matched.push({ id: watch.id, kind: 'watch', at: now, important: false, summary: watch.title, expiresAt, data: { watchId: watch.id } });
+            }
+            const selectedScreen = screen && evidence.has(screen.id);
+            if (screen && selectedScreen) {
+                matched.push({ id: screen.id, kind: 'screen', at: screen.at, important: false, summary: decision.screenSummary || '本轮的桌面截图', expiresAt });
+            }
+            if (matched.length) {
+                this.pendingWake = { id: `wake:${now}`, decision, events: matched, screenSummary: selectedScreen ? decision.screenSummary : undefined, createdAt: now, expiresAt };
+                void this.retryWake(now);
+            }
         }
         this.publish();
     }

@@ -149,16 +149,16 @@ export async function runMainTool(call: ToolCall, deps: MainToolDeps): Promise<s
         if (typeof args.at === 'string') request.at = args.at;
         if (typeof args.cron === 'string') request.cron = args.cron;
         if (args.repeat_minutes !== undefined) request.repeatMinutes = Number(args.repeat_minutes);
-        const item = deps.schedules.add(request, args.for_user === true ? 'user' : 'character');
+        const item = deps.schedules.add(request, deps.control && args.for_user === true ? 'user' : 'character');
         deps.onScheduled?.();
         return JSON.stringify({ ok: true, id: item.id, dueAt: time(item.dueAt), repeat: item.cron || item.repeatMinutes || null });
       }
       case 'list_wakeups':
         return JSON.stringify({ wakeups: deps.schedules.list().slice(0, 30).map(item => ({ id: item.id, note: item.note, dueAt: time(item.dueAt), repeat: item.cron || item.repeatMinutes || null, setBy: item.createdBy })) });
       case 'cancel_wakeup': {
-        const ok = typeof args.id === 'string' && deps.schedules.cancel(args.id);
+        const ok = typeof args.id === 'string' && deps.schedules.cancel(args.id, !!deps.control);
         if (ok) deps.onScheduled?.();
-        return JSON.stringify(ok ? { ok: true } : { error: '没有这个 id，请先 list_wakeups' });
+        return JSON.stringify(ok ? { ok: true } : { error: '找不到或无权取消这条提醒，请先 list_wakeups' });
       }
       case 'recall_day': {
         const day = typeof args.day === 'string' ? args.day.trim() : '';

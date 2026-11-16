@@ -1,7 +1,8 @@
-import { apiFailure, responseText } from './api-response';
-import { parseModelReply } from './tool-protocol';
+import { apiFailure, rejectedOption } from './api-response';
+import { parseModelReply, toChatRequestMessages, type ModelReply } from './tool-protocol';
 import type { AppSnapshot, UsageCategory } from '../shared/contracts';
-import { isKimiK3Model } from '../shared/provider';
+import { endpointUrl, sameOrigin } from '../shared/endpoints';
+import { OPENAI_BASE_URL } from '../shared/provider';
 import type { ToolCall, ToolDefinition } from './main-tools';
 import type { PrivacyGuard } from './privacy';
 import type { RequestPool, PoolPriority } from './pool';
@@ -23,7 +24,7 @@ export type TransportMessage = { role: string; content?: unknown; [key: string]:
 type Account = 'chat' | 'initiative' | 'background';
 type GatewayOptions = {
   provider(): AppSnapshot['provider'];
-  getKey(): Promise<string | undefined>;
+  getKey(baseUrl: string): Promise<string | undefined>;
   outputLimit(): number;
   pool: RequestPool;
   fetch?: typeof fetch;
@@ -45,68 +46,54 @@ export class ModelGateway {
     priorityOverride?: PoolPriority,
     tools: boolean | Toolset = false,
     category?: UsageCategory,
+    beforeSend?: () => void,
   ): Promise<unknown> {
     const provider = { ...this.deps.provider() };
-    const key = await this.deps.getKey();
+    if (!provider.configured) throw new Error('尚未配置模型 API Key，请先打开「连接」设置');
+    const key = await this.deps.getKey(provider.baseUrl);
     if (!key) throw new Error('尚未配置模型 API Key，请先打开「连接」设置');
-    const current = this.deps.provider();
-    if (
-      provider.baseUrl !== current.baseUrl ||
-      provider.model !== current.model ||
-      provider.mode !== current.mode
-    )
-      throw new Error('模型配置已更新，请重新请求');
-    const k3 = provider.mode !== 'native-api' && isKimiK3Model(provider.model);
+    const checkConnection = () => {
+      signal.throwIfAborted();
+      const current = this.deps.provider();
+      if (provider.baseUrl !== current.baseUrl || provider.model !== current.model) {
+        throw new Error('模型配置已更新，请重新请求');
+      }
+    };
+    checkConnection();
     const out = this.deps.outputLimit();
     const priority: PoolPriority =
       priorityOverride ||
       (account === 'chat' ? 'chat' : account === 'initiative' ? 'attention' : 'background');
-    const endpoint = provider.baseUrl + '|' + provider.model;
+    const url = endpointUrl('chat', provider.baseUrl);
+    const endpoint = url + '|' + provider.model;
     const convo: TransportMessage[] = [...messages];
     const toolset: Toolset | undefined =
       tools === true ? this.deps.mainToolset(signal, priority) : tools || undefined;
-    type Reply = {
-      choices?: {
-        finish_reason?: string;
-        message?: { role?: string; content?: string | null; tool_calls?: ToolCall[]; [key: string]: unknown };
-      }[];
-      usage?: { total_tokens?: number };
-    };
-    // Main-character tool rounds: the model may set or inspect wake-ups and recall a past day, then must answer with the JSON reply.
+    // Main-character tool rounds can handle reminders and delegate lookups before the final JSON reply.
     for (let round = 0; ; round++) {
-      const tokenField = this.tokenField.get(endpoint) || (k3 ? 'max_completion_tokens' : 'max_tokens');
-      const offerTools = !!toolset && !this.toolless.has(endpoint) && round < toolset.rounds;
-      const body = JSON.stringify({
-        model: provider.model,
-        messages: this.deps.guard.messages(convo, account === 'background' ? 'background' : account),
-        ...(!this.withoutJsonFormat.has(endpoint) ? { response_format: { type: 'json_object' } } : {}),
-        [tokenField]: out,
-        ...(k3 ? { reasoning_effort: 'low' } : {}),
-        ...(offerTools ? { tools: toolset!.defs, tool_choice: 'auto' } : {}),
-      });
+      const tokenField = this.tokenField.get(endpoint) || (sameOrigin(url, OPENAI_BASE_URL) ? 'max_completion_tokens' : 'max_tokens');
+      const offerTools = !!toolset?.defs.length && !this.toolless.has(endpoint) && round < toolset.rounds;
       const { response, release } = await callUpstream({
         fetch: this.deps.fetch || fetch,
-        url: provider.baseUrl + '/chat/completions',
-        init: {
+        url,
+        init: () => ({
           method: 'POST',
           headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-          body,
-        },
+          body: JSON.stringify({
+            model: provider.model,
+            messages: toChatRequestMessages(this.deps.guard.messages(convo, account), sameOrigin(url, OPENAI_BASE_URL)),
+            ...(!this.withoutJsonFormat.has(endpoint) ? { response_format: { type: 'json_object' } } : {}),
+            [tokenField]: out,
+            ...(offerTools ? { tools: toolset!.defs, tool_choice: 'auto' } : {}),
+          }),
+        }),
         pool: this.deps.pool,
         priority,
         signal,
         attempts: account === 'background' ? 4 : 3,
-        before: () => {
-          const selected = this.deps.provider();
-          if (
-            selected.baseUrl !== provider.baseUrl ||
-            selected.model !== provider.model ||
-            selected.mode !== provider.mode
-          )
-            throw new Error('模型配置已更新，请重新请求');
-        },
+        before: () => { checkConnection(); beforeSend?.(); },
       });
-      let data!: Reply;
+      let reply: ModelReply;
       try {
         if (!response.ok) {
           const failure = await apiFailure(
@@ -118,8 +105,7 @@ export class ModelGateway {
           if (response.status === 400 || response.status === 422) {
             if (
               !this.tokenField.has(endpoint) &&
-              failure.unsupported.includes(tokenField) &&
-              /not support|unsupported|unknown|unrecognized|use.{0,50}instead/i.test(failure.unsupported)
+              rejectedOption(failure.unsupported, tokenField)
             ) {
               this.tokenField.set(
                 endpoint,
@@ -149,69 +135,45 @@ export class ModelGateway {
           }
           throw failure.error;
         }
-        if ((response.headers.get('content-type') || '').includes('text/event-stream')) {
-          const streamed = await parseModelReply(response, signal);
-          data = {
-            choices: [
-              {
-                message: streamed.message as NonNullable<NonNullable<Reply['choices']>[number]['message']>,
-                finish_reason: streamed.finishReason,
-              },
-            ],
-            usage: { total_tokens: streamed.usage },
-          };
-        } else {
-          const raw = await responseText(response, signal);
-          try {
-            data = JSON.parse(raw) as Reply;
-          } catch {
-            throw new Error('接口返回了无效 JSON，请检查 API 地址和兼容协议');
-          }
-        }
+        reply = await parseModelReply(response, signal, true);
       } finally {
         release();
       }
-      signal.throwIfAborted();
-      const reported = Number(data.usage?.total_tokens);
-      const usage = Number.isFinite(reported) ? Math.max(0, reported) : 0;
+      checkConnection();
       this.deps.recordUsage(
         account,
         category || (account === 'chat' ? 'chat' : account === 'initiative' ? 'proactive' : 'upkeep'),
-        usage,
+        reply.usage,
       );
-      const raw = data.choices?.[0]?.message;
-      if (offerTools && raw?.tool_calls?.length) {
-        // Keep the assistant turn verbatim (reasoning fields included) so thinking models can continue the chain.
-        convo.push(structuredClone({ ...raw, role: 'assistant' }) as TransportMessage);
-        // Calls of one round run side by side; each result is bounded so no single tool can flood the window.
-        const calls = raw.tool_calls.slice(0, 8),
-          results = await Promise.all(
-            calls.map((call) =>
-              toolset!
-                .run(call)
-                .catch((e) => JSON.stringify({ error: e instanceof Error ? e.message : String(e) })),
-            ),
-          );
-        calls.forEach((call, i) =>
-          convo.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            content:
-              results[i].length > HELPER_LIMITS.toolOutput && !DELEGATION_RESULT.has(call.function.name)
-                ? results[i].slice(0, HELPER_LIMITS.toolOutput) + '…（截断）'
-                : results[i],
-          }),
-        );
+      const raw = reply.message;
+      if (raw.tool_calls?.length) {
+        if (!offerTools || !toolset) throw new Error('接口返回了本轮未开放的工具调用');
+        for (const call of raw.tool_calls) {
+          let args: unknown;
+          try { args = JSON.parse(call.function.arguments); } catch { /* handled below */ }
+          if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('工具参数不是完整的 JSON 对象');
+        }
+        convo.push(raw);
+        const allowed = new Set(toolset.defs.map(def => def.function.name));
+        for (const [index, call] of raw.tool_calls.entries()) {
+          checkConnection();
+          let content: string;
+          if (index >= 8) content = JSON.stringify({ error: '本轮最多执行 8 个工具，未执行此项' });
+          else if (!allowed.has(call.function.name)) content = JSON.stringify({ error: '本轮未开放此工具' });
+          else {
+            try { content = await toolset.run(call); }
+            catch (error) { content = JSON.stringify({ error: error instanceof Error ? error.message : String(error) }); }
+          }
+          if (content.length > HELPER_LIMITS.toolOutput && !DELEGATION_RESULT.has(call.function.name)) {
+            content = content.slice(0, HELPER_LIMITS.toolOutput) + '…（截断）';
+          }
+          convo.push({ role: 'tool', tool_call_id: call.id, content });
+        }
         continue;
       }
-      if (data.choices?.[0]?.finish_reason === 'length')
-        throw new Error('模型输出被截断：思考或回答达到输出预算，请缩短问题或调整模型输出预算');
-      if (!raw || typeof raw.content !== 'string' || !raw.content)
-        throw new Error('模型未返回可见回答：输出预算可能被思考耗尽，请调整输出预算后重试');
-      if (raw.role !== undefined && raw.role !== 'assistant') throw new Error('模型消息角色无效');
       let output: unknown;
       try {
-        output = JSON.parse(raw.content.trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1'));
+        output = JSON.parse((raw.content as string).trim().replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, '$1'));
       } catch {
         throw new Error('模型返回的结构无效');
       }
